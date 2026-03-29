@@ -7,9 +7,10 @@ import { Printer } from "lucide-react";
 interface Props {
     items: QuotationProps[];
     onPrint: () => void;
+    previewImages?: string[];
 }
 
-export const PreviewQuote = ({items, onPrint}: Props) => {
+export const PreviewQuote = ({items, onPrint, previewImages}: Props) => {
 
     const [scale, setScale] = React.useState(1);
 
@@ -413,6 +414,23 @@ export const PreviewQuote = ({items, onPrint}: Props) => {
                         </div>
                     </div>
                     </div>
+                {/* Uploaded images */}
+                {previewImages && previewImages.length > 0 && (
+                  <div className="mt-6 pt-4 border-t border-gray-300">
+                    <p className="text-[10px] font-semibold mb-2">รูปภาพประกอบ</p>
+                    <div className="grid grid-cols-2 gap-2">
+                      {previewImages.map((src, i) => (
+                        <img
+                          key={i}
+                          src={src}
+                          alt={`รูป ${i + 1}`}
+                          className="w-full object-cover rounded border border-gray-300"
+                          style={{ maxHeight: "160px" }}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                )}
                 </div>
                 </div>
             </div>

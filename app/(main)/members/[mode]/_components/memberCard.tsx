@@ -1,29 +1,67 @@
-import { CmpButton } from "@/components/cmpButton";
 import { Avatar } from "@heroui/avatar";
-import { Button } from "@heroui/button";
+import { Chip } from "@heroui/chip";
 
-interface Props {
-  data: BuyerDto;
+interface MemberUser {
+  email: string;
+  role?: { display_name: string };
 }
 
-export const MemberCard = ({ data }: Props) => {
+interface Props {
+  id: number;
+  code: string;
+  image: string;
+  fname: string;
+  lname: string;
+  phone: string;
+  status: number;
+  user?: MemberUser | null;
+  onEdit?: () => void;
+}
+
+const statusColorMap: Record<string, "success" | "danger" | "warning"> = {
+  "0": "success",
+  "1": "danger",
+  "2": "warning",
+};
+
+const statusTextMap: Record<string, string> = {
+  "0": "ปกติ",
+  "1": "ระงับ",
+  "2": "รอตรวจ",
+};
+
+export const MemberCard = ({ id, code, image, fname, lname, phone, status, user }: Props) => {
   return (
-    <div className=" flex flex-col w-full md:w-80 border-1 border-black/10 bg-black/5  backdrop-blur-xl rounded-4xl px-3 py-5 items-center gap-y-4">
-      <Avatar src={data.image} className=" flex w-40 h-40" />
-      <div className=" flex flex-col items-center">
-        <span className=" font-bold text-2xl bg-gradient-to-r from-black/90 to-yellow-400 bg-clip-text text-transparent -mt-2">
-          {data.fname} {data.lname}
+    <div className="flex flex-col w-full md:w-72 border-1 border-black/10 bg-black/5 backdrop-blur-xl rounded-4xl px-3 py-5 items-center gap-y-3">
+      <Avatar
+        src={image}
+        name={fname}
+        className="flex w-28 h-28 text-large"
+      />
+      <div className="flex flex-col items-center gap-y-1">
+        <span className="font-bold text-xl bg-gradient-to-r from-black/90 to-yellow-400 bg-clip-text text-transparent">
+          {fname} {lname}
         </span>
-        <div className=" bg-gradient-to-r from-transparent to-yellow-200/50 rounded-full px-2 border-1 border-black/10 shandow-sm">
-          <span className=" text-xs font-bold">Username : {data.username}</span>
-        </div>
-        <span className=" text-[10px] font-bold mt-1">
-          Member ID : {data.id}
-        </span>
+        <span className="text-xs font-bold text-black/50">รหัสสมาชิก: {code}</span>
+        {phone && (
+          <span className="text-xs text-black/50">โทร: {phone}</span>
+        )}
+        {user?.email && (
+          <div className="bg-gradient-to-r from-transparent to-yellow-200/50 rounded-full px-3 py-0.5 border-1 border-black/10 mt-1">
+            <span className="text-xs font-bold">{user.email}</span>
+          </div>
+        )}
+        {user?.role && (
+          <span className="text-xs text-black/50">{user.role.display_name}</span>
+        )}
       </div>
-      <Button className=" h-8 bg-gradient-to-bl from-transparent to-yellow-600/50 border-1 border-black/10 font-bold">
-        แก้ไขข้อมูล
-      </Button>
+      <Chip
+        color={statusColorMap[String(status)] || "default"}
+        variant="flat"
+        size="sm"
+      >
+        {statusTextMap[String(status)] || String(status)}
+      </Chip>
     </div>
   );
 };
