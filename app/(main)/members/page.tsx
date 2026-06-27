@@ -2,8 +2,15 @@
 
 import { useEffect, useState, useCallback } from "react";
 import {
-  Table, TableHeader, TableColumn, TableBody, TableRow, TableCell,
-  User, Chip, Button,
+  Table,
+  TableHeader,
+  TableColumn,
+  TableBody,
+  TableRow,
+  TableCell,
+  User,
+  Chip,
+  Button,
 } from "@heroui/react";
 import { Input } from "@heroui/input";
 import { Select, SelectItem } from "@heroui/select";
@@ -13,7 +20,9 @@ import { api } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
 import { Spinner } from "@heroui/spinner";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL?.replace("/api/v1", "") || "http://localhost:8080";
+const API_BASE =
+  process.env.NEXT_PUBLIC_API_URL?.replace("/api/v1", "") ||
+  "http://localhost:8080";
 
 interface MemberData {
   id: number;
@@ -26,14 +35,20 @@ interface MemberData {
   status: number;
   store?: { id: number; name: string } | null;
   branch?: { id: number; name: string } | null;
-  user?: { role?: { id: number; name: string; display_name: string } | null } | null;
+  user?: {
+    role?: { id: number; name: string; display_name: string } | null;
+  } | null;
 }
 
 const statusColorMap: Record<string, "success" | "danger" | "warning"> = {
-  "0": "success", "1": "danger", "2": "warning",
+  "0": "success",
+  "1": "danger",
+  "2": "warning",
 };
 const statusTextMap: Record<string, string> = {
-  "0": "ปกติ", "1": "ระงับ", "2": "รอตรวจ",
+  "0": "ปกติ",
+  "1": "ระงับ",
+  "2": "รอตรวจ",
 };
 
 const LIMIT = 20;
@@ -68,7 +83,8 @@ export default function Members() {
   useEffect(() => {
     if (!canRead) return;
     setLoading(true);
-    api.get<MemberData[]>(`/members?${buildQuery()}`)
+    api
+      .get<MemberData[]>(`/members?${buildQuery()}`)
       .then((res) => {
         setMembers((res.data as unknown as MemberData[]) || []);
         setTotal((res as unknown as { total_rows?: number }).total_rows || 0);
@@ -82,7 +98,8 @@ export default function Members() {
     setPage(1);
   };
 
-  const inputStyle = "bg-gradient-to-br from-black/10 to-transparent border-1 border-black/10 rounded-xl";
+  const inputStyle =
+    "bg-gradient-to-br from-black/10 to-transparent border-1 border-black/10 rounded-xl";
   const totalPages = Math.ceil(total / LIMIT);
 
   if (!authLoading && !canRead) return null;
@@ -136,7 +153,11 @@ export default function Members() {
             size="sm"
             variant="light"
             className="text-black/40 self-center"
-            onPress={() => { setSearch(""); setStatusFilter(""); setPage(1); }}
+            onPress={() => {
+              setSearch("");
+              setStatusFilter("");
+              setPage(1);
+            }}
           >
             ล้าง
           </Button>
@@ -162,7 +183,7 @@ export default function Members() {
               <TableColumn>สิทธิ์</TableColumn>
               <TableColumn>เบอร์โทร</TableColumn>
               <TableColumn>เครดิต</TableColumn>
-              {isMaster ? <TableColumn>ร้าน / สาขา</TableColumn> : null}
+              <TableColumn>ร้าน / สาขา</TableColumn>
               <TableColumn>สถานะ</TableColumn>
             </TableHeader>
             <TableBody emptyContent="ไม่พบข้อมูล">
@@ -193,21 +214,41 @@ export default function Members() {
                     )}
                   </TableCell>
                   <TableCell>
-                    <span className="text-sm text-black/70">{m.phone || "-"}</span>
+                    <span className="text-sm text-black/70">
+                      {m.phone || "-"}
+                    </span>
                   </TableCell>
                   <TableCell>
                     <span className="font-bold text-[#c09c42]">
-                      {m.credits.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      {m.credits.toLocaleString(undefined, {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
+                      })}
                     </span>
                   </TableCell>
                   {isMaster ? (
                     <TableCell>
                       <div className="flex flex-col">
-                        <span className="text-xs text-black/70">{m.store?.name || "-"}</span>
-                        <span className="text-[10px] text-black/40">{m.branch?.name || ""}</span>
+                        <span className="text-xs text-black/70">
+                          {m.store?.name || "-"}
+                        </span>
+                        <span className="text-[10px] text-black/40">
+                          {m.branch?.name || ""}
+                        </span>
                       </div>
                     </TableCell>
-                  ) : null}
+                  ) : (
+                    <TableCell>
+                      <div className="flex flex-col">
+                        <span className="text-xs text-black/70">
+                          {m.store?.name || "-"}
+                        </span>
+                        <span className="text-[10px] text-black/40">
+                          {m.branch?.name || ""}
+                        </span>
+                      </div>
+                    </TableCell>
+                  )}
                   <TableCell>
                     <Chip
                       color={statusColorMap[String(m.status)] || "default"}
@@ -224,9 +265,25 @@ export default function Members() {
 
           {totalPages > 1 && (
             <div className="flex justify-center gap-2 shrink-0 pb-2">
-              <Button size="sm" variant="flat" isDisabled={page === 1} onPress={() => setPage(page - 1)}>ก่อนหน้า</Button>
-              <span className="text-sm text-black/50 self-center">{page} / {totalPages}</span>
-              <Button size="sm" variant="flat" isDisabled={page >= totalPages} onPress={() => setPage(page + 1)}>ถัดไป</Button>
+              <Button
+                size="sm"
+                variant="flat"
+                isDisabled={page === 1}
+                onPress={() => setPage(page - 1)}
+              >
+                ก่อนหน้า
+              </Button>
+              <span className="text-sm text-black/50 self-center">
+                {page} / {totalPages}
+              </span>
+              <Button
+                size="sm"
+                variant="flat"
+                isDisabled={page >= totalPages}
+                onPress={() => setPage(page + 1)}
+              >
+                ถัดไป
+              </Button>
             </div>
           )}
         </>
