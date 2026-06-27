@@ -7,7 +7,7 @@ import { PreviewQuote } from "./_component/previewQuote";
 import { api } from "@/lib/api";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/auth-context";
-import { ShieldOff, X, Save } from "lucide-react";
+import { ShieldOff, X, Save, AlertCircle } from "lucide-react";
 import {
   Modal,
   ModalContent,
@@ -24,6 +24,7 @@ export default function QuotationPage() {
   const [showPreview, setShowPreview] = useState(false);
   const router = useRouter();
   const [saveError, setSaveError] = useState("");
+  const [creditError, setCreditError] = useState(false);
   const [uploadFiles, setUploadFiles] = useState<File[]>([]);
   const previewImages = uploadFiles.map((f) => URL.createObjectURL(f));
   const [listOpen, setListOpen] = useState(false);
@@ -83,9 +84,13 @@ export default function QuotationPage() {
       setShowPreview(false);
       router.push("/quote-list");
     } catch (err: unknown) {
-      const msg =
-        err instanceof Error ? err.message : "บันทึกไม่สำเร็จ กรุณาลองใหม่";
-      setSaveError(msg);
+      const msg = err instanceof Error ? err.message : "บันทึกไม่สำเร็จ กรุณาลองใหม่";
+      if (msg.includes("เครดิตไม่เพียงพอ")) {
+        setShowPreview(false);
+        setCreditError(true);
+      } else {
+        setSaveError(msg);
+      }
     } finally {
       setSaving(false);
     }
@@ -258,6 +263,47 @@ export default function QuotationPage() {
                   isLoading={saving}
                 >
                   ยืนยันบันทึก
+                </Button>
+              </ModalFooter>
+            </>
+          )}
+        </ModalContent>
+      </Modal>
+      {/* Credit insufficient dialog */}
+      <Modal isOpen={creditError} onOpenChange={setCreditError} size="sm" backdrop="blur">
+        <ModalContent>
+          {(onClose) => (
+            <>
+              <ModalHeader className="flex flex-col gap-1">
+                <div className="flex items-center gap-2 text-red-500">
+                  <AlertCircle size={20} />
+                  <span>เครดิตไม่เพียงพอ</span>
+                </div>
+              </ModalHeader>
+              <ModalBody>
+                <div className="flex flex-col gap-y-3">
+                  <p className="text-sm text-black/70">
+                    เครดิตของคุณไม่เพียงพอสำหรับออกใบเสนอราคานี้
+                  </p>
+                  <div className="flex flex-col gap-y-1 bg-red-50 border border-red-100 rounded-2xl px-4 py-3">
+                    <div className="flex justify-between text-sm">
+                      <span className="text-black/50">ยอดรวมใบเสนอราคา</span>
+                      <span className="font-bold text-black">
+                        {totalAmount.toLocaleString(undefined, { minimumFractionDigits: 2 })} บาท
+                      </span>
+                    </div>
+                  </div>
+                  <p className="text-xs text-black/40 text-center">
+                    กรุณาติดต่อเจ้าของร้านเพื่อเติมเครดิตก่อนออกใบเสนอราคา
+                  </p>
+                </div>
+              </ModalBody>
+              <ModalFooter>
+                <Button
+                  className="w-full bg-gradient-to-r from-[#c09c42] to-yellow-600 text-white font-bold"
+                  onPress={onClose}
+                >
+                  ตกลง
                 </Button>
               </ModalFooter>
             </>

@@ -1,41 +1,24 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Input } from "@heroui/input";
 import { Button } from "@heroui/button";
 import { Select, SelectItem } from "@heroui/select";
-import { ArrowLeft, Save } from "lucide-react";
+import { ArrowLeft, Camera, Save, ShieldOff } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
-import { ShieldOff } from "lucide-react";
+import Image from "next/image";
 
-interface RoleOption {
-  id: number;
-  name: string;
-  display_name: string;
-}
-interface StoreOption {
-  id: number;
-  name: string;
-}
-interface BranchOption {
-  id: number;
-  name: string;
-}
+interface RoleOption { id: number; name: string; display_name: string }
+interface StoreOption { id: number; name: string }
+interface BranchOption { id: number; name: string }
 
 export default function CreateUserPage() {
   const router = useRouter();
   const { hasPermission } = useAuth();
+  const fileRef = useRef<HTMLInputElement>(null);
 
-  if (!hasPermission("users.create")) {
-    return (
-      <div className="flex flex-col items-center justify-center h-full gap-y-3 text-black/40">
-        <ShieldOff size={40} />
-        <span className="font-bold text-sm">ไม่มีสิทธิ์เข้าถึงหน้านี้</span>
-      </div>
-    );
-  }
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -46,6 +29,8 @@ export default function CreateUserPage() {
   const [roles, setRoles] = useState<RoleOption[]>([]);
   const [stores, setStores] = useState<StoreOption[]>([]);
   const [branches, setBranches] = useState<BranchOption[]>([]);
+  const [avatarFile, setAvatarFile] = useState<File | null>(null);
+  const [avatarPreview, setAvatarPreview] = useState<string>("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
@@ -66,8 +51,14 @@ export default function CreateUserPage() {
   }, [storeId]);
 
   const selectedRole = roles.find((r) => String(r.id) === roleId);
-  const requiresBranch =
-    selectedRole?.name === "employee" || selectedRole?.name === "branch";
+  const requiresBranch = selectedRole?.name === "employee" || selectedRole?.name === "branch";
+
+  const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setAvatarFile(file);
+    setAvatarPreview(URL.createObjectURL(file));
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -76,7 +67,7 @@ export default function CreateUserPage() {
     setError("");
     setLoading(true);
     try {
-      await api.post("/users", {
+      const res = await api.post<{ id: number }>("/users", {
         name,
         email,
         password,
@@ -85,6 +76,12 @@ export default function CreateUserPage() {
         store_id: storeId ? Number(storeId) : undefined,
         branch_id: branchId ? Number(branchId) : undefined,
       });
+      const newId = (res.data as unknown as { id: number })?.id;
+      if (avatarFile && newId) {
+        const fd = new FormData();
+        fd.append("avatar", avatarFile);
+        await api.upload(`/users/${newId}/avatar`, fd);
+      }
       router.push("/users");
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "สร้างพนักงานไม่สำเร็จ");
@@ -94,6 +91,15 @@ export default function CreateUserPage() {
   };
 
   const inputStyle = "bg-gradient-to-br from-black/10 to-transparent border-1 border-black/10 rounded-2xl";
+
+  if (!hasPermission("users.create")) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full gap-y-3 text-black/40">
+        <ShieldOff size={40} />
+        <span className="font-bold text-sm">ไม่มีสิทธิ์เข้าถึงหน้านี้</span>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col h-full">
@@ -108,6 +114,33 @@ export default function CreateUserPage() {
 
       <div className="w-full max-w-xl border-1 border-black/10 bg-black/5 backdrop-blur-xl rounded-3xl p-6">
         <form onSubmit={handleSubmit} className="flex flex-col gap-y-4">
+
+          {/* avatar picker */}
+          <div className="flex justify-center">
+            <button
+              type="button"
+              onClick={() => fileRef.current?.click()}
+              className="relative w-24 h-24 rounded-full overflow-hidden border-2 border-dashed border-[#c09c42]/50 bg-black/5 hover:border-[#c09c42] transition-colors group"
+            >
+              {avatarPreview ? (
+                <Image src={avatarPreview} alt="avatar" fill className="object-cover" />
+              ) : (
+                <div className="flex flex-col items-center justify-center h-full gap-1 text-black/30 group-hover:text-[#c09c42] transition-colors">
+                  <Camera size={22} />
+                  <span className="text-[10px]">อัปโหลด</span>
+                </div>
+              )}
+              <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors rounded-full" />
+            </button>
+            <input
+              ref={fileRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={handleAvatarChange}
+            />
+          </div>
+
           <Input label="ชื่อ" placeholder="ชื่อ-นามสกุล" value={name} onValueChange={setName}
             classNames={{ inputWrapper: inputStyle }} isRequired />
           <Input label="อีเมล" type="email" placeholder="email@example.com" value={email} onValueChange={setEmail}
@@ -118,19 +151,13 @@ export default function CreateUserPage() {
             classNames={{ inputWrapper: inputStyle }} />
 
           <Select label="สิทธิ์" placeholder="เลือกสิทธิ์" selectedKeys={roleId ? [roleId] : []}
-            onChange={(e) => setRoleId(e.target.value)}
-            classNames={{ trigger: inputStyle }}>
-            {roles.map((r) => (
-              <SelectItem key={String(r.id)}>{r.display_name}</SelectItem>
-            ))}
+            onChange={(e) => setRoleId(e.target.value)} classNames={{ trigger: inputStyle }}>
+            {roles.map((r) => <SelectItem key={String(r.id)}>{r.display_name}</SelectItem>)}
           </Select>
 
           <Select label="ร้าน" placeholder="เลือกร้าน" selectedKeys={storeId ? [storeId] : []}
-            onChange={(e) => setStoreId(e.target.value)}
-            classNames={{ trigger: inputStyle }}>
-            {stores.map((s) => (
-              <SelectItem key={String(s.id)}>{s.name}</SelectItem>
-            ))}
+            onChange={(e) => setStoreId(e.target.value)} classNames={{ trigger: inputStyle }}>
+            {stores.map((s) => <SelectItem key={String(s.id)}>{s.name}</SelectItem>)}
           </Select>
 
           {(branches.length > 0 || requiresBranch) && (
@@ -143,9 +170,7 @@ export default function CreateUserPage() {
               isDisabled={branches.length === 0}
               color={requiresBranch && !branchId ? "danger" : "default"}
             >
-              {branches.map((b) => (
-                <SelectItem key={String(b.id)}>{b.name}</SelectItem>
-              ))}
+              {branches.map((b) => <SelectItem key={String(b.id)}>{b.name}</SelectItem>)}
             </Select>
           )}
 

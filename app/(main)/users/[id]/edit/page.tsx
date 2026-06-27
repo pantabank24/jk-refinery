@@ -1,25 +1,30 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Input } from "@heroui/input";
 import { Button } from "@heroui/button";
 import { Select, SelectItem } from "@heroui/select";
 import { Switch } from "@heroui/switch";
-import { ArrowLeft, Save, Trash } from "lucide-react";
+import { ArrowLeft, Camera, Save, Trash } from "lucide-react";
 import { useRouter, useParams } from "next/navigation";
 import { api } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
 import { Spinner } from "@heroui/spinner";
+import Image from "next/image";
 
 interface RoleOption { id: number; name: string; display_name: string }
 interface StoreOption { id: number; name: string }
 interface BranchOption { id: number; name: string }
+
+const API_BASE = process.env.NEXT_PUBLIC_API_URL?.replace("/api/v1", "") || "http://localhost:8080";
 
 export default function EditUserPage() {
   const router = useRouter();
   const params = useParams();
   const userId = params.id as string;
   const { hasPermission } = useAuth();
+  const fileRef = useRef<HTMLInputElement>(null);
+
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
@@ -27,6 +32,9 @@ export default function EditUserPage() {
   const [storeId, setStoreId] = useState("");
   const [branchId, setBranchId] = useState("");
   const [isActive, setIsActive] = useState(true);
+  const [currentAvatar, setCurrentAvatar] = useState("");
+  const [avatarFile, setAvatarFile] = useState<File | null>(null);
+  const [avatarPreview, setAvatarPreview] = useState<string>("");
   const [roles, setRoles] = useState<RoleOption[]>([]);
   const [stores, setStores] = useState<StoreOption[]>([]);
   const [branches, setBranches] = useState<BranchOption[]>([]);
@@ -38,16 +46,17 @@ export default function EditUserPage() {
     const load = async () => {
       try {
         const [userRes, rolesRes, storesRes] = await Promise.all([
-          api.get<{ id: number; name: string; email: string; phone: string; is_active: boolean; role_id: number; store_id: number; branch_id: number }>(`/users/${userId}`),
+          api.get<{ id: number; name: string; email: string; phone: string; is_active: boolean; role_id: number; store_id: number; branch_id: number; avatar: string }>(`/users/${userId}`),
           api.get<RoleOption[]>("/roles"),
           api.get<StoreOption[]>("/stores?limit=100"),
         ]);
-        const u = userRes.data as unknown as { name: string; email: string; phone: string; is_active: boolean; role_id: number; store_id: number; branch_id: number };
+        const u = userRes.data as unknown as { name: string; email: string; phone: string; is_active: boolean; role_id: number; store_id: number; branch_id: number; avatar: string };
         if (u) {
           setName(u.name);
           setEmail(u.email);
           setPhone(u.phone || "");
           setIsActive(u.is_active);
+          setCurrentAvatar(u.avatar || "");
           if (u.role_id) setRoleId(String(u.role_id));
           if (u.store_id) setStoreId(String(u.store_id));
           if (u.branch_id) setBranchId(String(u.branch_id));
@@ -74,8 +83,16 @@ export default function EditUserPage() {
   }, [storeId]);
 
   const selectedRole = roles.find((r) => String(r.id) === roleId);
-  const requiresBranch =
-    selectedRole?.name === "employee" || selectedRole?.name === "branch";
+  const requiresBranch = selectedRole?.name === "employee" || selectedRole?.name === "branch";
+
+  const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setAvatarFile(file);
+    setAvatarPreview(URL.createObjectURL(file));
+  };
+
+  const displayAvatar = avatarPreview || (currentAvatar ? `${API_BASE}${currentAvatar}` : "");
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -92,6 +109,11 @@ export default function EditUserPage() {
         store_id: storeId ? Number(storeId) : undefined,
         branch_id: branchId ? Number(branchId) : undefined,
       });
+      if (avatarFile) {
+        const fd = new FormData();
+        fd.append("avatar", avatarFile);
+        await api.upload(`/users/${userId}/avatar`, fd);
+      }
       router.push("/users");
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "แก้ไขพนักงานไม่สำเร็จ");
@@ -134,6 +156,35 @@ export default function EditUserPage() {
 
       <div className="w-full max-w-xl border-1 border-black/10 bg-black/5 backdrop-blur-xl rounded-3xl p-6">
         <form onSubmit={handleSubmit} className="flex flex-col gap-y-4">
+
+          {/* avatar picker */}
+          <div className="flex justify-center">
+            <button
+              type="button"
+              onClick={() => fileRef.current?.click()}
+              className="relative w-24 h-24 rounded-full overflow-hidden border-2 border-dashed border-[#c09c42]/50 bg-black/5 hover:border-[#c09c42] transition-colors group"
+            >
+              {displayAvatar ? (
+                <Image src={displayAvatar} alt="avatar" fill className="object-cover" />
+              ) : (
+                <div className="flex flex-col items-center justify-center h-full gap-1 text-black/30 group-hover:text-[#c09c42] transition-colors">
+                  <Camera size={22} />
+                  <span className="text-[10px]">อัปโหลด</span>
+                </div>
+              )}
+              <div className="absolute inset-0 flex items-center justify-center bg-black/0 group-hover:bg-black/30 transition-colors rounded-full">
+                <Camera size={18} className="text-white opacity-0 group-hover:opacity-100 transition-opacity" />
+              </div>
+            </button>
+            <input
+              ref={fileRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={handleAvatarChange}
+            />
+          </div>
+
           <Input label="ชื่อ" value={name} onValueChange={setName} classNames={{ inputWrapper: inputStyle }} isRequired />
           <Input label="อีเมล" type="email" value={email} onValueChange={setEmail} classNames={{ inputWrapper: inputStyle }} isRequired />
           <Input label="เบอร์โทร" value={phone} onValueChange={setPhone} classNames={{ inputWrapper: inputStyle }} />

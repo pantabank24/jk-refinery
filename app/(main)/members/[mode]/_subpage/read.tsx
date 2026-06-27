@@ -89,6 +89,18 @@ export const MemberDetail = () => {
     setMember(res.data as unknown as Member);
   };
 
+  const handleImageUpload = async (file: File) => {
+    if (!memberId) return;
+    const fd = new FormData();
+    fd.append("image", file);
+    try {
+      const res = await api.upload<Member>(`/members/${memberId}/image`, fd);
+      setMember(res.data as unknown as Member);
+    } catch {
+      // silent — could show a toast here
+    }
+  };
+
   const fetchTransactions = async () => {
     if (!memberId) return;
     try {
@@ -203,6 +215,8 @@ export const MemberDetail = () => {
             phone={member.phone}
             status={member.status}
             user={member.user}
+            canEdit={hasPermission("members.update")}
+            onImageUpload={handleImageUpload}
           />
 
           <BoxCard
