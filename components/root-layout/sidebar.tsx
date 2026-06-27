@@ -1,6 +1,6 @@
 "use client";
 
-import { Home, FileText, List, Users, Store, Settings, UserCog, Shield, ScrollText, Gem, TrendingUp, SlidersHorizontal, X, Wallet } from "lucide-react";
+import { Home, FileText, List, Users, Store, Settings, Shield, ScrollText, Gem, TrendingUp, SlidersHorizontal, X, Wallet } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useAuth } from "@/contexts/auth-context";
@@ -38,7 +38,6 @@ export const Sidebar = ({ isOpen = false, onClose }: SidebarProps) => {
     { id: 4,  name: "สมาชิก",               href: "/members",             icon: <Users size={18} />,            show: hasPermission("members.read") },
     { id: 13, name: "จัดการเครดิต",         href: "/credit-management",   icon: <Wallet size={18} />,           show: hasPermission("credits.read") },
     { id: 5,  name: "ร้านค้าและสาขา",       href: "/stores",              icon: <Store size={18} />,            show: hasPermission("stores.read") },
-    { id: 6,  name: "จัดการพนักงาน",        href: "/users",               icon: <UserCog size={18} />,          show: hasPermission("users.read") },
     { id: 7,  name: "การจัดการ",            href: "/management",          icon: <Settings size={18} />,         show: hasPermission("stores.read") },
     { id: 8,  name: "ประเภททอง",            href: "/settings/gold-types", icon: <Gem size={18} />,              show: hasPermission("gold_types.read") },
     { id: 9,  name: "ราคาทองคำ",            href: "/settings/gold-price", icon: <TrendingUp size={18} />,       show: hasPermission("gold_prices.read") },

@@ -5,10 +5,12 @@ import { Input } from "@heroui/input";
 import { Button } from "@heroui/button";
 import { Select, SelectItem } from "@heroui/select";
 import { AlertTriangle, ArrowLeft, Camera, Eye, EyeOff, Save } from "lucide-react";
-import { useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { api } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
 import Image from "next/image";
+
+const API_BASE = process.env.NEXT_PUBLIC_API_URL?.replace("/api/v1", "") || "http://localhost:8080";
 
 interface RoleOption {
   id: number;
@@ -26,12 +28,46 @@ interface BranchOption {
   name: string;
 }
 
+interface UserDetail {
+  id: number;
+  email: string;
+  phone?: string;
+  store_id?: number | null;
+  branch_id?: number | null;
+  role?: { id: number; name: string; display_name: string } | null;
+}
+
+interface MemberDetail {
+  id: number;
+  fname: string;
+  lname: string;
+  phone: string;
+  credits: number;
+  status: number;
+  image: string;
+  user?: UserDetail | null;
+}
+
+const PHONE_RE = /^0[0-9]{9}$/;
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
 export const Action = () => {
   const router = useRouter();
+  const params = useParams<{ mode: string }>();
+  const searchParams = useSearchParams();
+  const mode = params?.mode ?? "add";
+  const memberId = searchParams.get("id");
+  const isEdit = mode === "edit";
+
   const { user, isMaster, isOwner } = useAuth();
   const fileRef = useRef<HTMLInputElement>(null);
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
   const [avatarPreview, setAvatarPreview] = useState("");
+  const [existingImage, setExistingImage] = useState("");
+
+  // Existing user_id (edit mode)
+  const [existingUserId, setExistingUserId] = useState<number | null>(null);
+  const [originalEmail, setOriginalEmail] = useState("");
 
   // ข้อมูลส่วนตัว
   const [fname, setFname] = useState("");
@@ -57,11 +93,11 @@ export const Action = () => {
   const [branches, setBranches] = useState<BranchOption[]>([]);
 
   const [loading, setLoading] = useState(false);
+  const [initLoading, setInitLoading] = useState(isEdit);
   const [error, setError] = useState("");
   const [emailError, setEmailError] = useState("");
   const [noOwnerWarning, setNoOwnerWarning] = useState(false);
 
-  // role ที่เลือกอยู่ตอนนี้
   const selectedRole = roles.find((r) => String(r.id) === roleId);
   const roleNeedsStore =
     selectedRole?.name === "owner" ||
@@ -70,49 +106,90 @@ export const Action = () => {
   const roleNeedsBranch =
     selectedRole?.name === "branch" || selectedRole?.name === "employee";
 
+  // Load roles + stores, then load member data in edit mode
   useEffect(() => {
-    api
-      .get<RoleOption[]>("/roles")
-      .then((res) => setRoles((res.data as unknown as RoleOption[]) || []));
+    const init = async () => {
+      const [rolesRes, storesRes] = await Promise.all([
+        api.get<RoleOption[]>("/roles"),
+        (isMaster || isOwner) ? api.get<StoreOption[]>("/stores?limit=100") : Promise.resolve(null),
+      ]);
 
-    // master และ owner ต้องเลือกร้านเอง
-    if (isMaster || isOwner) {
-      api
-        .get<StoreOption[]>("/stores?limit=100")
-        .then((res) => setStores((res.data as unknown as StoreOption[]) || []));
-    }
-  }, [isMaster, isOwner]);
+      const list = (rolesRes.data as unknown as RoleOption[]) || [];
+      setRoles(list);
 
-  // เมื่อ storeId หรือ role เปลี่ยน → ดึง branches เฉพาะ role ที่ต้องการสาขา
+      if (storesRes) {
+        setStores((storesRes.data as unknown as StoreOption[]) || []);
+      }
+
+      if (isEdit && memberId) {
+        try {
+          const mRes = await api.get<MemberDetail>(`/members/${memberId}`);
+          const m = mRes.data as unknown as MemberDetail;
+          setFname(m.fname);
+          setLname(m.lname);
+          setPhone(m.phone || "");
+          setCredits(String(m.credits ?? 0));
+          setExistingImage(m.image || "");
+
+          if (m.user) {
+            setExistingUserId(m.user.id);
+            setOriginalEmail(m.user.email || "");
+            setEmail(m.user.email || "");
+            if (m.user.role) {
+              setRoleId(String(m.user.role.id));
+            }
+            // Fetch full user to get store_id / branch_id
+            const uRes = await api.get<UserDetail>(`/users/${m.user.id}`);
+            const u = uRes.data as unknown as UserDetail;
+            if (u.store_id) setStoreId(String(u.store_id));
+            if (u.branch_id) setBranchId(String(u.branch_id));
+          }
+        } catch {
+          router.push("/members");
+        }
+      } else {
+        // default role to employee on create
+        const emp = list.find((r) => r.name === "employee");
+        if (emp) setRoleId(String(emp.id));
+      }
+
+      setInitLoading(false);
+    };
+    init();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isEdit, memberId, isMaster, isOwner]);
+
+  // Fetch branches when storeId or roleId changes
   useEffect(() => {
     const selected = roles.find((r) => String(r.id) === roleId);
     const needsBranch = selected?.name === "branch" || selected?.name === "employee";
+    const effectiveStore = storeId || (user?.store_id ? String(user.store_id) : "");
 
-    if (storeId && needsBranch) {
+    if (effectiveStore && needsBranch) {
       api
-        .get<BranchOption[]>(`/stores/${storeId}/branches?limit=100`)
+        .get<BranchOption[]>(`/stores/${effectiveStore}/branches?limit=100`)
         .then((res) => setBranches((res.data as unknown as BranchOption[]) || []))
         .catch(() => setBranches([]));
     } else {
       setBranches([]);
-      setBranchId("");
+      if (!needsBranch) setBranchId("");
     }
-  }, [storeId, roleId, roles]);
+  }, [storeId, roleId, roles, user?.store_id]);
 
-  // เมื่อ role เปลี่ยน → เคลียร์ store/branch ถ้าไม่จำเป็น
+  // Clear store/branch when role changes to one that doesn't need them
   useEffect(() => {
     if (!roleNeedsStore) {
       setStoreId("");
       setBranchId("");
-    }
-    if (!roleNeedsBranch) {
+    } else if (!roleNeedsBranch) {
       setBranchId("");
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [roleId]);
 
-  // ตรวจ email ซ้ำแบบ real-time (debounce 500ms)
+  // Email uniqueness check (debounced)
   useEffect(() => {
-    if (!email || !EMAIL_RE.test(email)) {
+    if (!email || !EMAIL_RE.test(email) || email === originalEmail) {
       setEmailError("");
       return;
     }
@@ -127,9 +204,9 @@ export const Action = () => {
       }
     }, 500);
     return () => clearTimeout(timer);
-  }, [email]);
+  }, [email, originalEmail]);
 
-  // ตรวจว่าร้านที่เลือกมีเจ้าของร้านแล้วหรือยัง (เฉพาะ role branch/employee)
+  // No-owner warning for branch/employee role
   useEffect(() => {
     const selected = roles.find((r) => String(r.id) === roleId);
     const needsBranch = selected?.name === "branch" || selected?.name === "employee";
@@ -154,33 +231,26 @@ export const Action = () => {
   const inputStyle =
     "bg-gradient-to-br from-black/10 to-transparent border-1 border-black/10 rounded-2xl";
 
-  const PHONE_RE = /^0[0-9]{9}$/;
-  const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    // ข้อมูลส่วนตัว
     if (!fname.trim()) return setError("กรุณากรอกชื่อจริง");
     if (!lname.trim()) return setError("กรุณากรอกนามสกุล");
     if (phone && !PHONE_RE.test(phone.replace(/\D/g, "")))
       return setError("เบอร์โทรศัพท์ไม่ถูกต้อง (10 หลัก ขึ้นต้นด้วย 0)");
-
-    // เครดิต
     if (credits !== "" && parseFloat(credits) < 0)
       return setError("เครดิตต้องไม่ติดลบ");
 
-    // บัญชีผู้ใช้งาน
-    if (email || password || confirmPassword) {
-      if (!email) return setError("กรุณากรอก Email");
-      if (!EMAIL_RE.test(email)) return setError("รูปแบบ Email ไม่ถูกต้อง");
+    const hasAccountFields = email || password || confirmPassword;
+    if (hasAccountFields || isEdit) {
+      if (!isEdit && !email) return setError("กรุณากรอก Email");
+      if (email && !EMAIL_RE.test(email)) return setError("รูปแบบ Email ไม่ถูกต้อง");
       if (emailError) return setError(emailError);
-      if (!password) return setError("กรุณากรอกรหัสผ่าน");
-      if (password.length < 6) return setError("รหัสผ่านต้องมีอย่างน้อย 6 ตัวอักษร");
-      if (password !== confirmPassword) return setError("รหัสผ่านไม่ตรงกัน");
+      if (!isEdit && !password) return setError("กรุณากรอกรหัสผ่าน");
+      if (password && password.length < 6) return setError("รหัสผ่านต้องมีอย่างน้อย 6 ตัวอักษร");
+      if (password && password !== confirmPassword) return setError("รหัสผ่านไม่ตรงกัน");
     }
 
-    // ร้านค้า/สาขา
     if (roleNeedsStore && (isMaster || isOwner) && !storeId)
       return setError("กรุณาเลือกร้านค้า");
     if (roleNeedsBranch && !branchId)
@@ -188,41 +258,69 @@ export const Action = () => {
 
     setError("");
     setLoading(true);
-    try {
-      // ถ้าไม่ได้เลือก store ใน form → ใช้จาก JWT (สำหรับ branch/employee ที่ผู้สร้างเป็น owner)
-      const effectiveStoreId = storeId
-        ? Number(storeId)
-        : user?.store_id ?? undefined;
-      const effectiveBranchId = branchId
-        ? Number(branchId)
-        : user?.branch_id ?? undefined;
 
-      const res = await api.post<{ id: number }>("/members", {
-        fname,
-        lname,
-        phone,
-        credits: credits ? parseFloat(credits) : 0,
-        store_id: effectiveStoreId,
-        branch_id: effectiveBranchId,
-        email: email || undefined,
-        password: password || undefined,
-        role_id: roleId ? Number(roleId) : undefined,
-      });
-      const newId = (res.data as unknown as { id: number })?.id;
-      if (avatarFile && newId) {
-        const fd = new FormData();
-        fd.append("image", avatarFile);
-        await api.upload(`/members/${newId}/image`, fd);
+    const effectiveStoreId = storeId ? Number(storeId) : (user?.store_id ?? undefined);
+    const effectiveBranchId = branchId ? Number(branchId) : (user?.branch_id ?? undefined);
+
+    try {
+      if (isEdit && memberId) {
+        // Update member info
+        await api.put(`/members/${memberId}`, { fname, lname, phone });
+
+        // Update linked user if exists
+        if (existingUserId) {
+          const userPayload: Record<string, unknown> = {
+            name: `${fname} ${lname}`,
+            role_id: roleId ? Number(roleId) : undefined,
+            store_id: effectiveStoreId,
+            branch_id: effectiveBranchId,
+            clear_store: !effectiveStoreId,
+            clear_branch: !effectiveBranchId,
+          };
+          if (email && email !== originalEmail) userPayload.email = email;
+          if (password) userPayload.password = password;
+          await api.put(`/users/${existingUserId}`, userPayload);
+        }
+
+        // Upload image if changed
+        if (avatarFile) {
+          const fd = new FormData();
+          fd.append("image", avatarFile);
+          await api.upload(`/members/${memberId}/image`, fd);
+        }
+
+        router.push(`/members/read?id=${memberId}`);
+      } else {
+        // Create
+        const res = await api.post<{ id: number }>("/members", {
+          fname,
+          lname,
+          phone,
+          credits: credits ? parseFloat(credits) : 0,
+          store_id: effectiveStoreId,
+          branch_id: effectiveBranchId,
+          email: email || undefined,
+          password: password || undefined,
+          role_id: roleId ? Number(roleId) : undefined,
+        });
+        const newId = (res.data as unknown as { id: number })?.id;
+        if (avatarFile && newId) {
+          const fd = new FormData();
+          fd.append("image", avatarFile);
+          await api.upload(`/members/${newId}/image`, fd);
+        }
+        router.push("/members");
       }
-      router.push("/members");
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "สร้างสมาชิกไม่สำเร็จ");
+      setError(
+        err instanceof Error ? err.message : isEdit ? "บันทึกไม่สำเร็จ" : "สร้างสมาชิกไม่สำเร็จ"
+      );
     } finally {
       setLoading(false);
     }
   };
 
-  const hasAccountFields = email || password || confirmPassword;
+  const displayAvatar = avatarPreview || (existingImage ? `${API_BASE}${existingImage}` : "");
 
   return (
     <div className="flex flex-col h-full">
@@ -236,214 +334,226 @@ export const Action = () => {
           <ArrowLeft size={20} />
         </Button>
         <div className="font-bold text-2xl bg-gradient-to-l from-black/90 to-yellow-600 bg-clip-text text-transparent">
-          เพิ่มสมาชิก
+          {isEdit ? "แก้ไขสมาชิก" : "เพิ่มสมาชิก"}
         </div>
       </div>
 
-      <div className="w-full max-w-xl border-1 border-black/10 bg-black/5 backdrop-blur-xl rounded-3xl p-6 overflow-y-auto">
-        <form onSubmit={handleSubmit} className="flex flex-col gap-y-5">
+      {initLoading ? (
+        <div className="flex items-center justify-center flex-1">
+          <div className="w-8 h-8 rounded-full border-2 border-[#c09c42] border-t-transparent animate-spin" />
+        </div>
+      ) : (
+        <div className="w-full max-w-xl border-1 border-black/10 bg-black/5 backdrop-blur-xl rounded-3xl p-6 overflow-y-auto">
+          <form onSubmit={handleSubmit} className="flex flex-col gap-y-5">
 
-          {/* รูปโปรไฟล์ */}
-          <div className="flex justify-center">
-            <button
-              type="button"
-              onClick={() => fileRef.current?.click()}
-              className="relative w-24 h-24 rounded-full overflow-hidden border-2 border-dashed border-[#c09c42]/50 bg-black/5 hover:border-[#c09c42] transition-colors group"
-            >
-              {avatarPreview ? (
-                <Image src={avatarPreview} alt="preview" fill className="object-cover" />
-              ) : (
-                <div className="flex flex-col items-center justify-center h-full gap-1 text-black/30 group-hover:text-[#c09c42] transition-colors">
-                  <Camera size={22} />
-                  <span className="text-[10px]">อัปโหลด</span>
+            {/* รูปโปรไฟล์ */}
+            <div className="flex justify-center">
+              <button
+                type="button"
+                onClick={() => fileRef.current?.click()}
+                className="relative w-24 h-24 rounded-full overflow-hidden border-2 border-dashed border-[#c09c42]/50 bg-black/5 hover:border-[#c09c42] transition-colors group"
+              >
+                {displayAvatar ? (
+                  <Image src={displayAvatar} alt="preview" fill className="object-cover" />
+                ) : (
+                  <div className="flex flex-col items-center justify-center h-full gap-1 text-black/30 group-hover:text-[#c09c42] transition-colors">
+                    <Camera size={22} />
+                    <span className="text-[10px]">อัปโหลด</span>
+                  </div>
+                )}
+                <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100">
+                  <Camera size={18} className="text-white drop-shadow" />
                 </div>
-              )}
-              <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors rounded-full" />
-            </button>
-            <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handleAvatarChange} />
-          </div>
+              </button>
+              <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handleAvatarChange} />
+            </div>
 
-          {/* ข้อมูลส่วนตัว */}
-          <div className="flex flex-col gap-y-3">
-            <span className="font-bold text-md bg-gradient-to-r from-black/90 to-yellow-400 bg-clip-text text-transparent">
-              ข้อมูลส่วนตัว
-            </span>
-            <div className="grid grid-cols-2 gap-3">
+            {/* ข้อมูลส่วนตัว */}
+            <div className="flex flex-col gap-y-3">
+              <span className="font-bold text-md bg-gradient-to-r from-black/90 to-yellow-400 bg-clip-text text-transparent">
+                ข้อมูลส่วนตัว
+              </span>
+              <div className="grid grid-cols-2 gap-3">
+                <Input
+                  label="ชื่อจริง"
+                  placeholder="ชื่อจริง"
+                  value={fname}
+                  onValueChange={setFname}
+                  classNames={{ inputWrapper: inputStyle }}
+                  isRequired
+                />
+                <Input
+                  label="นามสกุล"
+                  placeholder="นามสกุล"
+                  value={lname}
+                  onValueChange={setLname}
+                  classNames={{ inputWrapper: inputStyle }}
+                  isRequired
+                />
+              </div>
               <Input
-                label="ชื่อจริง"
-                placeholder="ชื่อจริง"
-                value={fname}
-                onValueChange={setFname}
+                label="เบอร์โทรศัพท์"
+                placeholder="08x-xxx-xxxx"
+                value={phone}
+                onValueChange={setPhone}
                 classNames={{ inputWrapper: inputStyle }}
-                isRequired
-              />
-              <Input
-                label="นามสกุล"
-                placeholder="นามสกุล"
-                value={lname}
-                onValueChange={setLname}
-                classNames={{ inputWrapper: inputStyle }}
-                isRequired
               />
             </div>
-            <Input
-              label="เบอร์โทรศัพท์"
-              placeholder="08x-xxx-xxxx"
-              value={phone}
-              onValueChange={setPhone}
-              classNames={{ inputWrapper: inputStyle }}
-            />
-          </div>
 
-          {/* เครดิตเริ่มต้น */}
-          <div className="flex flex-col gap-y-3">
-            <span className="font-bold text-md bg-gradient-to-r from-black/90 to-yellow-400 bg-clip-text text-transparent">
-              เครดิตเริ่มต้น
-            </span>
-            <Input
-              label="จำนวนเครดิต (บาท)"
-              placeholder="0"
-              type="number"
-              min="0"
-              value={credits}
-              onValueChange={setCredits}
-              classNames={{ inputWrapper: inputStyle }}
-            />
-          </div>
-
-          {/* บัญชีผู้ใช้งาน */}
-          <div className="flex flex-col gap-y-3">
-            <span className="font-bold text-md bg-gradient-to-r from-black/90 to-yellow-400 bg-clip-text text-transparent">
-              บัญชีผู้ใช้งาน{" "}
-              <span className="font-normal text-xs text-black/40">
-                (ไม่บังคับ — กรอกเพื่อสร้าง login พร้อมกัน)
-              </span>
-            </span>
-
-            <Input
-              label="Email"
-              type="email"
-              placeholder="email@example.com"
-              value={email}
-              onValueChange={setEmail}
-              classNames={{ inputWrapper: inputStyle }}
-              isRequired={!!hasAccountFields}
-              isInvalid={!!emailError}
-              errorMessage={emailError}
-              color={emailError ? "danger" : "default"}
-            />
-
-            {/* เลือกสิทธิ์ */}
-            <Select
-              label="สิทธิ์"
-              placeholder="เลือกสิทธิ์"
-              selectedKeys={roleId ? [roleId] : []}
-              onChange={(e) => setRoleId(e.target.value)}
-              classNames={{ trigger: inputStyle }}
-            >
-              {roles.map((r) => (
-                <SelectItem key={String(r.id)}>{r.display_name}</SelectItem>
-              ))}
-            </Select>
-
-            {/* ร้านค้า — แสดงเมื่อ role = owner/branch/employee และเป็น master หรือ owner */}
-            {roleNeedsStore && (isMaster || isOwner) && stores.length > 0 && (
-              <Select
-                label="ร้านค้า"
-                placeholder="เลือกร้านค้า"
-                selectedKeys={storeId ? [storeId] : []}
-                onChange={(e) => setStoreId(e.target.value)}
-                classNames={{ trigger: inputStyle }}
-              >
-                {stores.map((s) => (
-                  <SelectItem key={String(s.id)}>{s.name}</SelectItem>
-                ))}
-              </Select>
-            )}
-
-            {/* คำเตือน: ร้านนี้ยังไม่มีเจ้าของร้าน */}
-            {noOwnerWarning && roleNeedsBranch && (
-              <div className="flex items-start gap-2 bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-sm text-red-700">
-                <AlertTriangle size={15} className="mt-0.5 shrink-0" />
-                <span>
-                  ร้านนี้ยังไม่มีเจ้าของร้าน แนะนำให้เพิ่มเจ้าของร้านก่อน
-                  แต่ยังสามารถสร้างสมาชิกได้
+            {/* เครดิตเริ่มต้น (create only) */}
+            {!isEdit && (
+              <div className="flex flex-col gap-y-3">
+                <span className="font-bold text-md bg-gradient-to-r from-black/90 to-yellow-400 bg-clip-text text-transparent">
+                  เครดิตเริ่มต้น
                 </span>
+                <Input
+                  label="จำนวนเครดิต (บาท)"
+                  placeholder="0"
+                  type="number"
+                  min="0"
+                  value={credits}
+                  onValueChange={setCredits}
+                  classNames={{ inputWrapper: inputStyle }}
+                />
               </div>
             )}
 
-            {/* สาขา — แสดงเมื่อ role = branch/employee */}
-            {roleNeedsBranch && (
+            {/* บัญชีผู้ใช้งาน */}
+            <div className="flex flex-col gap-y-3">
+              <span className="font-bold text-md bg-gradient-to-r from-black/90 to-yellow-400 bg-clip-text text-transparent">
+                บัญชีผู้ใช้งาน
+                {!isEdit && (
+                  <span className="font-normal text-xs text-black/40 ml-1">
+                    (ไม่บังคับ — กรอกเพื่อสร้าง login พร้อมกัน)
+                  </span>
+                )}
+              </span>
+
+              <Input
+                label="Email"
+                type="email"
+                placeholder="email@example.com"
+                value={email}
+                onValueChange={setEmail}
+                classNames={{ inputWrapper: inputStyle }}
+                isInvalid={!!emailError}
+                errorMessage={emailError}
+                color={emailError ? "danger" : "default"}
+              />
+
+              {/* สิทธิ์ */}
               <Select
-                label={`สาขา${roleNeedsBranch ? " *" : ""}`}
-                placeholder="เลือกสาขา"
-                selectedKeys={branchId ? [branchId] : []}
-                onChange={(e) => setBranchId(e.target.value)}
+                label="สิทธิ์"
+                placeholder="เลือกสิทธิ์"
+                selectedKeys={roleId ? [roleId] : []}
+                onChange={(e) => setRoleId(e.target.value)}
                 classNames={{ trigger: inputStyle }}
-                isDisabled={branches.length === 0}
-                color={roleNeedsBranch && !branchId ? "danger" : "default"}
               >
-                {branches.map((b) => (
-                  <SelectItem key={String(b.id)}>{b.name}</SelectItem>
+                {roles.map((r) => (
+                  <SelectItem key={String(r.id)}>{r.display_name}</SelectItem>
                 ))}
               </Select>
+
+              {/* ร้านค้า */}
+              {roleNeedsStore && (isMaster || isOwner) && stores.length > 0 && (
+                <Select
+                  label="ร้านค้า"
+                  placeholder="เลือกร้านค้า"
+                  selectedKeys={storeId ? [storeId] : []}
+                  onChange={(e) => setStoreId(e.target.value)}
+                  classNames={{ trigger: inputStyle }}
+                >
+                  {stores.map((s) => (
+                    <SelectItem key={String(s.id)}>{s.name}</SelectItem>
+                  ))}
+                </Select>
+              )}
+
+              {/* คำเตือน: ไม่มีเจ้าของร้าน */}
+              {noOwnerWarning && roleNeedsBranch && (
+                <div className="flex items-start gap-2 bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-sm text-red-700">
+                  <AlertTriangle size={15} className="mt-0.5 shrink-0" />
+                  <span>
+                    ร้านนี้ยังไม่มีเจ้าของร้าน แนะนำให้เพิ่มเจ้าของร้านก่อน
+                    แต่ยังสามารถสร้างสมาชิกได้
+                  </span>
+                </div>
+              )}
+
+              {/* สาขา */}
+              {roleNeedsBranch && (
+                <Select
+                  label="สาขา *"
+                  placeholder="เลือกสาขา"
+                  selectedKeys={branchId ? [branchId] : []}
+                  onChange={(e) => setBranchId(e.target.value)}
+                  classNames={{ trigger: inputStyle }}
+                  isDisabled={branches.length === 0}
+                  color={roleNeedsBranch && !branchId ? "danger" : "default"}
+                >
+                  {branches.map((b) => (
+                    <SelectItem key={String(b.id)}>{b.name}</SelectItem>
+                  ))}
+                </Select>
+              )}
+
+              {/* รหัสผ่าน */}
+              <Input
+                label={isEdit ? "รหัสผ่านใหม่ (ไม่บังคับ)" : "รหัสผ่าน"}
+                type={showPassword ? "text" : "password"}
+                placeholder={isEdit ? "เว้นว่างไว้หากไม่ต้องการเปลี่ยน" : "อย่างน้อย 6 ตัวอักษร"}
+                value={password}
+                onValueChange={setPassword}
+                classNames={{ inputWrapper: inputStyle }}
+                endContent={
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="text-[#c09c42]"
+                  >
+                    {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                  </button>
+                }
+              />
+              {password && (
+                <Input
+                  label="ยืนยันรหัสผ่าน"
+                  type={showConfirm ? "text" : "password"}
+                  placeholder="กรอกรหัสผ่านอีกครั้ง"
+                  value={confirmPassword}
+                  onValueChange={setConfirmPassword}
+                  classNames={{ inputWrapper: inputStyle }}
+                  endContent={
+                    <button
+                      type="button"
+                      onClick={() => setShowConfirm(!showConfirm)}
+                      className="text-[#c09c42]"
+                    >
+                      {showConfirm ? <EyeOff size={16} /> : <Eye size={16} />}
+                    </button>
+                  }
+                />
+              )}
+            </div>
+
+            {error && (
+              <div className="text-red-500 text-sm bg-red-50 border border-red-200 rounded-xl px-4 py-2">
+                {error}
+              </div>
             )}
 
-            <Input
-              label="รหัสผ่าน"
-              type={showPassword ? "text" : "password"}
-              placeholder="อย่างน้อย 6 ตัวอักษร"
-              value={password}
-              onValueChange={setPassword}
-              classNames={{ inputWrapper: inputStyle }}
-              isRequired={!!hasAccountFields}
-              endContent={
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="text-[#c09c42]"
-                >
-                  {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-                </button>
-              }
-            />
-            <Input
-              label="ยืนยันรหัสผ่าน"
-              type={showConfirm ? "text" : "password"}
-              placeholder="กรอกรหัสผ่านอีกครั้ง"
-              value={confirmPassword}
-              onValueChange={setConfirmPassword}
-              classNames={{ inputWrapper: inputStyle }}
-              isRequired={!!hasAccountFields}
-              endContent={
-                <button
-                  type="button"
-                  onClick={() => setShowConfirm(!showConfirm)}
-                  className="text-[#c09c42]"
-                >
-                  {showConfirm ? <EyeOff size={16} /> : <Eye size={16} />}
-                </button>
-              }
-            />
-          </div>
-
-          {error && (
-            <div className="text-red-500 text-sm bg-red-50 border border-red-200 rounded-xl px-4 py-2">
-              {error}
-            </div>
-          )}
-
-          <Button
-            type="submit"
-            isLoading={loading}
-            className="bg-gradient-to-r from-[#c09c42] to-yellow-600 text-white font-bold rounded-2xl shadow-lg"
-            size="lg"
-            startContent={!loading && <Save size={18} />}
-          >
-            สร้างสมาชิก
-          </Button>
-        </form>
-      </div>
+            <Button
+              type="submit"
+              isLoading={loading}
+              className="bg-gradient-to-r from-[#c09c42] to-yellow-600 text-white font-bold rounded-2xl shadow-lg"
+              size="lg"
+              startContent={!loading && <Save size={18} />}
+            >
+              {isEdit ? "บันทึกการเปลี่ยนแปลง" : "สร้างสมาชิก"}
+            </Button>
+          </form>
+        </div>
+      )}
     </div>
   );
 };

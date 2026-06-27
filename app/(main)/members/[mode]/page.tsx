@@ -9,15 +9,24 @@ type Props = {
   }>;
 };
 
+const Loading = () => (
+  <div className="flex items-center justify-center h-full">
+    <Spinner size="lg" color="warning" />
+  </div>
+);
+
 export default async function Member({ params }: Props) {
   const { mode } = await params;
   if (mode === "read") {
     return (
-      <Suspense fallback={<div className="flex items-center justify-center h-full"><Spinner size="lg" color="warning" /></div>}>
+      <Suspense fallback={<Loading />}>
         <MemberDetail />
       </Suspense>
     );
-  } else {
-    return <Action />;
   }
+  return (
+    <Suspense fallback={<Loading />}>
+      <Action />
+    </Suspense>
+  );
 }

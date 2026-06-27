@@ -26,6 +26,7 @@ interface MemberData {
   status: number;
   store?: { id: number; name: string } | null;
   branch?: { id: number; name: string } | null;
+  user?: { role?: { id: number; name: string; display_name: string } | null } | null;
 }
 
 const statusColorMap: Record<string, "success" | "danger" | "warning"> = {
@@ -39,7 +40,8 @@ const LIMIT = 20;
 
 export default function Members() {
   const router = useRouter();
-  const { hasPermission, isMaster } = useAuth();
+  const { hasPermission, isMaster, loading: authLoading } = useAuth();
+  const canRead = hasPermission("members.read");
 
   const [members, setMembers] = useState<MemberData[]>([]);
   const [loading, setLoading] = useState(true);
@@ -58,6 +60,13 @@ export default function Members() {
   }, [page, search, statusFilter]);
 
   useEffect(() => {
+    if (!authLoading && !canRead) {
+      router.replace("/");
+    }
+  }, [authLoading, canRead, router]);
+
+  useEffect(() => {
+    if (!canRead) return;
     setLoading(true);
     api.get<MemberData[]>(`/members?${buildQuery()}`)
       .then((res) => {
@@ -66,7 +75,7 @@ export default function Members() {
       })
       .catch(() => setMembers([]))
       .finally(() => setLoading(false));
-  }, [buildQuery]);
+  }, [buildQuery, canRead]);
 
   const handleFilterChange = (setter: (v: string) => void) => (v: string) => {
     setter(v);
@@ -75,6 +84,8 @@ export default function Members() {
 
   const inputStyle = "bg-gradient-to-br from-black/10 to-transparent border-1 border-black/10 rounded-xl";
   const totalPages = Math.ceil(total / LIMIT);
+
+  if (!authLoading && !canRead) return null;
 
   return (
     <div className="flex flex-col h-full gap-y-3">
@@ -148,9 +159,10 @@ export default function Members() {
           >
             <TableHeader>
               <TableColumn>สมาชิก</TableColumn>
+              <TableColumn>สิทธิ์</TableColumn>
               <TableColumn>เบอร์โทร</TableColumn>
               <TableColumn>เครดิต</TableColumn>
-              {isMaster && <TableColumn>ร้าน / สาขา</TableColumn>}
+              {isMaster ? <TableColumn>ร้าน / สาขา</TableColumn> : null}
               <TableColumn>สถานะ</TableColumn>
             </TableHeader>
             <TableBody emptyContent="ไม่พบข้อมูล">
@@ -172,6 +184,15 @@ export default function Members() {
                     />
                   </TableCell>
                   <TableCell>
+                    {m.user?.role ? (
+                      <Chip size="sm" variant="flat" color="default">
+                        {m.user.role.display_name || m.user.role.name}
+                      </Chip>
+                    ) : (
+                      <span className="text-xs text-black/30">-</span>
+                    )}
+                  </TableCell>
+                  <TableCell>
                     <span className="text-sm text-black/70">{m.phone || "-"}</span>
                   </TableCell>
                   <TableCell>
@@ -179,14 +200,14 @@ export default function Members() {
                       {m.credits.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </span>
                   </TableCell>
-                  {isMaster && (
+                  {isMaster ? (
                     <TableCell>
                       <div className="flex flex-col">
                         <span className="text-xs text-black/70">{m.store?.name || "-"}</span>
                         <span className="text-[10px] text-black/40">{m.branch?.name || ""}</span>
                       </div>
                     </TableCell>
-                  )}
+                  ) : null}
                   <TableCell>
                     <Chip
                       color={statusColorMap[String(m.status)] || "default"}

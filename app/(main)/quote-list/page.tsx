@@ -6,6 +6,7 @@ import { Download, CheckCircle, XCircle, Pencil, ChevronDown } from "lucide-reac
 import moment from "moment";
 import { CmpInput } from "@/components/cmpInput";
 import { api } from "@/lib/api";
+import { useRouter } from "next/navigation";
 import { useStore } from "@/contexts/store-context";
 import { useAuth } from "@/contexts/auth-context";
 import { Spinner } from "@heroui/spinner";
@@ -70,8 +71,10 @@ const REJECT_REASONS = [
 ];
 
 export default function QuoteList() {
+  const router = useRouter();
   const { selectedStore, selectedBranch } = useStore();
-  const { hasPermission } = useAuth();
+  const { hasPermission, loading: authLoading } = useAuth();
+  const canRead = hasPermission("quotations.read");
   const canUpdate = hasPermission("quotations.update");
 
   const [quotations, setQuotations] = useState<QuotationData[]>([]);
@@ -124,13 +127,20 @@ export default function QuoteList() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedStore, selectedBranch, activeTab, search]);
 
-  useEffect(() => { fetchQuotations(); }, [fetchQuotations]);
+  useEffect(() => {
+    if (!authLoading && !canRead) {
+      router.replace("/");
+    }
+  }, [authLoading, canRead, router]);
+
+  useEffect(() => { if (canRead) fetchQuotations(); }, [fetchQuotations, canRead]);
 
   useEffect(() => {
+    if (!canRead) return;
     api.get<MemberOption[]>("/members?limit=200")
       .then((r) => setMembers((r.data as unknown as MemberOption[]) || []))
       .catch(() => {});
-  }, []);
+  }, [canRead]);
 
   // ── Open detail ──
   const openDetail = async (q: QuotationData) => {
@@ -250,6 +260,8 @@ export default function QuoteList() {
   };
 
   const editTotal = editItems.reduce((s, i) => s + i.total, 0);
+
+  if (!authLoading && !canRead) return null;
 
   return (
     <div className="flex flex-col h-full gap-y-3">

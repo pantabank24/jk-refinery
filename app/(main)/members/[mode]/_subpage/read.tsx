@@ -12,7 +12,7 @@ import {
   Chip, Modal, ModalContent, ModalHeader, ModalBody, ModalFooter,
   useDisclosure, Tabs, Tab,
 } from "@heroui/react";
-import { ArrowLeft, Coins, Plus } from "lucide-react";
+import { ArrowLeft, Coins, Pencil, Plus } from "lucide-react";
 import { BoxCard } from "@/components/boxcard";
 import { MemberCard } from "../_components/memberCard";
 
@@ -184,6 +184,10 @@ export const MemberDetail = () => {
 
   if (!member) return null;
 
+  // Members without a user account, or with employee role, are subject to credit management.
+  // Owner / branch / master bypass credits on quotations so shouldn't have credits managed.
+  const memberUsesCredits = !member.user || member.user?.role?.name === "employee";
+
   const inputStyle =
     "bg-gradient-to-br from-black/10 to-transparent border-1 border-black/10 rounded-2xl";
 
@@ -198,9 +202,21 @@ export const MemberDetail = () => {
         >
           <ArrowLeft size={20} />
         </Button>
-        <div className="font-bold text-2xl bg-gradient-to-l from-black/90 to-yellow-600 bg-clip-text text-transparent">
+        <div className="font-bold text-2xl bg-gradient-to-l from-black/90 to-yellow-600 bg-clip-text text-transparent flex-1">
           ข้อมูลสมาชิก
         </div>
+        {hasPermission("members.update") && memberId && (
+          <Button
+            className="border-1 border-black/10 bg-black/5 backdrop-blur-xl rounded-2xl font-bold shadow-md"
+            startContent={<Pencil size={14} />}
+            size="sm"
+            onPress={() => router.push(`/members/edit?id=${memberId}`)}
+          >
+            <span className="bg-gradient-to-r from-black/90 to-yellow-600 bg-clip-text text-transparent">
+              แก้ไข
+            </span>
+          </Button>
+        )}
       </div>
 
       <div className="flex flex-col md:flex-row w-full flex-1 min-h-0 gap-x-5 gap-y-4">
@@ -219,18 +235,20 @@ export const MemberDetail = () => {
             onImageUpload={handleImageUpload}
           />
 
-          <BoxCard
-            flex
-            color="bg-gradient-to-tl from-transparent to-yellow-200"
-            textColor="bg-gradient-to-l from-black/90 to-yellow-600 bg-clip-text text-transparent"
-            title="เครดิตคงเหลือ"
-            unit="บาท"
-            icon={<Coins size={36} className="text-yellow-600" />}
-            value={member.credits.toLocaleString(undefined, {
-              minimumFractionDigits: 2,
-              maximumFractionDigits: 2,
-            })}
-          />
+          {memberUsesCredits && (
+            <BoxCard
+              flex
+              color="bg-gradient-to-tl from-transparent to-yellow-200"
+              textColor="bg-gradient-to-l from-black/90 to-yellow-600 bg-clip-text text-transparent"
+              title="เครดิตคงเหลือ"
+              unit="บาท"
+              icon={<Coins size={36} className="text-yellow-600" />}
+              value={member.credits.toLocaleString(undefined, {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2,
+              })}
+            />
+          )}
         </div>
 
         {/* Right: Tabs */}
@@ -242,7 +260,7 @@ export const MemberDetail = () => {
             classNames={{ tabList: "bg-black/5 border-1 border-black/10" }}
           >
             <Tab key="quote" title="ใบเสนอราคา" />
-            <Tab key="credit" title="ประวัติเครดิต" />
+            {memberUsesCredits && <Tab key="credit" title="ประวัติเครดิต" />}
           </Tabs>
 
           {tab === "quote" ? (
@@ -290,7 +308,7 @@ export const MemberDetail = () => {
           ) : (
             <div className="flex flex-col flex-1 min-h-0 border-1 border-black/10 bg-white/20 backdrop-blur-xl rounded-xl p-2 shadow-xl overflow-hidden">
               <div className="flex justify-end mb-2">
-                {hasPermission("members.update") && (
+                {hasPermission("credits.update") && memberUsesCredits && (
                   <Button
                     className="border-1 border-black/10 bg-black/5 backdrop-blur-xl rounded-xl font-bold shadow-md"
                     startContent={<Plus size={15} />}

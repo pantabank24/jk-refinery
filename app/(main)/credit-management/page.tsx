@@ -32,6 +32,7 @@ interface MemberOption {
   fname: string;
   lname: string;
   code: string;
+  user?: { role?: { name: string } | null } | null;
 }
 
 const SOURCE_TABS = [
@@ -264,11 +265,13 @@ export default function CreditManagementPage() {
               classNames={{ trigger: "bg-gradient-to-br from-black/10 to-transparent border-1 border-black/10 rounded-2xl" }}
               endContent={<ChevronDown size={14} />}
             >
-              {members.map((m) => (
-                <SelectItem key={String(m.id)}>
-                  {m.fname} {m.lname} ({m.code})
-                </SelectItem>
-              ))}
+              {members
+                .filter((m) => !m.user || m.user?.role?.name === "employee")
+                .map((m) => (
+                  <SelectItem key={String(m.id)}>
+                    {m.fname} {m.lname} ({m.code})
+                  </SelectItem>
+                ))}
             </Select>
 
             {/* Action */}

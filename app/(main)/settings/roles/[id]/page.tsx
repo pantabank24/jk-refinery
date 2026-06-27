@@ -110,6 +110,11 @@ export default function RoleDetailPage() {
     members: "สมาชิก",
     users: "ผู้ใช้",
     roles: "สิทธิ์",
+    credits: "เครดิต",
+    logs: "Logs",
+    config: "ตั้งค่าระบบ",
+    gold_types: "ประเภททอง",
+    gold_prices: "ราคาทอง",
   };
 
   if (loading) {
