@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { api } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
@@ -10,9 +10,10 @@ import { Spinner } from "@heroui/spinner";
 import {
   Table, TableHeader, TableColumn, TableBody, TableRow, TableCell,
   Chip, Modal, ModalContent, ModalHeader, ModalBody, ModalFooter,
-  useDisclosure, Tabs, Tab,
+  useDisclosure, Tabs, Tab, Select, SelectItem,
+  Popover, PopoverTrigger, PopoverContent,
 } from "@heroui/react";
-import { ArrowLeft, Coins, Pencil, Plus } from "lucide-react";
+import { ArrowLeft, Coins, Pencil, Plus, Filter } from "lucide-react";
 import { BoxCard } from "@/components/boxcard";
 import { MemberCard } from "../_components/memberCard";
 
@@ -31,6 +32,7 @@ interface Member {
   phone: string;
   credits: number;
   status: number;
+  uses_credits?: boolean;
   user?: MemberUser | null;
 }
 
@@ -43,12 +45,46 @@ interface CreditTx {
   created_at: string;
 }
 
+interface QuotationItem {
+  type_name: string;
+  weight: number;
+}
+
 interface Quotation {
   id: number;
   code: string;
   status: number;
   total_amount: number;
   created_at: string;
+  signer_name?: string; // ชื่อผู้ขายที่ระบุตอนเซ็น = "ชื่อลูกค้า"
+  items?: QuotationItem[];
+}
+
+// Categorise an item's gold-type name into a metal bucket for the gram totals.
+type Metal = "gold" | "silver" | "platinum" | "palladium";
+function metalOf(typeName: string): Metal | null {
+  const n = typeName || "";
+  if (/แพลเลเดียม|palladium/i.test(n)) return "palladium";
+  if (/แพลตินัม|แพลทินัม|platinum/i.test(n)) return "platinum";
+  if (/เงิน|silver/i.test(n)) return "silver";
+  if (/ทอง|gold/i.test(n)) return "gold";
+  return null;
+}
+
+const fmtMoney = (n: number) => n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const fmtGram = (n: number) => n.toLocaleString(undefined, { maximumFractionDigits: 2 });
+
+// Compact overview stat card used in the member quotation summary.
+function StatCard({ title, value, unit, highlight }: { title: string; value: string; unit?: string; highlight?: boolean }) {
+  return (
+    <div className={`flex flex-col border-1 border-black/10 rounded-xl p-2 ${highlight ? "bg-gradient-to-br from-yellow-200/60 to-transparent" : "bg-black/5"}`}>
+      <span className="text-[10px] font-bold text-black/50">{title}</span>
+      <div className="flex items-baseline gap-x-1">
+        <span className="font-bold text-sm bg-gradient-to-l from-black/90 to-yellow-600 bg-clip-text text-transparent break-all">{value}</span>
+        {unit && <span className="text-[10px] text-black/40">{unit}</span>}
+      </div>
+    </div>
+  );
 }
 
 const quotationStatusMap: Record<string, string> = {
@@ -74,6 +110,12 @@ export const MemberDetail = () => {
   const [quotations, setQuotations] = useState<Quotation[]>([]);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState("quote");
+
+  // Quotation list filters (applied client-side over the fetched list)
+  const [qSearch, setQSearch] = useState("");
+  const [qStatus, setQStatus] = useState("all");
+  const [qFrom, setQFrom] = useState("");
+  const [qTo, setQTo] = useState("");
 
   // Credit modal
   const { isOpen, onOpen, onOpenChange } = useDisclosure();
@@ -114,7 +156,7 @@ export const MemberDetail = () => {
   const fetchQuotations = async (userAccountId?: number) => {
     if (!userAccountId) { setQuotations([]); return; }
     try {
-      const res = await api.get<Quotation[]>(`/quotations?created_by=${userAccountId}&limit=50`);
+      const res = await api.get<Quotation[]>(`/quotations?created_by=${userAccountId}&limit=100`);
       setQuotations((res.data as unknown as Quotation[]) || []);
     } catch {
       setQuotations([]);
@@ -174,6 +216,38 @@ export const MemberDetail = () => {
     }
   };
 
+  // Apply filters client-side + compute overview totals.
+  const { filteredQuotations, overview } = useMemo(() => {
+    const from = qFrom ? new Date(`${qFrom}T00:00:00`) : null;
+    const to = qTo ? new Date(`${qTo}T23:59:59`) : null;
+    const term = qSearch.trim().toLowerCase();
+
+    const list = quotations.filter((q) => {
+      if (qStatus !== "all" && String(q.status) !== qStatus) return false;
+      const created = new Date(q.created_at);
+      if (from && created < from) return false;
+      if (to && created > to) return false;
+      if (term) {
+        const name = (q.signer_name || "").toLowerCase();
+        if (!q.code.toLowerCase().includes(term) && !name.includes(term)) return false;
+      }
+      return true;
+    });
+
+    const grams: Record<Metal, number> = { gold: 0, silver: 0, platinum: 0, palladium: 0 };
+    let total = 0;
+    let creditUsed = 0;
+    for (const q of list) {
+      total += q.total_amount;
+      if (q.status === 1) creditUsed += q.total_amount; // approved → credit deducted
+      for (const it of q.items ?? []) {
+        const metal = metalOf(it.type_name);
+        if (metal) grams[metal] += it.weight || 0;
+      }
+    }
+    return { filteredQuotations: list, overview: { count: list.length, total, creditUsed, grams } };
+  }, [quotations, qSearch, qStatus, qFrom, qTo]);
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-full">
@@ -184,12 +258,15 @@ export const MemberDetail = () => {
 
   if (!member) return null;
 
-  // Members without a user account, or with employee role, are subject to credit management.
-  // Owner / branch / master bypass credits on quotations so shouldn't have credits managed.
-  const memberUsesCredits = !member.user || member.user?.role?.name === "employee";
+  // Whether this member is part of the credit system. Computed by the API from
+  // the credits.use permission (walk-in customers, or roles holding credits.use).
+  const memberUsesCredits = member.uses_credits ?? !member.user;
 
   const inputStyle =
     "bg-gradient-to-br from-black/10 to-transparent border-1 border-black/10 rounded-2xl";
+
+  // Number of active filters (status/date) — shown on the filter button.
+  const filterCount = (qStatus !== "all" ? 1 : 0) + (qFrom ? 1 : 0) + (qTo ? 1 : 0);
 
   return (
     <div className="flex flex-col w-full h-full">
@@ -219,9 +296,9 @@ export const MemberDetail = () => {
         )}
       </div>
 
-      <div className="flex flex-col md:flex-row w-full flex-1 min-h-0 gap-x-5 gap-y-4">
+      <div className="flex flex-col md:flex-row w-full flex-1 min-h-0 gap-x-5 gap-y-4 overflow-y-auto md:overflow-hidden scrollbar-hide">
         {/* Left: Member Info */}
-        <div className="flex flex-col gap-y-3 md:w-72 shrink-0">
+        <div className="flex flex-col gap-y-3 md:w-72 shrink-0 md:overflow-y-auto md:min-h-0 scrollbar-hide">
           <MemberCard
             id={member.id}
             code={member.code}
@@ -249,10 +326,24 @@ export const MemberDetail = () => {
               })}
             />
           )}
+
+          {/* Overview — quotation summary (reflects the current filters) */}
+          <div className="flex flex-col gap-2">
+            <span className="text-xs font-bold text-black/50 pl-1">สรุปใบเสนอราคา</span>
+            <StatCard title="ยอดรวม" value={fmtMoney(overview.total)} unit="บาท" highlight />
+            <div className="grid grid-cols-2 gap-2">
+              <StatCard title="จำนวนใบ" value={overview.count.toLocaleString()} unit="ใบ" />
+              <StatCard title="ใช้เครดิตไป" value={fmtMoney(overview.creditUsed)} unit="บาท" />
+              <StatCard title="ทอง" value={fmtGram(overview.grams.gold)} unit="กรัม" />
+              <StatCard title="เงิน" value={fmtGram(overview.grams.silver)} unit="กรัม" />
+              <StatCard title="แพลทินัม" value={fmtGram(overview.grams.platinum)} unit="กรัม" />
+              <StatCard title="แพลเลเดียม" value={fmtGram(overview.grams.palladium)} unit="กรัม" />
+            </div>
+          </div>
         </div>
 
         {/* Right: Tabs */}
-        <div className="flex flex-col w-full gap-y-2 flex-1 min-h-0">
+        <div className="flex flex-col w-full gap-y-2 md:flex-1 md:min-h-0">
           <Tabs
             aria-label="member tabs"
             selectedKey={tab}
@@ -264,49 +355,123 @@ export const MemberDetail = () => {
           </Tabs>
 
           {tab === "quote" ? (
-            <div className="flex flex-col flex-1 min-h-0 border-1 border-black/10 bg-white/20 backdrop-blur-xl rounded-xl p-2 shadow-xl overflow-hidden">
-              <Table
-                isHeaderSticky
-                radius="sm"
-                removeWrapper
-                classNames={{
-                  base: "flex flex-col h-full overflow-y-auto scrollbar-hide",
-                }}
-              >
-                <TableHeader>
-                  <TableColumn>เลขที่</TableColumn>
-                  <TableColumn>ยอดรวม</TableColumn>
-                  <TableColumn>สถานะ</TableColumn>
-                  <TableColumn>วันที่</TableColumn>
-                </TableHeader>
-                <TableBody emptyContent="ยังไม่มีใบเสนอราคา">
-                  {quotations.map((q) => (
-                    <TableRow key={q.id} className="hover:bg-white/50 cursor-pointer">
-                      <TableCell>{q.code}</TableCell>
-                      <TableCell>
-                        <span className="font-bold text-[#c09c42]">
-                          {q.total_amount.toLocaleString()}
-                        </span>
-                      </TableCell>
-                      <TableCell>
-                        <Chip
-                          color={quotationStatusColor[String(q.status)] || "default"}
+            <div className="flex flex-col md:flex-1 md:min-h-0 gap-2">
+                {/* Search + filter dropdown */}
+                <div className="flex flex-row gap-2">
+                  <Input
+                    size="sm"
+                    placeholder="ค้นหาเลขที่ / ชื่อลูกค้า"
+                    value={qSearch}
+                    onValueChange={setQSearch}
+                    classNames={{ inputWrapper: inputStyle, base: "flex-1" }}
+                  />
+                  <Popover placement="bottom-end">
+                    <PopoverTrigger>
+                      <Button
+                        size="sm"
+                        variant="flat"
+                        startContent={<Filter size={15} />}
+                        className={`shrink-0 border-1 border-black/10 ${filterCount > 0 ? "bg-yellow-200/60" : "bg-black/5"}`}
+                      >
+                        ตัวกรอง{filterCount > 0 ? ` (${filterCount})` : ""}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-64 p-3">
+                      <div className="flex flex-col gap-2 w-full">
+                        <Select
                           size="sm"
-                          variant="dot"
+                          label="สถานะ"
+                          selectedKeys={[qStatus]}
+                          onChange={(e) => setQStatus(e.target.value || "all")}
+                          classNames={{ trigger: inputStyle }}
                         >
-                          {quotationStatusMap[String(q.status)] || String(q.status)}
-                        </Chip>
-                      </TableCell>
-                      <TableCell>
-                        {new Date(q.created_at).toLocaleDateString("th-TH")}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+                          <SelectItem key="all">ทุกสถานะ</SelectItem>
+                          <SelectItem key="0">รอการอนุมัติ</SelectItem>
+                          <SelectItem key="1">อนุมัติแล้ว</SelectItem>
+                          <SelectItem key="2">ยกเลิก</SelectItem>
+                        </Select>
+                        <Input
+                          size="sm" type="date" label="ตั้งแต่วันที่" labelPlacement="outside"
+                          value={qFrom} onValueChange={setQFrom}
+                          classNames={{ inputWrapper: inputStyle }}
+                        />
+                        <Input
+                          size="sm" type="date" label="ถึงวันที่" labelPlacement="outside"
+                          value={qTo} onValueChange={setQTo}
+                          classNames={{ inputWrapper: inputStyle }}
+                        />
+                        {filterCount > 0 && (
+                          <Button
+                            size="sm" variant="light" color="danger"
+                            onPress={() => { setQStatus("all"); setQFrom(""); setQTo(""); }}
+                          >
+                            ล้างตัวกรอง
+                          </Button>
+                        )}
+                      </div>
+                    </PopoverContent>
+                  </Popover>
+                </div>
+
+              {/* Table */}
+              <div className="flex flex-col md:flex-1 md:min-h-0 border-1 border-black/10 bg-white/20 backdrop-blur-xl rounded-xl p-2 shadow-xl md:overflow-hidden">
+                <Table
+                  isHeaderSticky
+                  radius="sm"
+                  removeWrapper
+                  classNames={{ base: "flex flex-col md:h-full overflow-x-auto md:overflow-y-auto scrollbar-hide", table: "min-w-[560px]" }}
+                >
+                  <TableHeader>
+                    <TableColumn>เลขที่</TableColumn>
+                    <TableColumn>ชื่อลูกค้า</TableColumn>
+                    <TableColumn>ยอดรวม</TableColumn>
+                    <TableColumn>สถานะ</TableColumn>
+                    <TableColumn>วันที่/เวลา</TableColumn>
+                  </TableHeader>
+                  <TableBody emptyContent="ไม่พบใบเสนอราคา">
+                    {filteredQuotations.map((q) => (
+                      <TableRow key={q.id} className="hover:bg-white/50 cursor-pointer">
+                        <TableCell>{q.code}</TableCell>
+                        <TableCell>
+                          {q.signer_name ? (
+                            <span
+                              className="block max-w-[160px] truncate"
+                              title={q.signer_name}
+                            >
+                              {q.signer_name}
+                            </span>
+                          ) : (
+                            "-"
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          <span className="font-bold text-[#c09c42]">
+                            {q.total_amount.toLocaleString()}
+                          </span>
+                        </TableCell>
+                        <TableCell>
+                          <Chip
+                            color={quotationStatusColor[String(q.status)] || "default"}
+                            size="sm"
+                            variant="dot"
+                          >
+                            {quotationStatusMap[String(q.status)] || String(q.status)}
+                          </Chip>
+                        </TableCell>
+                        <TableCell>
+                          {new Date(q.created_at).toLocaleString("th-TH", {
+                            day: "2-digit", month: "2-digit", year: "numeric",
+                            hour: "2-digit", minute: "2-digit",
+                          })}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
             </div>
           ) : (
-            <div className="flex flex-col flex-1 min-h-0 border-1 border-black/10 bg-white/20 backdrop-blur-xl rounded-xl p-2 shadow-xl overflow-hidden">
+            <div className="flex flex-col md:flex-1 md:min-h-0 border-1 border-black/10 bg-white/20 backdrop-blur-xl rounded-xl p-2 shadow-xl md:overflow-hidden">
               <div className="flex justify-end mb-2">
                 {hasPermission("credits.update") && memberUsesCredits && (
                   <Button

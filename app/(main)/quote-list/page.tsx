@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { Avatar } from "@heroui/avatar";
-import { Download, CheckCircle, XCircle, Pencil, ChevronDown } from "lucide-react";
+import { Download, CheckCircle, XCircle, Pencil, ChevronDown, AlertCircle } from "lucide-react";
 import moment from "moment";
 import { CmpInput } from "@/components/cmpInput";
 import { api } from "@/lib/api";
@@ -16,11 +16,14 @@ import { Select, SelectItem } from "@heroui/select";
 import { Input } from "@heroui/input";
 import { Textarea } from "@heroui/input";
 import { Tabs, Tab } from "@heroui/tabs";
+import { Switch } from "@heroui/switch";
 import { PreviewQuote } from "../quotation/_component/previewQuote";
+import { GoldType, computeItem } from "@/lib/gold-calc";
 import { QuotationProps } from "../quotation/_component/quotation";
 
 interface QuotationItem {
   id: number;
+  type_id: string;
   type_name: string;
   price: number;
   percent: number;
@@ -38,11 +41,13 @@ interface QuotationData {
   reject_reason: string;
   total_amount: number;
   member?: { id: number; fname: string; lname: string; phone: string; code: string } | null;
-  store?: { id: number; name: string } | null;
+  store?: { id: number; name: string; address?: string; phone?: string; tax_id?: string; tax_name?: string; website?: string; logo?: string } | null;
   branch?: { id: number; name: string } | null;
   creator?: { id: number; name: string } | null;
   items?: QuotationItem[];
-  images?: { id: number; image_url: string }[];
+  images?: { id: number; image_url: string; type?: string }[];
+  signer_name?: string;
+  signer_phone?: string;
   created_at: string;
 }
 
@@ -51,6 +56,12 @@ interface MemberOption {
   fname: string;
   lname: string;
   code: string;
+}
+
+const API_BASE = (process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080/api/v1").replace(/\/api\/v1$/, "");
+// Absolute URLs of a quotation's images filtered by type ("" = legacy/untyped).
+function imgUrls(images: { image_url: string; type?: string }[] | undefined, type: string): string[] {
+  return (images ?? []).filter((img) => (img.type || "") === type).map((img) => `${API_BASE}${img.image_url}`);
 }
 
 const STATUS_LABEL: Record<number, string> = { 0: "รอตรวจสอบ", 1: "สำเร็จ", 2: "ยกเลิก" };
@@ -73,7 +84,7 @@ const REJECT_REASONS = [
 export default function QuoteList() {
   const router = useRouter();
   const { selectedStore, selectedBranch } = useStore();
-  const { hasPermission, loading: authLoading } = useAuth();
+  const { hasPermission, isMaster, loading: authLoading } = useAuth();
   const canRead = hasPermission("quotations.read");
   const canUpdate = hasPermission("quotations.update");
 
@@ -82,6 +93,9 @@ export default function QuoteList() {
   const [activeTab, setActiveTab] = useState<string>("all");
   const [search, setSearch] = useState("");
   const [members, setMembers] = useState<MemberOption[]>([]);
+  // Gold types are needed to recompute per-gram/total on edit exactly like the
+  // create screen (formula steps, plus_type, weight-in-formula).
+  const [goldTypes, setGoldTypes] = useState<GoldType[]>([]);
 
   // ── Detail modal ──
   const detailDisc = useDisclosure();
@@ -96,6 +110,7 @@ export default function QuoteList() {
   const [rejectReason, setRejectReason] = useState("");
   const [rejectCustom, setRejectCustom] = useState("");
   const [rejecting, setRejecting] = useState(false);
+  const [refundOnCancel, setRefundOnCancel] = useState(true);
 
   // ── Edit modal ──
   const editDisc = useDisclosure();
@@ -103,6 +118,10 @@ export default function QuoteList() {
   const [editMemberId, setEditMemberId] = useState("");
   const [editItems, setEditItems] = useState<QuotationItem[]>([]);
   const [editSaving, setEditSaving] = useState(false);
+
+  // Asks whether to also reconcile the creator's credits when a master edit
+  // changes the total.
+  const creditAdjustDisc = useDisclosure();
 
   const statusFilter: Record<string, number | undefined> = {
     all: undefined, pending: 0, approved: 1, rejected: 2,
@@ -140,6 +159,9 @@ export default function QuoteList() {
     api.get<MemberOption[]>("/members?limit=200")
       .then((r) => setMembers((r.data as unknown as MemberOption[]) || []))
       .catch(() => {});
+    api.get<GoldType[]>("/gold-types")
+      .then((r) => setGoldTypes((r.data as unknown as GoldType[]) || []))
+      .catch(() => {});
   }, [canRead]);
 
   // ── Open detail ──
@@ -173,6 +195,7 @@ export default function QuoteList() {
   const openReject = () => {
     setRejectReason(REJECT_REASONS[0]);
     setRejectCustom("");
+    setRefundOnCancel(true);
     rejectDisc.onOpen();
   };
 
@@ -180,9 +203,11 @@ export default function QuoteList() {
     if (!detailQ) return;
     const reason = rejectReason === "อื่นๆ" ? rejectCustom : rejectReason;
     if (!reason.trim()) return;
+    // Only an approved quotation was charged, so a refund only makes sense there.
+    const refund = detailQ.status === 1 && refundOnCancel;
     setRejecting(true);
     try {
-      await api.put(`/quotations/${detailQ.id}`, { status: 2, reject_reason: reason });
+      await api.put(`/quotations/${detailQ.id}`, { status: 2, reject_reason: reason, refund_credits: refund });
       rejectDisc.onClose();
       detailDisc.onClose();
       fetchQuotations();
@@ -205,17 +230,37 @@ export default function QuoteList() {
       prev.map((item, i) => {
         if (i !== idx) return item;
         const updated = { ...item, [field]: parseFloat(val) || 0 };
-        // Recalculate per_gram and total when price/percent/plus/weight change
+        // Recalculate per_gram/total via the shared gold-calc — same formula as
+        // the create screen (respects formula steps, plus_type, weight-in-formula).
         if (["price", "percent", "plus", "weight"].includes(field)) {
-          updated.per_gram = updated.price * (updated.percent / 100) + updated.plus;
-          updated.total = updated.per_gram * updated.weight;
+          const gt = goldTypes.find((t) => String(t.id) === String(updated.type_id)) ?? null;
+          const { perGram, total } = computeItem({
+            goldType: gt,
+            price: updated.price,
+            percent: updated.percent,
+            plus: updated.plus,
+            weight: updated.weight,
+          });
+          updated.per_gram = perGram;
+          updated.total = total;
         }
         return updated;
       })
     );
   };
 
-  const handleEditSave = async () => {
+  // A master edit that changes the total prompts whether to reconcile the
+  // creator's credits; otherwise save straight away.
+  const handleEditSave = () => {
+    const changedTotal = !!detailQ && editTotal !== detailQ.total_amount;
+    if (isMaster && changedTotal) {
+      creditAdjustDisc.onOpen();
+      return;
+    }
+    void doEditSave(false);
+  };
+
+  const doEditSave = async (adjustCredits: boolean) => {
     if (!detailQ) return;
     setEditSaving(true);
     try {
@@ -223,7 +268,7 @@ export default function QuoteList() {
         member_id: editMemberId ? Number(editMemberId) : null,
         note: editNote,
         items: editItems.map((i) => ({
-          type_id: String(i.id),
+          type_id: i.type_id,
           type_name: i.type_name,
           price: i.price,
           percent: i.percent,
@@ -232,7 +277,9 @@ export default function QuoteList() {
           per_gram: i.per_gram,
           total: i.total,
         })),
+        adjust_credits: adjustCredits,
       });
+      creditAdjustDisc.onClose();
       editDisc.onClose();
       // Refresh detail
       const res = await api.get<QuotationData>(`/quotations/${detailQ.id}`);
@@ -396,10 +443,15 @@ export default function QuoteList() {
                   total: item.total,
                 }))}
                 onPrint={() => window.print()}
-                previewImages={(detailQ.images ?? []).map((img) => {
-                  const base = (process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080/api/v1").replace(/\/api\/v1$/, "");
-                  return `${base}${img.image_url}`;
-                })}
+                store={detailQ.store ? { ...detailQ.store, branch: detailQ.branch?.name } : undefined}
+                customerName={detailQ.signer_name || (detailQ.member ? `${detailQ.member.fname} ${detailQ.member.lname}` : "")}
+                customerPhone={detailQ.signer_phone || detailQ.member?.phone}
+                date={detailQ.created_at}
+                beforeImages={imgUrls(detailQ.images, "before_melt")}
+                afterImages={imgUrls(detailQ.images, "after_melt")}
+                previewImages={imgUrls(detailQ.images, "")}
+                signatureImage={imgUrls(detailQ.images, "signature")[0] ?? null}
+                signerName={detailQ.signer_name}
               />
             )}
           </ModalBody>
@@ -422,6 +474,18 @@ export default function QuoteList() {
                   อนุมัติ
                 </Button>
               </>
+            )}
+            {/* Master may edit an already approved/cancelled quotation */}
+            {isMaster && detailQ?.status !== 0 && (
+              <Button variant="flat" startContent={<Pencil size={14} />} onPress={openEdit}>
+                แก้ไข
+              </Button>
+            )}
+            {/* Master may cancel an approved quotation (with optional credit refund) */}
+            {isMaster && detailQ?.status === 1 && (
+              <Button color="danger" variant="flat" startContent={<XCircle size={14} />} onPress={openReject}>
+                ยกเลิก
+              </Button>
             )}
           </ModalFooter>
         </ModalContent>
@@ -500,6 +564,18 @@ export default function QuoteList() {
                 minRows={3}
                 classNames={{ inputWrapper: "bg-gradient-to-br from-black/10 to-transparent border-1 border-black/10 rounded-2xl" }}
               />
+            )}
+            {/* Refund prompt — only an approved quotation was charged */}
+            {detailQ?.status === 1 && (
+              <div className="flex items-center justify-between bg-amber-50 border border-amber-100 rounded-2xl px-4 py-3">
+                <div className="flex flex-col">
+                  <span className="text-sm font-bold text-black/70">คืนเครดิตให้ผู้สร้าง</span>
+                  <span className="text-xs text-black/40">
+                    คืน {detailQ.total_amount.toLocaleString(undefined, { minimumFractionDigits: 2 })} บาท ที่หักไปตอนสร้าง
+                  </span>
+                </div>
+                <Switch isSelected={refundOnCancel} onValueChange={setRefundOnCancel} color="success" />
+              </div>
             )}
           </ModalBody>
           <ModalFooter>
@@ -598,6 +674,59 @@ export default function QuoteList() {
               บันทึก
             </Button>
           </ModalFooter>
+        </ModalContent>
+      </Modal>
+
+      {/* Credit reconciliation prompt (master edit changed the total) */}
+      <Modal isOpen={creditAdjustDisc.isOpen} onOpenChange={creditAdjustDisc.onOpenChange} size="sm" backdrop="blur">
+        <ModalContent>
+          {() => {
+            const oldTotal = detailQ?.total_amount ?? 0;
+            const delta = editTotal - oldTotal;
+            return (
+              <>
+                <ModalHeader className="flex items-center gap-2 text-amber-500">
+                  <AlertCircle size={20} />
+                  <span>ยอดรวมเปลี่ยนแปลง</span>
+                </ModalHeader>
+                <ModalBody>
+                  <div className="flex flex-col gap-y-3">
+                    <p className="text-sm text-black/70">
+                      ยอดรวมใบเสนอราคาเปลี่ยนไป ต้องการ{delta > 0 ? "หักเครดิตเพิ่ม" : "คืนเครดิต"}ของผู้สร้างตามส่วนต่างด้วยหรือไม่?
+                    </p>
+                    <div className="flex flex-col gap-y-1 bg-amber-50 border border-amber-100 rounded-2xl px-4 py-3 text-sm">
+                      <div className="flex justify-between">
+                        <span className="text-black/50">ยอดเดิม</span>
+                        <span className="font-bold text-black">{oldTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })} บาท</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-black/50">ยอดใหม่</span>
+                        <span className="font-bold text-black">{editTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })} บาท</span>
+                      </div>
+                      <div className="flex justify-between border-t border-amber-200 mt-1 pt-1">
+                        <span className="text-black/50">{delta > 0 ? "หักเครดิตเพิ่ม" : "คืนเครดิต"}</span>
+                        <span className={`font-bold ${delta > 0 ? "text-red-600" : "text-green-600"}`}>
+                          {Math.abs(delta).toLocaleString(undefined, { minimumFractionDigits: 2 })} บาท
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </ModalBody>
+                <ModalFooter className="flex-wrap gap-2">
+                  <Button variant="flat" onPress={() => doEditSave(false)} isDisabled={editSaving}>
+                    ไม่ปรับเครดิต
+                  </Button>
+                  <Button
+                    className="bg-gradient-to-r from-amber-500 to-amber-600 text-white font-bold"
+                    onPress={() => doEditSave(true)}
+                    isLoading={editSaving}
+                  >
+                    ปรับเครดิตด้วย
+                  </Button>
+                </ModalFooter>
+              </>
+            );
+          }}
         </ModalContent>
       </Modal>
     </div>

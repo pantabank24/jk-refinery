@@ -7,6 +7,8 @@ import { useAuth } from "@/contexts/auth-context";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
+import { useSalesStatus } from "@/hooks/use-sales-status";
+import { SalesStatusBanner } from "@/components/sales-status-banner";
 
 interface DashboardStats {
   my_credits: number;
@@ -21,6 +23,7 @@ export default function Home() {
   const { user, loading } = useAuth();
   const router = useRouter();
   const [stats, setStats] = useState<DashboardStats | null>(null);
+  const { status: salesStatus } = useSalesStatus();
 
   useEffect(() => {
     if (!loading && !user) {
@@ -56,6 +59,12 @@ export default function Home() {
           </span>
         </div>
       </div>
+
+      {salesStatus?.enabled && (
+        <div className="mb-3">
+          <SalesStatusBanner status={salesStatus} showWhenOpen />
+        </div>
+      )}
 
       {user.store && (
         <div className="flex items-center gap-x-2 mb-2 pl-2">

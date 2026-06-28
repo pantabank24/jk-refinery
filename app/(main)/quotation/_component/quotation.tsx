@@ -20,8 +20,10 @@ interface Props {
 }
 
 export const Quotation = ({ quotation, onRemove, onSave, saving }: Props) => {
+    const totalAmount = quotation.reduce((s, i) => s + i.total, 0);
+    const totalWeight = quotation.reduce((s, i) => s + (i.weight || 0), 0);
     return (
-        <div className="flex flex-col h-full w-[500px] border-1 border-black/10 bg-white/15 shadow-xl backdrop-blur-xl rounded-4xl p-3 gap-y-2 max-lg:hidden">
+        <div className="flex flex-col h-full w-full max-w-[500px] border-1 border-black/10 bg-white/15 shadow-xl backdrop-blur-xl rounded-4xl p-3 gap-y-2 max-lg:hidden">
             <span className=" font-bold text-xl bg-gradient-to-l from-black/90 to-yellow-600 bg-clip-text text-transparent pl-2">รายการใบเสนอราคา</span>
             <div className=" flex flex-col gap-y-2 overflow-y-auto scrollbar-hide rounded-2xl flex-1">
                 {quotation.length === 0 ? (
@@ -69,6 +71,22 @@ export const Quotation = ({ quotation, onRemove, onSave, saving }: Props) => {
                         </div>
                     ))
                 )}
+            </div>
+
+            {/* Summary above the save button: weight and total */}
+            <div className="grid grid-cols-2 gap-2">
+                <div className="flex flex-col border-1 border-black/10 bg-black/5 rounded-xl p-1.5">
+                    <span className="font-bold text-[10px] text-black/50 pl-1">น้ำหนักรวม</span>
+                    <span className="font-bold text-sm bg-gradient-to-l from-black/90 to-yellow-600 bg-clip-text text-transparent pl-1">
+                        {totalWeight.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                    </span>
+                </div>
+                <div className="flex flex-col border-1 border-black/10 bg-black/5 rounded-xl p-1.5">
+                    <span className="font-bold text-[10px] text-black/50 pl-1">ยอดรวม</span>
+                    <span className="font-bold text-sm bg-gradient-to-l from-black/90 to-yellow-600 bg-clip-text text-transparent pl-1">
+                        {totalAmount.toLocaleString()}
+                    </span>
+                </div>
             </div>
 
             <Button

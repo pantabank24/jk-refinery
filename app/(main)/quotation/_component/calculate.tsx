@@ -7,32 +7,14 @@ import { useState, useEffect } from "react";
 import { CmpSelect, Option } from "@/components/cmpSelect";
 import { QuotationProps } from "./quotation";
 import { api } from "@/lib/api";
-
-type OperandType = "number" | "price" | "percent" | "plus" | "weight" | "service";
-
-interface FormulaStep {
-  operator: "+" | "-" | "*" | "/";
-  operand_type: OperandType;
-  value: number;
-}
-
-interface GoldType {
-  id: number;
-  name: string;
-  price_source: string;
-  default_percent: number;
-  default_plus: number;
-  formula_steps: string; // JSON-encoded FormulaStep[]
-  service_rate: number;  // ค่าตัวคูณกำหนดเองต่อประเภท
-  plus_type: number;     // 0=บาท, 1=%
-}
-
-interface FormulaVars {
-  price: number;
-  percent: number;
-  plus: number;
-  weight: number;
-}
+import { Tabs, Tab } from "@heroui/tabs";
+import {
+  OperandType,
+  GoldType,
+  parseSteps,
+  getUsedVars,
+  computeItem,
+} from "@/lib/gold-calc";
 
 const OPERAND_LABELS: Record<OperandType, string> = {
   number:  "กำหนดเอง",
@@ -43,44 +25,21 @@ const OPERAND_LABELS: Record<OperandType, string> = {
   service: "ค่าบริการ",
 };
 
-function parseSteps(raw: string): FormulaStep[] {
-  try {
-    const steps = JSON.parse(raw || "[]");
-    return Array.isArray(steps) ? steps : [];
-  } catch {
-    return [];
-  }
-}
+// Metal tabs on the create screen. Product types are grouped by their `metal`.
+const METALS = [
+  { key: "gold", label: "ทอง" },
+  { key: "silver", label: "เงิน" },
+  { key: "platinum", label: "แพลตินัม" },
+  { key: "palladium", label: "แพลเลเดียม" },
+] as const;
 
-function getUsedVars(gt: GoldType): Set<OperandType> {
-  return new Set(parseSteps(gt.formula_steps).map((s) => s.operand_type));
-}
-
-function applyFormula(vars: FormulaVars, gt: GoldType): number {
-  const steps = parseSteps(gt.formula_steps);
-  if (steps.length > 0) {
-    return steps.reduce((result, s) => {
-      let operand: number;
-      switch (s.operand_type) {
-        case "price":   operand = vars.price;        break;
-        case "percent": operand = vars.percent;      break;
-        case "plus":    operand = vars.plus;         break;
-        case "weight":  operand = vars.weight;       break;
-        case "service": operand = gt.service_rate;   break;
-        default:        operand = s.value;
-      }
-      switch (s.operator) {
-        case "+": return result + operand;
-        case "-": return result - operand;
-        case "*": return result * operand;
-        case "/": return operand !== 0 ? result / operand : result;
-        default: return result;
-      }
-    }, vars.price);
-  }
-  // legacy fallback
-  return vars.price * (gt.default_percent / 100) + gt.default_plus;
-}
+// Default product type for a metal tab. Gold defaults to "ทองหลอม"; other metals
+// just take their (single) type.
+const pickType = (types: GoldType[], metalKey: string): GoldType | undefined => {
+  const list = types.filter((t) => (t.metal || "gold") === metalKey);
+  if (metalKey === "gold") return list.find((t) => t.name.includes("หลอม")) ?? list[0];
+  return list[0];
+};
 
 interface GoldPrice {
   bar_buy: number;
@@ -92,6 +51,15 @@ interface GoldPrice {
   gold_time: string;
 }
 
+interface SilverPrice {
+  buy: number;
+  sell: number;
+  spot: number;
+  change_today: number;
+  price_date: string;
+  price_time: string;
+}
+
 interface Props {
   onAdd: (item: QuotationProps) => void;
   onOpenList?: () => void;
@@ -101,6 +69,8 @@ interface Props {
 export const Calculate = ({ onAdd, onOpenList, quotationCount = 0 }: Props) => {
   const [goldTypes, setGoldTypes] = useState<GoldType[]>([]);
   const [goldPrice, setGoldPrice] = useState<GoldPrice | null>(null);
+  const [silverPrice, setSilverPrice] = useState<SilverPrice | null>(null);
+  const [metal, setMetal] = useState<string>("gold");
 
   const [price, setPrice] = useState(0);
   const [typeId, setTypeId] = useState("");
@@ -113,44 +83,74 @@ export const Calculate = ({ onAdd, onOpenList, quotationCount = 0 }: Props) => {
       .then((res) => {
         const types = (res.data as unknown as GoldType[]) || [];
         setGoldTypes(types);
-        if (types.length > 0) setTypeId(String(types[0].id));
+        const defGold = pickType(types, "gold") ?? types[0];
+        if (defGold) setTypeId(String(defGold.id));
       })
       .catch(() => {});
 
     api.get<GoldPrice>("/gold-prices/latest")
       .then((res) => setGoldPrice((res.data as unknown as GoldPrice) || null))
       .catch(() => {});
+
+    api.get<SilverPrice>("/metal-prices/latest?symbol=XAG")
+      .then((res) => setSilverPrice((res.data as unknown as SilverPrice) || null))
+      .catch(() => {});
   }, []);
 
-  // When type or gold price changes: auto-fill price from price_source,
-  // and auto-fill percent/plus from the gold type's defaults (legacy mode)
-  useEffect(() => {
-    if (!typeId || goldTypes.length === 0) return;
-    const gt = goldTypes.find((t) => String(t.id) === typeId);
-    if (!gt) return;
+  // Product types belonging to the active metal tab.
+  const metalTypes = goldTypes.filter((t) => (t.metal || "gold") === metal);
 
-    if (goldPrice) {
-      const sourceMap: Record<string, number> = {
+  // Resolve the auto-fill price for a product type from its metal's price feed.
+  // Returns null for manual sources (platinum/palladium) — the user types it.
+  const resolvePrice = (gt: GoldType): number | null => {
+    const m = gt.metal || "gold";
+    if (m === "gold" && goldPrice) {
+      const map: Record<string, number> = {
         bar_buy: goldPrice.bar_buy,
         bar_sell: goldPrice.bar_sell,
         ornament_buy: goldPrice.ornament_buy,
         ornament_sell: goldPrice.ornament_sell,
       };
-      setPrice(sourceMap[gt.price_source] ?? 0);
+      return map[gt.price_source] ?? 0;
     }
+    if (m === "silver" && silverPrice) {
+      const map: Record<string, number> = {
+        buy: silverPrice.buy,
+        sell: silverPrice.sell,
+        spot: silverPrice.spot,
+      };
+      return map[gt.price_source] ?? 0;
+    }
+    return null; // manual (platinum/palladium)
+  };
 
-    // Pre-fill default percent/plus whenever gold type changes
+  // When type or feed prices change: auto-fill price from price_source (or clear
+  // for manual metals) and pre-fill percent/plus from the type's defaults.
+  useEffect(() => {
+    if (!typeId || goldTypes.length === 0) return;
+    const gt = goldTypes.find((t) => String(t.id) === typeId);
+    if (!gt) return;
+    const p = resolvePrice(gt);
+    setPrice(p ?? 0);
     setPercent(gt.default_percent);
     setPlus(gt.default_plus);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [typeId, goldTypes, goldPrice]);
+  }, [typeId, goldTypes, goldPrice, silverPrice]);
 
-  const typeOptions: Option[] = goldTypes.map((t) => ({
+  // Switch metal tab → jump to that metal's default product type (gold → ทองหลอม).
+  const handleMetalChange = (key: string) => {
+    setMetal(key);
+    const def = pickType(goldTypes, key);
+    setTypeId(def ? String(def.id) : "");
+  };
+
+  const typeOptions: Option[] = metalTypes.map((t) => ({
     value: String(t.id),
     label: t.name,
   }));
 
   const selectedGoldType = goldTypes.find((t) => String(t.id) === typeId) ?? null;
+  const isManualPrice = (selectedGoldType?.metal || "gold") !== "gold" && (selectedGoldType?.metal || "gold") !== "silver";
   const getTypeName = (id: string) => goldTypes.find((t) => String(t.id) === id)?.name || "ทอง";
 
   const hasFormula = selectedGoldType ? parseSteps(selectedGoldType.formula_steps).length > 0 : false;
@@ -158,20 +158,8 @@ export const Calculate = ({ onAdd, onOpenList, quotationCount = 0 }: Props) => {
     ? getUsedVars(selectedGoldType)
     : new Set(["percent", "plus"] as OperandType[]);
 
-  // If plus_type === 1 (%), convert percent-plus to บาท before passing to formula
-  const plusBaht = selectedGoldType?.plus_type === 1 ? price * (plus / 100) : plus;
-
-  const vars: FormulaVars = { price, percent, plus: plusBaht, weight };
-
-  // Calculate perGram:
-  // - Has formula  → apply formula steps
-  // - No formula   → use UI inputs directly (price, percent%, plus)
-  const perGram = selectedGoldType && hasFormula
-    ? applyFormula(vars, selectedGoldType)
-    : price * (percent / 100) + plusBaht;
-
-  // If formula includes 'weight' the output is already a total, not per-gram
-  const total = usedVars.has("weight") ? perGram : perGram * weight;
+  // Shared with the edit screen — single source of truth for per-gram/total.
+  const { perGram, total } = computeItem({ goldType: selectedGoldType, price, percent, plus, weight });
 
   const handleAdd = () => {
     if (weight <= 0) return;
@@ -191,59 +179,91 @@ export const Calculate = ({ onAdd, onOpenList, quotationCount = 0 }: Props) => {
   const changeColor = (v: number) =>
     v > 0 ? "text-green-800" : v < 0 ? "text-red-600" : "text-black/40";
 
+  // Metal-aware price header values.
+  const metalLabel = METALS.find((m) => m.key === metal)?.label ?? "";
+  const hasFeed = metal === "gold" ? !!goldPrice : metal === "silver" ? !!silverPrice : false;
+  const headerBuy = metal === "gold" ? goldPrice?.bar_buy : metal === "silver" ? silverPrice?.buy : undefined;
+  const headerSell = metal === "gold" ? goldPrice?.bar_sell : metal === "silver" ? silverPrice?.sell : undefined;
+  const headerChange = (metal === "gold" ? goldPrice?.change_today : metal === "silver" ? silverPrice?.change_today : 0) ?? 0;
+  const headerDate = metal === "gold"
+    ? `${goldPrice?.gold_date ?? ""} ${goldPrice?.gold_time ?? ""}`.trim()
+    : metal === "silver"
+    ? `${silverPrice?.price_date ?? ""} ${silverPrice?.price_time ?? ""}`.trim()
+    : "";
+
   return (
     <div className=" flex flex-col h-full w-full xl:w-[700px] overflow-hidden">
       <div className="flex flex-col h-full border-1 border-black/10 bg-black/5  backdrop-blur-xl rounded-4xl p-3 gap-y-2 overflow-y-scroll scrollbar-hide">
-        {goldPrice ? (
+        {/* Metal tabs */}
+        <Tabs
+          aria-label="โลหะ"
+          selectedKey={metal}
+          onSelectionChange={(k) => handleMetalChange(String(k))}
+          variant="solid"
+          radius="full"
+          classNames={{ tabList: "bg-black/5 border-1 border-black/10", cursor: "bg-gradient-to-l from-transparent to-yellow-600/50" }}
+        >
+          {METALS.map((m) => (
+            <Tab key={m.key} title={<span className="font-bold text-xs">{m.label}</span>} />
+          ))}
+        </Tabs>
+
+        {isManualPrice ? (
+          <div className="flex flex-row w-full bg-gradient-to-br from-black/10 to-transparent border-1 border-black/10 p-2 rounded-3xl">
+            <span className="text-[10px] font-bold text-black/50">กรอกราคา{metalLabel}ต่อกรัมเองในช่องด้านล่าง</span>
+          </div>
+        ) : hasFeed ? (
           <div className={`flex flex-row w-full bg-gradient-to-br from-black/10 to-transparent border-1 border-black/10 p-2 rounded-3xl`}>
             <div className=" flex flex-row w-full justify-between">
               <span className=" text-[10px] font-bold text-black/50">
-                อัปเดท: {goldPrice.gold_date} {goldPrice.gold_time}
+                อัปเดท: {headerDate}
               </span>
               <div className=" flex flex-row items-center gap-x-2">
-                {goldPrice.change_today !== 0 && (
-                  <div className={`flex flex-row items-center ${changeColor(goldPrice.change_today)}`}>
-                    {goldPrice.change_today > 0 ? (
+                {headerChange !== 0 && (
+                  <div className={`flex flex-row items-center ${changeColor(headerChange)}`}>
+                    {headerChange > 0 ? (
                       <ArrowUp size={10} className="font-bold" />
-                    ) : goldPrice.change_today < 0 ? (
+                    ) : headerChange < 0 ? (
                       <ArrowDown size={10} className="font-bold" />
                     ) : (
                       <Minus size={10} />
                     )}
                     <span className="text-[10px] font-bold ml-0.5">
-                      {Math.abs(goldPrice.change_today)}
+                      {Math.abs(headerChange)}
                     </span>
                   </div>
                 )}
-                <div className={`flex flex-row items-center ${changeColor(goldPrice.change_today)}`}>
+                <div className={`flex flex-row items-center ${changeColor(headerChange)}`}>
                   <span className=" text-[10px] font-bold">วันนี้</span>
-                  <span className=" text-[10px] font-bold ml-1">{goldPrice.change_today > 0 ? "+" : ""}{goldPrice.change_today}</span>
+                  <span className=" text-[10px] font-bold ml-1">{headerChange > 0 ? "+" : ""}{headerChange}</span>
                 </div>
               </div>
             </div>
           </div>
         ) : (
           <div className="flex flex-row w-full bg-gradient-to-br from-black/10 to-transparent border-1 border-black/10 p-2 rounded-3xl">
-            <span className="text-[10px] font-bold text-black/50">ยังไม่มีข้อมูลราคาทอง</span>
+            <span className="text-[10px] font-bold text-black/50">ยังไม่มีข้อมูลราคา{metalLabel}</span>
           </div>
         )}
 
-        <div className="w-full grid grid-cols-2 gap-x-2">
-          <BoxCard
-            textColor="bg-gradient-to-l from-black/90 to-yellow-600 bg-clip-text text-transparent"
-            flex
-            title="ราคารับซื้อ (บาท)"
-            value={goldPrice ? goldPrice.bar_buy.toLocaleString() : "-"}
-          />
-          <BoxCard
-            textColor="bg-gradient-to-l from-black/90 to-yellow-600 bg-clip-text text-transparent"
-            flex
-            title="ราคาขาย (บาท)"
-            value={goldPrice ? goldPrice.bar_sell.toLocaleString() : "-"}
-          />
-        </div>
+        {!isManualPrice && (
+          <div className="w-full grid grid-cols-2 gap-x-2">
+            <BoxCard
+              textColor="bg-gradient-to-l from-black/90 to-yellow-600 bg-clip-text text-transparent"
+              flex
+              title="ราคารับซื้อ (บาท)"
+              value={headerBuy !== undefined ? headerBuy.toLocaleString() : "-"}
+            />
+            <BoxCard
+              textColor="bg-gradient-to-l from-black/90 to-yellow-600 bg-clip-text text-transparent"
+              flex
+              title="ราคาขาย (บาท)"
+              value={headerSell !== undefined ? headerSell.toLocaleString() : "-"}
+            />
+          </div>
+        )}
 
-        <span className=" font-bold text-2xl bg-gradient-to-l from-black/90 to-yellow-600 bg-clip-text text-transparent pl-2 mt-5">คำนวณราคาทอง</span>
+        <span className=" font-bold text-2xl bg-gradient-to-l from-black/90 to-yellow-600 bg-clip-text text-transparent pl-2 mt-5">คำนวณราคา{metalLabel}</span>
 
         {/* Formula badge */}
         {selectedGoldType && hasFormula && (
@@ -258,18 +278,22 @@ export const Calculate = ({ onAdd, onOpenList, quotationCount = 0 }: Props) => {
 
         <div className=" w-full grid grid-cols-2 gap-2 mb-5">
           <CmpInput
-            label="ราคาทอง"
+            label={isManualPrice ? `ราคา${metalLabel} (ต่อกรัม)` : "ราคา"}
             placeholder="0"
             value={price === 0 ? "" : price.toString()}
             onChange={(e: React.ChangeEvent<HTMLInputElement>) => setPrice(parseFloat(e.target.value) || 0)}
           />
-          <CmpSelect
-            data={typeOptions}
-            label="ประเภท"
-            placeholder="เลือก"
-            value={typeId}
-            onChange={setTypeId}
-          />
+          {/* Only show the type selector when the metal has more than one type
+              (gold). Silver/platinum/palladium have a single type — auto-selected. */}
+          {metalTypes.length > 1 && (
+            <CmpSelect
+              data={typeOptions}
+              label="ประเภท"
+              placeholder="เลือก"
+              value={typeId}
+              onChange={setTypeId}
+            />
+          )}
           {/* Show each variable input only when the formula uses it */}
           {usedVars.has("percent") && (
             <CmpInput

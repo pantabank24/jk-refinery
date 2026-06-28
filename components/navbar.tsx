@@ -20,6 +20,7 @@ import {
   DropdownItem,
 } from "@heroui/dropdown";
 import { Popover, PopoverTrigger, PopoverContent } from "@heroui/popover";
+import { StoreBranchSelector } from "@/components/store-branch-selector";
 import { useEffect, useState, useCallback } from "react";
 import { api } from "@/lib/api";
 import moment from "moment";
@@ -142,6 +143,11 @@ export const Navbar = ({ onMenuClick }: NavbarProps) => {
         </div>
 
         <div className="flex items-center gap-4">
+          {/* Store / branch selector (master & owner) */}
+          <div className="max-sm:hidden">
+            <StoreBranchSelector />
+          </div>
+
           {/* Notification Bell */}
           <Popover
             isOpen={notifOpen}

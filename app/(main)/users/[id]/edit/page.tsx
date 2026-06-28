@@ -83,7 +83,7 @@ export default function EditUserPage() {
   }, [storeId]);
 
   const selectedRole = roles.find((r) => String(r.id) === roleId);
-  const requiresBranch = selectedRole?.name === "employee" || selectedRole?.name === "branch";
+  const requiresBranch = selectedRole?.name === "employee";
 
   const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];

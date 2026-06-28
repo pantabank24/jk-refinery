@@ -32,7 +32,7 @@ interface MemberOption {
   fname: string;
   lname: string;
   code: string;
-  user?: { role?: { name: string } | null } | null;
+  uses_credits?: boolean;
 }
 
 const SOURCE_TABS = [
@@ -266,7 +266,7 @@ export default function CreditManagementPage() {
               endContent={<ChevronDown size={14} />}
             >
               {members
-                .filter((m) => !m.user || m.user?.role?.name === "employee")
+                .filter((m) => m.uses_credits)
                 .map((m) => (
                   <SelectItem key={String(m.id)}>
                     {m.fname} {m.lname} ({m.code})

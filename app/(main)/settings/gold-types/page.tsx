@@ -22,6 +22,7 @@ interface FormulaStep {
 interface GoldType {
   id: number;
   name: string;
+  metal?: string;
   description: string;
   price_source: string;
   default_percent: number;
@@ -33,12 +34,36 @@ interface GoldType {
   is_active: boolean;
 }
 
-const PRICE_SOURCE_LABELS: Record<string, string> = {
-  bar_buy: "รับซื้อทองแท่ง",
-  bar_sell: "ขายทองแท่ง",
-  ornament_buy: "รับซื้อทองรูปพรรณ",
-  ornament_sell: "ขายทองรูปพรรณ",
+const METAL_LABELS: Record<string, string> = {
+  gold: "ทอง",
+  silver: "เงิน",
+  platinum: "แพลตินัม",
+  palladium: "แพลเลเดียม",
 };
+
+// Valid price sources per metal. Platinum/palladium are entered at quotation
+// time, so their only "source" is manual.
+const PRICE_SOURCES_BY_METAL: Record<string, Record<string, string>> = {
+  gold: {
+    bar_buy: "รับซื้อทองแท่ง",
+    bar_sell: "ขายทองแท่ง",
+    ornament_buy: "รับซื้อทองรูปพรรณ",
+    ornament_sell: "ขายทองรูปพรรณ",
+  },
+  silver: {
+    buy: "รับซื้อเงิน",
+    sell: "ขายเงิน",
+    spot: "Spot",
+  },
+  platinum: { manual: "กรอกตอนออกใบ" },
+  palladium: { manual: "กรอกตอนออกใบ" },
+};
+
+// Flattened lookup for display (across all metals).
+const PRICE_SOURCE_LABELS: Record<string, string> = Object.assign(
+  {},
+  ...Object.values(PRICE_SOURCES_BY_METAL),
+);
 
 const OPERATORS: { value: Operator; symbol: string; label: string }[] = [
   { value: "+", symbol: "+", label: "บวก" },
@@ -84,9 +109,13 @@ export default function GoldTypesPage() {
   const [saving, setSaving] = useState(false);
   const { isOpen, onOpen, onClose } = useDisclosure();
   const [selected, setSelected] = useState<GoldType | null>(null);
+  const [metal, setMetal] = useState("gold");
   const [priceSource, setPriceSource] = useState("bar_buy");
   const [steps, setSteps] = useState<FormulaStep[]>([]);
   const [serviceRate, setServiceRate] = useState(0);
+
+  // Price-source options for the metal currently being edited.
+  const sourceOptions = PRICE_SOURCES_BY_METAL[metal] ?? PRICE_SOURCES_BY_METAL.gold;
 
   // preview sample values
   const SAMPLE_PRICE = 45000;
@@ -107,10 +136,18 @@ export default function GoldTypesPage() {
 
   const openEdit = (gt: GoldType) => {
     setSelected(gt);
+    setMetal(gt.metal || "gold");
     setPriceSource(gt.price_source);
     setSteps(parseSteps(gt.formula_steps));
     setServiceRate(gt.service_rate ?? 0);
     onOpen();
+  };
+
+  // Switching metal resets the price source to that metal's first valid option.
+  const handleMetalChange = (m: string) => {
+    setMetal(m);
+    const first = Object.keys(PRICE_SOURCES_BY_METAL[m] ?? {})[0] ?? "";
+    setPriceSource(first);
   };
 
   const addStep = () =>
@@ -139,7 +176,7 @@ export default function GoldTypesPage() {
     setSaving(true);
     try {
       await api.put(`/gold-types/${selected.id}`, {
-        name: selected.name, description: selected.description,
+        name: selected.name, metal, description: selected.description,
         price_source: priceSource,
         default_percent: selected.default_percent, default_plus: selected.default_plus,
         formula_steps: JSON.stringify(steps),
@@ -188,7 +225,10 @@ export default function GoldTypesPage() {
               <div key={gt.id} className="flex flex-col border-1 border-black/10 bg-black/5 backdrop-blur-xl rounded-3xl p-5 gap-y-3">
                 <div className="flex items-center justify-between">
                   <div className="flex flex-col">
-                    <span className="font-bold text-md bg-gradient-to-l from-black/90 to-yellow-600 bg-clip-text text-transparent">{gt.name}</span>
+                    <div className="flex items-center gap-x-2">
+                      <span className="font-bold text-md bg-gradient-to-l from-black/90 to-yellow-600 bg-clip-text text-transparent">{gt.name}</span>
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full border-1 border-black/10 bg-black/5 text-black/60">{METAL_LABELS[gt.metal || "gold"]}</span>
+                    </div>
                     {gt.description && <span className="text-xs text-black/50">{gt.description}</span>}
                   </div>
                   {hasPermission("gold_types.update") && (
@@ -243,6 +283,20 @@ export default function GoldTypesPage() {
 
           <ModalBody className="gap-y-6 pb-2">
 
+            {/* Metal */}
+            <div className="flex flex-col gap-y-2">
+              <span className="text-sm font-bold text-black/70">โลหะ</span>
+              <Select
+                selectedKeys={[metal]}
+                onChange={(e) => handleMetalChange(e.target.value)}
+                classNames={{ trigger: "bg-gradient-to-br from-black/10 to-transparent border-1 border-black/10 rounded-2xl" }}
+              >
+                {Object.entries(METAL_LABELS).map(([val, label]) => (
+                  <SelectItem key={val}>{label}</SelectItem>
+                ))}
+              </Select>
+            </div>
+
             {/* Price source */}
             <div className="flex flex-col gap-y-2">
               <span className="text-sm font-bold text-black/70">แหล่งราคาเริ่มต้น</span>
@@ -251,7 +305,7 @@ export default function GoldTypesPage() {
                 onChange={(e) => setPriceSource(e.target.value)}
                 classNames={{ trigger: "bg-gradient-to-br from-black/10 to-transparent border-1 border-black/10 rounded-2xl" }}
               >
-                {Object.entries(PRICE_SOURCE_LABELS).map(([val, label]) => (
+                {Object.entries(sourceOptions).map(([val, label]) => (
                   <SelectItem key={val}>{label}</SelectItem>
                 ))}
               </Select>

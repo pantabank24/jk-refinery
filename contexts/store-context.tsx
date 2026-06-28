@@ -8,6 +8,12 @@ interface StoreOption {
   id: number;
   code: string;
   name: string;
+  address?: string;
+  phone?: string;
+  tax_id?: string;
+  tax_name?: string;
+  website?: string;
+  logo?: string;
 }
 
 interface BranchOption {
@@ -67,7 +73,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           const branchList = (res.data as unknown as BranchOption[]) || [];
           setBranches(branchList);
 
-          // Auto-select branch for branch/employee users
+          // Auto-select branch for employee users
           if (!isMaster && !isOwner && user?.branch_id) {
             const userBranch = branchList.find((b) => b.id === user.branch_id);
             if (userBranch) {

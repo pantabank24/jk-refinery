@@ -4,13 +4,44 @@ import AutoResizeTextarea from "@/components/autoresizetextarea";
 import { Checkbox } from "@heroui/checkbox";
 import { Printer } from "lucide-react";
 
-interface Props {
-    items: QuotationProps[];
-    onPrint: () => void;
-    previewImages?: string[];
+// Receipt header — pulled from the store (created at store setup), not entered here.
+export interface StoreHeader {
+    name?: string;
+    branch?: string;
+    address?: string;
+    phone?: string;
+    tax_id?: string;
+    tax_name?: string;
+    website?: string;
+    logo?: string;
 }
 
-export const PreviewQuote = ({items, onPrint, previewImages}: Props) => {
+const IMG_BASE = process.env.NEXT_PUBLIC_API_URL?.replace("/api/v1", "") || "http://localhost:8080";
+
+const THAI_MONTHS = ["มกราคม", "กุมภาพันธ์", "มีนาคม", "เมษายน", "พฤษภาคม", "มิถุนายน", "กรกฎาคม", "สิงหาคม", "กันยายน", "ตุลาคม", "พฤศจิกายน", "ธันวาคม"];
+function thaiDate(d?: string | Date): string {
+    const dt = d ? new Date(d) : new Date();
+    if (isNaN(dt.getTime())) return "";
+    return `${dt.getDate()} ${THAI_MONTHS[dt.getMonth()]} ${dt.getFullYear() + 543}`;
+}
+
+interface Props {
+    items: QuotationProps[];
+    onPrint?: () => void;
+    hidePrint?: boolean;          // ซ่อนปุ่มพิมพ์ (เช่น ฝั่งลูกค้า)
+    store?: StoreHeader;          // หัวใบเสร็จ จากข้อมูลร้าน
+    title?: string;               // ชื่อเอกสาร (default: ใบรับซื้อทองคำเก่า/ใบสำคัญรับจ่าย)
+    customerName?: string;
+    customerPhone?: string;
+    date?: string | Date;         // วันที่บนเอกสาร (default: วันนี้)
+    previewImages?: string[];
+    beforeImages?: string[];      // รูปก่อนหลอม
+    afterImages?: string[];       // รูปบนตราชั่ง (หลังหลอม)
+    signatureImage?: string | null; // ลายเซ็น (data-URL หรือ URL)
+    signerName?: string;
+}
+
+export const PreviewQuote = ({items, onPrint, hidePrint, store, title, customerName, customerPhone, date, previewImages, beforeImages, afterImages, signatureImage, signerName}: Props) => {
 
     const [scale, setScale] = React.useState(1);
 
@@ -42,6 +73,20 @@ export const PreviewQuote = ({items, onPrint, previewImages}: Props) => {
         return () => window.removeEventListener("resize", handleResize);
     }, []);
 
+    // Print by cloning the document to the <body> root so it prints in normal
+    // flow (paginating onto page 2+) instead of being clipped inside the modal.
+    const rootRef = React.useRef<HTMLDivElement>(null);
+    const handlePrint = () => {
+        const el = rootRef.current;
+        if (!el) { onPrint?.(); return; }
+        const clone = el.cloneNode(true) as HTMLElement;
+        clone.classList.add("print-clone");
+        clone.style.display = "none"; // hidden on screen; print CSS forces it visible
+        document.body.appendChild(clone);
+        window.print();
+        document.body.removeChild(clone);
+    };
+
     const handleRounding = (val: number) => {
     switch (roundSelected) {
       case "ปัดลง":
@@ -71,75 +116,46 @@ export const PreviewQuote = ({items, onPrint, previewImages}: Props) => {
 
   const printStyles = `
     @media print {
-      @page {
-        size: A5 portrait;
-        margin: 0;
-      }
-      body {
+      @page { size: A5 portrait; margin: 10mm; }
+      html, body {
+        margin: 0 !important; padding: 0 !important; background: #fff !important;
         -webkit-print-color-adjust: exact !important;
         print-color-adjust: exact !important;
       }
-      
-      /* Hide everything by default */
-      body * {
-        visibility: hidden;
+      /* Only the cloned document (appended to <body>) prints; everything else is
+         removed from layout so the doc starts at the page top and paginates onto
+         additional pages instead of being clipped. */
+      body > *:not(.print-clone) { display: none !important; }
+      .print-clone { display: block !important; }
+      .print-clone .no-print, .print-clone button { display: none !important; }
+      /* Neutralise the on-screen scaling/framing inside the clone. */
+      .print-clone #scaling-wrapper {
+        transform: none !important; width: 100% !important; min-width: 0 !important;
+        margin: 0 !important; box-shadow: none !important; overflow: visible !important;
       }
-
-      /* Reset the outer wrappers */
-      .print-container, .print-container * {
-        visibility: visible !important;
-        overflow: visible !important;
+      .print-clone .bg-gray-100 { background: #fff !important; border: none !important; padding: 0 !important; }
+      .print-clone #print-section {
+        width: 100% !important; max-width: none !important; box-shadow: none !important;
+        padding: 0 !important; background: #fff !important;
       }
-
-      /* Reset the scaling wrapper */
-      #scaling-wrapper {
-        transform: none !important;
-        margin: 0 !important;
-        width: auto !important;
-        height: auto !important;
-        position: static !important;
-        overflow: visible !important;
-      }
-
-      /* Print Section styling */
-      #print-section {
-        visibility: visible !important;
-        position: absolute !important;
-        left: 0 !important;
-        top: 0 !important;
-        width: 560px !important; /* Force EXACT pixel width to match preview */
-        margin: 0 !important;
-        padding: 20px !important;
-        background-color: white !important;
-        min-height: 794px !important; /* Match A5 height */
-      }
-
-      /* Specific visibility fixes */
-      #print-section * {
-        visibility: visible !important;
-      }
-
-      /* Hide UI elements */
-      button, .no-print {
-        display: none !important;
-      }
-
-      /* Table tweaks */
-      table {
-        width: 100%;
-        font-size: 11px;
-        page-break-inside: auto;
-      }
-      tr {
-        page-break-inside: avoid;
-        page-break-after: auto;
-      }
+      table { width: 100%; font-size: 11px; page-break-inside: auto; }
+      tr { page-break-inside: avoid; page-break-after: auto; }
+      img { page-break-inside: avoid; }
     }
   `;
 
     return (
-        <div className="flex flex-col items-center w-full print-container">
+        <div ref={rootRef} className="flex flex-col items-center w-full print-container">
             <style>{printStyles}</style>
+            {!hidePrint && (
+                <button
+                    type="button"
+                    onClick={handlePrint}
+                    className="no-print self-end mb-2 flex items-center gap-x-1.5 text-xs font-bold text-[#c09c42] hover:text-yellow-700"
+                >
+                    <Printer size={14} /> พิมพ์
+                </button>
+            )}
             <div className="w-full overflow-x-hidden flex justify-center bg-gray-100 p-2 rounded-lg border border-gray-300 print:border-none print:p-0 print:bg-white">
                 <div
                     id="scaling-wrapper"
@@ -156,46 +172,43 @@ export const PreviewQuote = ({items, onPrint, previewImages}: Props) => {
                         id="print-section"
                         className="bg-white text-black p-[20px] min-h-auto text-[12px]" // Explicit sizing to match A5 Print (210mm height, 20px padding)
                     >
-                {/* Header */}
-                {/* {isSelected ? (
-                <div>
-                    <div className="text-center py-6  border-gray-400">
-                    <h1 className="text-2xl font-bold mb-2">{companyInfo.name}</h1>
-                    <p className="text-lg font-semibold mb-2">
-                        {companyInfo.website}
-                    </p>
-                    <p className="text-sm mb-2">{companyInfo.address}</p>
+                {/* Receipt header — from the store's saved info */}
+                {store && (store.name || store.address || store.tax_id) && (
+                  <div className="border-b-2 border-gray-700 pb-2 mb-3">
+                    {/* Top block — centered */}
+                    <div className="text-center py-0.5">
+                      {store.logo && (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={`${IMG_BASE}${store.logo}`} alt="logo" className="h-10 mx-auto mb-1 object-contain" />
+                      )}
+                      {store.name && <h1 className="text-base font-bold leading-tight">{store.name}</h1>}
+                      {store.website && <p className="text-[11px] font-bold">{store.website}</p>}
+                      {store.branch && <p className="text-[10px]">สาขา {store.branch}</p>}
+                      {store.address && <p className="text-[10px] leading-snug">{store.address}</p>}
                     </div>
 
-                    <div className=" flex  flex-col ml-5 border-b">
-                    <p className="text-sm mb-2">{companyInfo.shopName}</p>
-                    <p className="text-sm mb-2">
-                        {companyInfo.taxId && "เลขประจำตัวผู้เสียภาษี"}
-                    </p>
-                    <p className="text-sm font-semibold">{companyInfo.taxId}</p>
-                    <p></p>
-                    </div>
-                </div>
-                ) : null} */}
+                    {/* Taxpayer block — left aligned */}
+                    {(store.tax_name || store.tax_id) && (
+                      <div className="flex flex-col text-[10px] mt-2.5 leading-snug">
+                        {store.tax_name && <p>{store.tax_name}</p>}
+                        {store.tax_id && <p>เลขประจำตัวผู้เสียภาษี</p>}
+                        {store.tax_id && <p className="font-bold">{store.tax_id}</p>}
+                      </div>
+                    )}
+                  </div>
+                )}
 
-                {/* Title and Info */}
-                {/* <div className="p-1">
-                <h2 className="text-xl font-bold text-center mb-4">
-                    {quotationInfo.title} {namePref}
+                {/* Document title + customer/date — always shown */}
+                <h2 className="text-base font-bold text-center my-2">
+                    {title ?? "ใบรับซื้อทองคำเก่า/ใบสำคัญรับจ่าย"}
                 </h2>
-                <div className="flex justify-between items-center mb-1">
-                    <div>
-                    <p className="font-semibold">ชื่อลูกค้า: {cusName}</p>
-                    <p className="">เบอร์โทร: {cusTel}</p>
+                <div className="flex justify-between items-end text-[11px] mb-2">
+                    <div className="flex flex-col">
+                        <span className="font-bold">ชื่อลูกค้า: {customerName ?? ""}</span>
+                        <span>เบอร์โทร: {customerPhone ?? ""}</span>
                     </div>
-                    <div className="text-right">
-                    <p className="font-semibold">
-                        วันที่:{" "}
-                        {moment(date.toString()).locale("th").format("D MMMM YYYY")}
-                    </p>
-                    </div>
+                    <span className="font-bold">วันที่: {thaiDate(date)}</span>
                 </div>
-                </div> */}
 
                 {/* Table */}
                 <div className="overflow-x-auto scrollbar-hide">
@@ -293,40 +306,6 @@ export const PreviewQuote = ({items, onPrint, previewImages}: Props) => {
                         )}
                         </tr>
                     ))}
-
-                    {/* Empty rows for spacing */}
-                    {showSeq &&
-                        Array.from({ length: Math.max(0, 10 - items.length) }).map(
-                        (_, index) => (
-                            <tr key={`empty-${index}`}>
-                            {showSeq && (
-                                <td className="border border-gray-400 px-2 text-center text-[10px]">
-                                {items.length + index + 1}
-                                </td>
-                            )}
-                            {showList && (
-                                <td className="border border-gray-400 px-2 text-center text-[10px]"></td>
-                            )}
-                            <td className="border border-gray-400 px-2 text-center text-[10px]"></td>
-                            {showPlus && (
-                                <td className="border border-gray-400 px-2 text-center text-[10px]"></td>
-                            )}
-                            {showPercent && (
-                                <td className="border border-gray-400 px-2 text-center text-[10px]"></td>
-                            )}
-                            {showgram && (
-                                <td className="border border-gray-400 px-2 text-center text-[10px]"></td>
-                            )}
-                            {showQty && (
-                                <td className="border border-gray-400 px-2 text-center text-[10px]"></td>
-                            )}
-                            <td className="border border-gray-400 px-2 text-center text-[10px]"></td>
-                            {showRemark && (
-                                <td className="border border-gray-400 px-2 text-center text-[10px]"></td>
-                            )}
-                            </tr>
-                        )
-                        )}
                     </tbody>
                 </table>
                 </div>
@@ -402,10 +381,23 @@ export const PreviewQuote = ({items, onPrint, previewImages}: Props) => {
                     </div>
                     <div className=" flex flex-row justify-end mt-8">
                     <div className=" flex flex-col w-80 gap-y-12">
-                        <div className=" flex flex-row justify-end">
-                        ลงชื่อ
-                        ...........................................................................
-                        ผู้ขาย/ผู้รับเงิน
+                        {/* Seller / signature line — embeds the actual signature when present */}
+                        <div className="flex flex-row justify-end items-end gap-x-1">
+                          <span>ลงชื่อ</span>
+                          {signatureImage ? (
+                            <div className="flex flex-col items-center">
+                              {/* eslint-disable-next-line @next/next/no-img-element */}
+                              <img src={signatureImage} alt="ลายเซ็น" className="h-12 object-contain" />
+                              <span className="border-t border-gray-500 px-2 text-[10px] leading-tight">
+                                {signerName ? `( ${signerName} )` : ""}
+                              </span>
+                            </div>
+                          ) : (
+                            <span>
+                              ...........................................................................
+                            </span>
+                          )}
+                          <span>ผู้ขาย/ผู้รับเงิน</span>
                         </div>
                         <div className=" flex flex-row justify-end">
                         ลงชื่อ
@@ -414,22 +406,29 @@ export const PreviewQuote = ({items, onPrint, previewImages}: Props) => {
                         </div>
                     </div>
                     </div>
-                {/* Uploaded images */}
-                {previewImages && previewImages.length > 0 && (
-                  <div className="mt-6 pt-4 border-t border-gray-300">
-                    <p className="text-[10px] font-semibold mb-2">รูปภาพประกอบ</p>
-                    <div className="grid grid-cols-2 gap-2">
-                      {previewImages.map((src, i) => (
-                        <img
-                          key={i}
-                          src={src}
-                          alt={`รูป ${i + 1}`}
-                          className="w-full object-cover rounded border border-gray-300"
-                          style={{ maxHeight: "160px" }}
-                        />
-                      ))}
+                {/* Uploaded images, grouped by type */}
+                {[
+                  { label: "รูปก่อนหลอม", imgs: beforeImages },
+                  { label: "รูปบนตราชั่ง (หลังหลอม)", imgs: afterImages },
+                  { label: "รูปภาพประกอบ", imgs: previewImages },
+                ].map((group) =>
+                  group.imgs && group.imgs.length > 0 ? (
+                    <div key={group.label} className="mt-6 pt-4 border-t border-gray-300">
+                      <p className="text-[10px] font-semibold mb-2">{group.label}</p>
+                      <div className="grid grid-cols-2 gap-2">
+                        {group.imgs.map((src, i) => (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            key={i}
+                            src={src}
+                            alt={`${group.label} ${i + 1}`}
+                            className="w-full object-cover rounded border border-gray-300"
+                            style={{ maxHeight: "160px" }}
+                          />
+                        ))}
+                      </div>
                     </div>
-                  </div>
+                  ) : null
                 )}
                 </div>
                 </div>

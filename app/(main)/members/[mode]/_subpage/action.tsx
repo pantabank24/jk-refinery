@@ -101,10 +101,8 @@ export const Action = () => {
   const selectedRole = roles.find((r) => String(r.id) === roleId);
   const roleNeedsStore =
     selectedRole?.name === "owner" ||
-    selectedRole?.name === "branch" ||
     selectedRole?.name === "employee";
-  const roleNeedsBranch =
-    selectedRole?.name === "branch" || selectedRole?.name === "employee";
+  const roleNeedsBranch = selectedRole?.name === "employee";
 
   // Load roles + stores, then load member data in edit mode
   useEffect(() => {
@@ -162,7 +160,7 @@ export const Action = () => {
   // Fetch branches when storeId or roleId changes
   useEffect(() => {
     const selected = roles.find((r) => String(r.id) === roleId);
-    const needsBranch = selected?.name === "branch" || selected?.name === "employee";
+    const needsBranch = selected?.name === "employee";
     const effectiveStore = storeId || (user?.store_id ? String(user.store_id) : "");
 
     if (effectiveStore && needsBranch) {
@@ -206,10 +204,10 @@ export const Action = () => {
     return () => clearTimeout(timer);
   }, [email, originalEmail]);
 
-  // No-owner warning for branch/employee role
+  // No-owner warning for employee role
   useEffect(() => {
     const selected = roles.find((r) => String(r.id) === roleId);
-    const needsBranch = selected?.name === "branch" || selected?.name === "employee";
+    const needsBranch = selected?.name === "employee";
     const effectiveStoreId = storeId || (user?.store_id ? String(user.store_id) : "");
     if (!needsBranch || !effectiveStoreId) {
       setNoOwnerWarning(false);

@@ -1,13 +1,14 @@
 "use client";
 
 import { Calculate } from "./_component/calculate";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Quotation, QuotationProps } from "./_component/quotation";
 import { PreviewQuote } from "./_component/previewQuote";
+import { TermsForm } from "./_component/termsForm";
 import { api } from "@/lib/api";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/contexts/auth-context";
-import { ShieldOff, X, Save, AlertCircle } from "lucide-react";
+import { ShieldOff, X, Save, AlertCircle, Receipt } from "lucide-react";
 import {
   Modal,
   ModalContent,
@@ -16,18 +17,127 @@ import {
   ModalFooter,
 } from "@heroui/modal";
 import { Button } from "@heroui/button";
+import { Input } from "@heroui/input";
+import { Checkbox } from "@heroui/checkbox";
+import { useStore } from "@/contexts/store-context";
+import { useSalesStatus } from "@/hooks/use-sales-status";
+import { SalesStatusBanner } from "@/components/sales-status-banner";
+import { SignaturePad } from "@/components/signature-pad";
+
+// Reusable typed image-upload block (click to add, thumbnails with remove).
+function ImageUploadGroup({
+  label, files, setFiles,
+}: { label: string; files: File[]; setFiles: React.Dispatch<React.SetStateAction<File[]>> }) {
+  return (
+    <div>
+      <label className="block text-sm font-bold text-black/70 mb-2">{label}</label>
+      <label className="flex flex-col items-center justify-center w-full h-20 border-2 border-dashed border-black/20 rounded-2xl cursor-pointer hover:border-[#c09c42]/60 hover:bg-[#c09c42]/5 transition-all">
+        <span className="text-xs text-black/40">คลิกหรือลากรูปมาวาง</span>
+        <input
+          type="file"
+          multiple
+          accept="image/*"
+          className="hidden"
+          onChange={(e) => {
+            if (e.target.files) setFiles((prev) => [...prev, ...Array.from(e.target.files!)]);
+          }}
+        />
+      </label>
+      {files.length > 0 && (
+        <div className="flex flex-wrap gap-2 mt-2">
+          {files.map((f, i) => (
+            <div key={i} className="relative">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={URL.createObjectURL(f)} className="w-12 h-12 object-cover rounded-lg border border-black/10" alt="" />
+              <button
+                type="button"
+                onClick={() => setFiles((prev) => prev.filter((_, idx) => idx !== i))}
+                className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white rounded-full text-[10px] flex items-center justify-center"
+              >
+                ×
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default function QuotationPage() {
-  const { hasPermission } = useAuth();
+  const { hasPermission, credits, refreshUser, user } = useAuth();
+  const { selectedStore } = useStore();
+  // Header store: owner/employee → their own store; master → the store they
+  // selected (master users have no personal store_id).
+  const headerStore = user?.store ?? selectedStore ?? undefined;
+  const { status: salesStatus } = useSalesStatus();
+  const salesClosed = !!salesStatus?.enabled && !salesStatus.is_open;
   const [quotation, setQuotation] = useState<QuotationProps[]>([]);
   const [saving, setSaving] = useState(false);
+  const [showTerms, setShowTerms] = useState(false); // rules + signature, before preview
   const [showPreview, setShowPreview] = useState(false);
   const router = useRouter();
   const [saveError, setSaveError] = useState("");
-  const [creditError, setCreditError] = useState(false);
-  const [uploadFiles, setUploadFiles] = useState<File[]>([]);
-  const previewImages = uploadFiles.map((f) => URL.createObjectURL(f));
+  const [showCreditWarning, setShowCreditWarning] = useState(false);
+  const [showMissingWarn, setShowMissingWarn] = useState(false);
+  const [consent, setConsent] = useState(false); // PDPA consent (required to save)
+  // Images are categorised by type; signature is drawn on a pad.
+  const [beforeFiles, setBeforeFiles] = useState<File[]>([]);
+  const [afterFiles, setAfterFiles] = useState<File[]>([]);
+  const [signatureDataUrl, setSignatureDataUrl] = useState<string | null>(null);
+  const [signerName, setSignerName] = useState("");
+  const [signerPhone, setSignerPhone] = useState("");
+  const beforeImages = beforeFiles.map((f) => URL.createObjectURL(f));
+  const afterImages = afterFiles.map((f) => URL.createObjectURL(f));
   const [listOpen, setListOpen] = useState(false);
+
+  // When a master issues a customer's bill, this page is opened with ?billId=X:
+  // pre-fill the sold items and the customer's name as the signer.
+  const searchParams = useSearchParams();
+  const billId = searchParams.get("billId");
+  const [billCustomer, setBillCustomer] = useState("");
+  const [billIds, setBillIds] = useState<number[]>([]);
+  // The customer's submitted items — shown only for reference. The gold has been
+  // melted, so the master builds a fresh quote; these are NOT added to it.
+  const [referenceItems, setReferenceItems] = useState<QuotationProps[]>([]);
+
+  useEffect(() => {
+    if (!billId) return;
+    type BillItemLite = { type_id: string; type_name: string; price: number; percent: number; plus: number; weight: number; per_gram: number; total: number };
+    type BillLite = { id: number; items?: BillItemLite[]; creator?: { id: number; name: string } };
+    (async () => {
+      try {
+        const res = await api.get(`/bills/${billId}`);
+        const clicked = res.data as unknown as BillLite;
+        if (clicked?.creator?.name) {
+          setBillCustomer(clicked.creator.name);
+          setSignerName(clicked.creator.name);
+        }
+        // Combine ALL of this customer's pending (รอออกบิล) bills' submitted items
+        // as reference (their gold was melted; the master re-assesses from scratch).
+        let bills: BillLite[] = [];
+        if (clicked?.creator?.id) {
+          const listRes = await api.get(`/bills?created_by=${clicked.creator.id}&status=10&limit=100`);
+          bills = (listRes.data as unknown as BillLite[]) || [];
+        }
+        if (bills.length === 0 && clicked) bills = [clicked];
+
+        const ids: number[] = [];
+        const reference: QuotationProps[] = [];
+        for (const b of bills) {
+          ids.push(b.id);
+          for (const i of b.items ?? []) {
+            reference.push({
+              typeId: i.type_id, typeName: i.type_name, price: i.price, plus: i.plus,
+              percent: i.percent, weight: i.weight, perGram: i.per_gram, total: i.total,
+            });
+          }
+        }
+        setBillIds(ids);
+        setReferenceItems(reference); // reference only — quote stays empty
+      } catch { /* ignore */ }
+    })();
+  }, [billId]);
 
   if (!hasPermission("quotations.create")) {
     return (
@@ -46,19 +156,84 @@ export default function QuotationPage() {
     setQuotation((prev) => prev.filter((_, i) => i !== index));
   };
 
-  // Opens the preview modal
+  // Opens the rules/terms step (signature required) before the preview.
   const handleRequestSave = () => {
     if (quotation.length === 0) return;
+    if (salesClosed) {
+      setSaveError("ขณะนี้ปิดทำการ ไม่สามารถออกใบเสนอราคาได้");
+      return;
+    }
     setSaveError("");
+    setShowTerms(true);
+  };
+
+  // From the terms step → preview. Signature is optional (the seller may sign
+  // in person but it isn't required).
+  const proceedToPreview = () => {
+    setSaveError("");
+    setShowTerms(false);
     setShowPreview(true);
   };
 
-  // Actual save after preview confirmation
-  const handleConfirmSave = async () => {
+  const totalAmount = quotation.reduce((sum, item) => sum + item.total, 0);
+  const totalWeight = quotation.reduce((sum, item) => sum + (item.weight || 0), 0);
+  // Summary of the customer's submitted (reference) items. The weighted-average
+  // price = Σ(ราคา × น้ำหนัก)/Σน้ำหนัก belongs here since those items may have been
+  // sold at different times when the gold price differed.
+  const refTotal = referenceItems.reduce((s, i) => s + i.total, 0);
+  const refWeight = referenceItems.reduce((s, i) => s + (i.weight || 0), 0);
+  const refAvgPrice = refWeight > 0
+    ? referenceItems.reduce((s, i) => s + i.price * (i.weight || 0), 0) / refWeight
+    : 0;
+  // Whether the current user's quotations deduct credits (role holds credits.use).
+  const usesCredits = hasPermission("credits.use");
+  // Would this quotation push the user's credit balance below zero?
+  const willGoNegative = usesCredits && credits - totalAmount < 0;
+
+  // Image types that haven't been provided yet (used to warn before saving).
+  const missingImages = () => {
+    const m: string[] = [];
+    if (beforeFiles.length === 0) m.push("รูปก่อนหลอม");
+    if (afterFiles.length === 0) m.push("รูปบนตราชั่ง (หลังหลอม)");
+    return m;
+  };
+
+  // Clicking ยืนยันบันทึก: require PDPA consent, then confirm missing images.
+  const handleConfirmClick = () => {
+    if (!consent) {
+      setSaveError("กรุณายอมรับเงื่อนไขการเก็บข้อมูลส่วนบุคคล (PDPA) ก่อนบันทึก");
+      return;
+    }
+    if (missingImages().length > 0) {
+      setShowMissingWarn(true);
+      return;
+    }
+    handleConfirmSave();
+  };
+
+  // Confirm from preview: if it would overdraw credits, surface a warning first;
+  // otherwise save straight away.
+  const handleConfirmSave = () => {
+    if (willGoNegative) {
+      setShowPreview(false);
+      setShowCreditWarning(true);
+      return;
+    }
+    void doSave();
+  };
+
+  // Actual save (after preview, and after the overdraw warning if shown)
+  const doSave = async () => {
     setSaving(true);
     setSaveError("");
     try {
       const res = await api.post<{id: number}>("/quotations", {
+        signer_name: signerName,
+        signer_phone: signerPhone,
+        pdpa_consent: consent,
+        store_id: selectedStore?.id, // used only for master; others derive from JWT
+        bill_ids: billIds.length ? billIds : undefined, // links to the customer's bill(s)
+
         items: quotation.map((item) => ({
           type_id: item.typeId,
           type_name: item.typeName,
@@ -72,44 +247,107 @@ export default function QuotationPage() {
       });
       const quotationId = (res.data as unknown as {id: number}).id;
 
-      // Upload images if any
-      if (uploadFiles.length > 0) {
-        const formData = new FormData();
-        uploadFiles.forEach((f) => formData.append("images", f));
-        await api.upload(`/quotations/${quotationId}/images`, formData);
+      // Upload images grouped by type
+      const uploadGroup = async (files: File[], type: string) => {
+        if (files.length === 0) return;
+        const fd = new FormData();
+        files.forEach((f) => fd.append("images", f));
+        fd.append("type", type);
+        await api.upload(`/quotations/${quotationId}/images`, fd);
+      };
+      await uploadGroup(beforeFiles, "before_melt");
+      await uploadGroup(afterFiles, "after_melt");
+      // Signature: convert the data-URL to a file and upload as type=signature
+      if (signatureDataUrl) {
+        const blob = await (await fetch(signatureDataUrl)).blob();
+        const fd = new FormData();
+        fd.append("images", blob, "signature.png");
+        fd.append("type", "signature");
+        await api.upload(`/quotations/${quotationId}/images`, fd);
       }
 
       setQuotation([]);
-      setUploadFiles([]);
+      setBeforeFiles([]);
+      setAfterFiles([]);
+      setSignatureDataUrl(null);
+      setSignerName("");
+      setSignerPhone("");
+      setConsent(false);
       setShowPreview(false);
-      router.push("/quote-list");
+      setShowCreditWarning(false);
+      await refreshUser(); // credit balance changed
+      router.push(billId ? "/bills" : "/quote-list");
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "บันทึกไม่สำเร็จ กรุณาลองใหม่";
-      if (msg.includes("เครดิตไม่เพียงพอ")) {
-        setShowPreview(false);
-        setCreditError(true);
-      } else {
-        setSaveError(msg);
-      }
+      setSaveError(msg);
     } finally {
       setSaving(false);
     }
   };
 
-  const totalAmount = quotation.reduce((sum, item) => sum + item.total, 0);
-
   return (
     <div className="h-full flex flex-col gap-y-3">
+      {salesClosed && <SalesStatusBanner status={salesStatus} />}
+      {billId && (
+        <div className="flex items-center gap-x-2 bg-blue-50 border-1 border-blue-200 rounded-2xl p-3">
+          <Receipt size={16} className="text-blue-600 shrink-0" />
+          <span className="text-sm font-bold text-blue-700">
+            ออกบิลให้ลูกค้า{billCustomer ? ` : ${billCustomer}` : ""}
+            {billIds.length > 1 ? ` (${billIds.length} รายการ)` : ""} — กรอกรายการใหม่จากทองที่หลอมเสร็จ
+          </span>
+        </div>
+      )}
       <div className="flex flex-row gap-x-5 flex-1 min-h-0">
-        <div className="flex flex-col w-full lg:flex-col-reverse justify-center items-center">
+        <div className="flex flex-col w-full min-w-0 lg:flex-col-reverse justify-center items-center">
           <Calculate onAdd={handleAddItem} onOpenList={() => setListOpen(true)} quotationCount={quotation.length} />
         </div>
-        <Quotation
-          quotation={quotation}
-          onRemove={handleRemoveItem}
-          onSave={handleRequestSave}
-          saving={saving}
-        />
+        {/* Right column: reference card (customer's submitted items) above the quote card */}
+        <div className="flex flex-col gap-y-3 w-[500px] min-w-0 max-lg:hidden">
+          {billId && referenceItems.length > 0 && (
+            <div className="flex flex-col gap-y-2 border-1 border-black/10 bg-white/15 shadow-xl backdrop-blur-xl rounded-4xl p-3 shrink-0 max-h-[38%]">
+              <span className="font-bold text-sm bg-gradient-to-l from-black/90 to-yellow-600 bg-clip-text text-transparent pl-2">
+                รายการที่ลูกค้าส่งมา (อ้างอิง · หลอมแล้ว)
+              </span>
+              {/* Summary of submitted items — weighted average price lives here */}
+              <div className="grid grid-cols-3 gap-2">
+                <div className="flex flex-col border-1 border-black/10 bg-black/5 rounded-xl p-1.5">
+                  <span className="font-bold text-[10px] text-black/50 pl-1">น้ำหนักรวม</span>
+                  <span className="font-bold text-sm bg-gradient-to-l from-black/90 to-yellow-600 bg-clip-text text-transparent pl-1">
+                    {refWeight.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                  </span>
+                </div>
+                <div className="flex flex-col border-1 border-yellow-300 bg-yellow-50 rounded-xl p-1.5">
+                  <span className="font-bold text-[10px] text-black/50 pl-1">ราคาเฉลี่ย (บาท)</span>
+                  <span className="font-bold text-sm text-yellow-700 pl-1">
+                    {refAvgPrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </span>
+                </div>
+                <div className="flex flex-col border-1 border-black/10 bg-black/5 rounded-xl p-1.5">
+                  <span className="font-bold text-[10px] text-black/50 pl-1">ยอดรวม</span>
+                  <span className="font-bold text-sm bg-gradient-to-l from-black/90 to-yellow-600 bg-clip-text text-transparent pl-1">
+                    {refTotal.toLocaleString()}
+                  </span>
+                </div>
+              </div>
+              <div className="flex flex-col gap-y-1 overflow-y-auto scrollbar-hide">
+                {referenceItems.map((it, i) => (
+                  <div key={i} className="flex items-center justify-between gap-x-2 bg-black/5 border border-black/10 rounded-xl px-3 py-2 text-xs">
+                    <span className="text-black/70 font-bold truncate min-w-0">{i + 1}. {it.typeName}</span>
+                    <span className="text-black/50 shrink-0 whitespace-nowrap">น้ำหนัก {it.weight} · {it.total.toLocaleString()} บาท</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+          <div className="flex-1 min-h-0">
+            <Quotation
+              quotation={quotation}
+              onRemove={handleRemoveItem}
+              onSave={handleRequestSave}
+              saving={saving}
+            />
+          </div>
+        </div>
       </div>
 
       {/* Mobile backdrop */}
@@ -192,6 +430,65 @@ export default function QuotationPage() {
         </div>
       </div>
 
+      {/* Rules + signature step — shown before the quotation preview */}
+      <Modal isOpen={showTerms} onOpenChange={setShowTerms} size="2xl" scrollBehavior="inside">
+        <ModalContent>
+          {(onClose) => (
+            <>
+              <ModalHeader className="flex flex-col gap-0.5">
+                <span className="font-bold text-lg bg-gradient-to-l from-black/90 to-yellow-600 bg-clip-text text-transparent">
+                  กฎและรายละเอียดการรับซื้อทอง เงิน และนาก
+                </span>
+                <span className="text-xs font-normal text-black/50">กรุณาอ่านและลงลายมือชื่อก่อนดำเนินการต่อ</span>
+              </ModalHeader>
+              <ModalBody className="px-3">
+                {/* The rules rendered as an A5 paper document (with live signature) */}
+                <TermsForm signatureImage={signatureDataUrl} signerName={signerName} onPrint={() => window.print()} />
+
+                {/* Signature input — ผู้ขาย/เจ้าของสินทรัพย์ */}
+                <div className="flex flex-col gap-y-2 mt-4">
+                  <label className="block text-sm font-bold text-black/70">เซ็นชื่อ ผู้ขาย / เจ้าของสินทรัพย์</label>
+                  <div className="grid grid-cols-2 gap-2">
+                    <Input
+                      size="sm"
+                      label="ชื่อผู้เซ็น"
+                      value={signerName}
+                      onValueChange={setSignerName}
+                      classNames={{ inputWrapper: "bg-gradient-to-br from-black/10 to-transparent border-1 border-black/10 rounded-2xl" }}
+                    />
+                    <Input
+                      size="sm"
+                      label="เบอร์โทร"
+                      value={signerPhone}
+                      onValueChange={setSignerPhone}
+                      classNames={{ inputWrapper: "bg-gradient-to-br from-black/10 to-transparent border-1 border-black/10 rounded-2xl" }}
+                    />
+                  </div>
+                  <SignaturePad onChange={setSignatureDataUrl} />
+                </div>
+
+                {saveError && (
+                  <div className="text-red-500 text-sm bg-red-50 border border-red-200 rounded-xl px-4 py-2 mt-2">
+                    {saveError}
+                  </div>
+                )}
+              </ModalBody>
+              <ModalFooter>
+                <Button variant="light" onPress={onClose} isDisabled={saving}>
+                  ยกเลิก
+                </Button>
+                <Button
+                  className="bg-gradient-to-r from-[#c09c42] to-yellow-600 text-white font-bold"
+                  onPress={proceedToPreview}
+                >
+                  ยอมรับและถัดไป
+                </Button>
+              </ModalFooter>
+            </>
+          )}
+        </ModalContent>
+      </Modal>
+
       {/* Preview Modal */}
       <Modal
         isOpen={showPreview}
@@ -208,45 +505,49 @@ export default function QuotationPage() {
                 </span>
               </ModalHeader>
               <ModalBody className="px-2">
-                {/* Image upload */}
-                <div className="mb-3">
-                  <label className="block text-sm font-bold text-black/70 mb-2">อัปโหลดรูปภาพ (ไม่บังคับ)</label>
-                  <label className="flex flex-col items-center justify-center w-full h-24 border-2 border-dashed border-black/20 rounded-2xl cursor-pointer hover:border-[#c09c42]/60 hover:bg-[#c09c42]/5 transition-all">
-                    <span className="text-xs text-black/40">คลิกหรือลากรูปมาวาง</span>
-                    <input
-                      type="file"
-                      multiple
-                      accept="image/*"
-                      className="hidden"
-                      onChange={(e) => {
-                        if (e.target.files) {
-                          setUploadFiles((prev) => [...prev, ...Array.from(e.target.files!)]);
-                        }
-                      }}
-                    />
-                  </label>
-                  {uploadFiles.length > 0 && (
-                    <div className="flex flex-wrap gap-2 mt-2">
-                      {uploadFiles.map((f, i) => (
-                        <div key={i} className="relative">
-                          <img
-                            src={URL.createObjectURL(f)}
-                            className="w-16 h-16 object-cover rounded-xl border border-black/10"
-                            alt=""
-                          />
-                          <button
-                            type="button"
-                            onClick={() => setUploadFiles((prev) => prev.filter((_, idx) => idx !== i))}
-                            className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white rounded-full text-[10px] flex items-center justify-center"
-                          >
-                            ×
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  )}
+                {/* Typed image uploads — before/after side by side */}
+                <div className="grid grid-cols-2 gap-3 mb-3">
+                  <ImageUploadGroup label="รูปก่อนหลอม (ไม่บังคับ)" files={beforeFiles} setFiles={setBeforeFiles} />
+                  <ImageUploadGroup label="รูปบนตราชั่ง / หลังหลอม (ไม่บังคับ)" files={afterFiles} setFiles={setAfterFiles} />
                 </div>
-                <PreviewQuote items={quotation} onPrint={() => window.print()} previewImages={previewImages} />
+                <PreviewQuote
+                  items={quotation}
+                  onPrint={() => window.print()}
+                  store={headerStore}
+                  customerName={signerName}
+                  customerPhone={signerPhone}
+                  beforeImages={beforeImages}
+                  afterImages={afterImages}
+                  signatureImage={signatureDataUrl}
+                  signerName={signerName}
+                />
+
+                {/* Summary: weight and total of this quotation */}
+                <div className="mt-3 grid grid-cols-2 gap-2">
+                  <div className="flex flex-col border-1 border-black/10 bg-black/5 rounded-2xl p-3">
+                    <span className="text-[10px] font-bold text-black/50">น้ำหนักรวม</span>
+                    <span className="font-bold text-sm bg-gradient-to-l from-black/90 to-yellow-600 bg-clip-text text-transparent">
+                      {totalWeight.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                    </span>
+                  </div>
+                  <div className="flex flex-col border-1 border-black/10 bg-black/5 rounded-2xl p-3">
+                    <span className="text-[10px] font-bold text-black/50">ยอดรวม (บาท)</span>
+                    <span className="font-bold text-sm bg-gradient-to-l from-black/90 to-yellow-600 bg-clip-text text-transparent">
+                      {totalAmount.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                    </span>
+                  </div>
+                </div>
+
+                {/* PDPA consent — required before saving */}
+                <div className="mt-4 bg-black/5 border-1 border-black/10 rounded-2xl p-3">
+                  <Checkbox size="sm" isSelected={consent} onValueChange={setConsent}>
+                    <span className="text-xs text-black/70 leading-relaxed">
+                      ข้าพเจ้ายินยอมให้ร้านเก็บรวบรวม ใช้ และเปิดเผยข้อมูลส่วนบุคคล รวมถึงรูปภาพและลายเซ็น
+                      เพื่อวัตถุประสงค์ในการออกใบเสนอราคาและทำธุรกรรม ตามพระราชบัญญัติคุ้มครองข้อมูลส่วนบุคคล (PDPA)
+                    </span>
+                  </Checkbox>
+                </div>
+
                 {saveError && (
                   <div className="text-red-500 text-sm bg-red-50 border border-red-200 rounded-xl px-4 py-2 mt-2">
                     {saveError}
@@ -259,8 +560,9 @@ export default function QuotationPage() {
                 </Button>
                 <Button
                   className="bg-gradient-to-r from-[#c09c42] to-yellow-600 text-white font-bold"
-                  onPress={handleConfirmSave}
+                  onPress={handleConfirmClick}
                   isLoading={saving}
+                  isDisabled={!consent}
                 >
                   ยืนยันบันทึก
                 </Button>
@@ -269,41 +571,102 @@ export default function QuotationPage() {
           )}
         </ModalContent>
       </Modal>
-      {/* Credit insufficient dialog */}
-      <Modal isOpen={creditError} onOpenChange={setCreditError} size="sm" backdrop="blur">
+      {/* Missing-image confirmation (asks before saving without some image types) */}
+      <Modal isOpen={showMissingWarn} onOpenChange={setShowMissingWarn} size="sm" backdrop="blur">
         <ModalContent>
           {(onClose) => (
             <>
               <ModalHeader className="flex flex-col gap-1">
-                <div className="flex items-center gap-2 text-red-500">
+                <div className="flex items-center gap-2 text-amber-500">
                   <AlertCircle size={20} />
-                  <span>เครดิตไม่เพียงพอ</span>
+                  <span>ยังไม่ได้แนบรูป</span>
                 </div>
               </ModalHeader>
               <ModalBody>
                 <div className="flex flex-col gap-y-3">
                   <p className="text-sm text-black/70">
-                    เครดิตของคุณไม่เพียงพอสำหรับออกใบเสนอราคานี้
+                    คุณยังไม่ได้แนบรายการต่อไปนี้ ต้องการบันทึกโดยไม่แนบจริงหรือไม่?
                   </p>
-                  <div className="flex flex-col gap-y-1 bg-red-50 border border-red-100 rounded-2xl px-4 py-3">
+                  <ul className="flex flex-col gap-y-1">
+                    {missingImages().map((m) => (
+                      <li key={m} className="flex items-center gap-x-2 text-sm bg-amber-50 border border-amber-100 rounded-xl px-3 py-2">
+                        <span className="text-amber-500">•</span>
+                        <span className="font-bold text-black/70">{m}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </ModalBody>
+              <ModalFooter>
+                <Button variant="light" onPress={onClose} isDisabled={saving}>
+                  กลับไปแนบรูป
+                </Button>
+                <Button
+                  className="bg-gradient-to-r from-amber-500 to-amber-600 text-white font-bold"
+                  onPress={() => { setShowMissingWarn(false); handleConfirmSave(); }}
+                  isLoading={saving}
+                >
+                  บันทึกโดยไม่แนบ
+                </Button>
+              </ModalFooter>
+            </>
+          )}
+        </ModalContent>
+      </Modal>
+
+      {/* Credit overdraw warning (credits will go negative) */}
+      <Modal isOpen={showCreditWarning} onOpenChange={setShowCreditWarning} size="sm" backdrop="blur">
+        <ModalContent>
+          {(onClose) => (
+            <>
+              <ModalHeader className="flex flex-col gap-1">
+                <div className="flex items-center gap-2 text-amber-500">
+                  <AlertCircle size={20} />
+                  <span>เครดิตจะติดลบ</span>
+                </div>
+              </ModalHeader>
+              <ModalBody>
+                <div className="flex flex-col gap-y-3">
+                  <p className="text-sm text-black/70">
+                    เครดิตของคุณไม่เพียงพอ การออกใบเสนอราคานี้จะทำให้เครดิตติดลบ ยืนยันที่จะสร้างหรือไม่?
+                  </p>
+                  <div className="flex flex-col gap-y-1 bg-amber-50 border border-amber-100 rounded-2xl px-4 py-3">
+                    <div className="flex justify-between text-sm">
+                      <span className="text-black/50">เครดิตคงเหลือ</span>
+                      <span className="font-bold text-black">
+                        {credits.toLocaleString(undefined, { minimumFractionDigits: 2 })} บาท
+                      </span>
+                    </div>
                     <div className="flex justify-between text-sm">
                       <span className="text-black/50">ยอดรวมใบเสนอราคา</span>
                       <span className="font-bold text-black">
                         {totalAmount.toLocaleString(undefined, { minimumFractionDigits: 2 })} บาท
                       </span>
                     </div>
+                    <div className="flex justify-between text-sm border-t border-amber-200 mt-1 pt-1">
+                      <span className="text-black/50">เครดิตหลังหัก</span>
+                      <span className="font-bold text-red-600">
+                        {(credits - totalAmount).toLocaleString(undefined, { minimumFractionDigits: 2 })} บาท
+                      </span>
+                    </div>
                   </div>
-                  <p className="text-xs text-black/40 text-center">
-                    กรุณาติดต่อเจ้าของร้านเพื่อเติมเครดิตก่อนออกใบเสนอราคา
-                  </p>
+                  {saveError && (
+                    <div className="text-red-500 text-sm bg-red-50 border border-red-200 rounded-xl px-4 py-2">
+                      {saveError}
+                    </div>
+                  )}
                 </div>
               </ModalBody>
               <ModalFooter>
+                <Button variant="light" onPress={onClose} isDisabled={saving}>
+                  ยกเลิก
+                </Button>
                 <Button
-                  className="w-full bg-gradient-to-r from-[#c09c42] to-yellow-600 text-white font-bold"
-                  onPress={onClose}
+                  className="bg-gradient-to-r from-amber-500 to-amber-600 text-white font-bold"
+                  onPress={doSave}
+                  isLoading={saving}
                 >
-                  ตกลง
+                  ยืนยันสร้าง
                 </Button>
               </ModalFooter>
             </>

@@ -58,6 +58,13 @@ export default function ConfigPage() {
 
   const autoFetch = values["gold_price_auto_fetch"] === "true";
   const cronExpr = values["gold_price_cron"] || "";
+  const salesEnabled = values["sales_hours_enabled"] === "true";
+
+  // Keys rendered by dedicated sections (excluded from the generic list below).
+  const HANDLED_KEYS = [
+    "gold_price_auto_fetch", "gold_price_cron",
+    "sales_hours_enabled", "sales_open_time", "sales_close_time",
+  ];
 
   const CRON_PRESETS = [
     { label: "ทุก 15 นาที", value: "*/15 * * * *" },
@@ -155,9 +162,52 @@ export default function ConfigPage() {
           )}
         </div>
 
+        {/* Sale hours section */}
+        <div className="flex flex-col border-1 border-black/10 bg-black/5 backdrop-blur-xl rounded-3xl p-5 gap-y-4">
+          <span className="font-bold text-md bg-gradient-to-l from-black/90 to-yellow-600 bg-clip-text text-transparent">
+            เวลาทำการขาย
+          </span>
+
+          <div className="flex flex-row items-center justify-between">
+            <div className="flex flex-col">
+              <span className="font-bold text-sm">จำกัดเวลาทำการ</span>
+              <span className="text-xs text-black/50">หากปิด จะออกใบเสนอราคา/บิลได้ตลอดเวลา</span>
+            </div>
+            <Switch
+              isDisabled={!hasPermission("config.update")}
+              isSelected={salesEnabled}
+              color="warning"
+              onValueChange={(v) =>
+                setValues((prev) => ({ ...prev, sales_hours_enabled: v ? "true" : "false" }))
+              }
+            />
+          </div>
+
+          {salesEnabled && (
+            <div className="grid grid-cols-2 gap-3">
+              <Input
+                type="time"
+                label="เวลาเปิด"
+                value={values["sales_open_time"] || ""}
+                isDisabled={!hasPermission("config.update")}
+                onValueChange={(v) => setValues((prev) => ({ ...prev, sales_open_time: v }))}
+                classNames={{ inputWrapper: "bg-gradient-to-br from-black/10 to-transparent border-1 border-black/10 rounded-2xl" }}
+              />
+              <Input
+                type="time"
+                label="เวลาปิด"
+                value={values["sales_close_time"] || ""}
+                isDisabled={!hasPermission("config.update")}
+                onValueChange={(v) => setValues((prev) => ({ ...prev, sales_close_time: v }))}
+                classNames={{ inputWrapper: "bg-gradient-to-br from-black/10 to-transparent border-1 border-black/10 rounded-2xl" }}
+              />
+            </div>
+          )}
+        </div>
+
         {/* Other configs */}
         {configs
-          .filter((c) => c.key !== "gold_price_auto_fetch" && c.key !== "gold_price_cron")
+          .filter((c) => !HANDLED_KEYS.includes(c.key))
           .map((cfg) => (
             <div
               key={cfg.key}
