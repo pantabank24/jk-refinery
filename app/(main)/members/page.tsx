@@ -18,6 +18,7 @@ import { Plus, Search } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
+import { useStore } from "@/contexts/store-context";
 import { Spinner } from "@heroui/spinner";
 
 const API_BASE =
@@ -53,9 +54,12 @@ const statusTextMap: Record<string, string> = {
 
 const LIMIT = 20;
 
+type ColKey = "member" | "role" | "phone" | "credits" | "store_branch" | "status";
+
 export default function Members() {
   const router = useRouter();
-  const { hasPermission, isMaster, loading: authLoading } = useAuth();
+  const { hasPermission, isMaster, isOwner, loading: authLoading } = useAuth();
+  const { branches } = useStore();
   const canRead = hasPermission("members.read");
 
   const [members, setMembers] = useState<MemberData[]>([]);
@@ -63,21 +67,22 @@ export default function Members() {
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
 
-  // filters
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
+  const [memberType, setMemberType] = useState("");
+  const [branchId, setBranchId] = useState("");
 
   const buildQuery = useCallback(() => {
     const p = new URLSearchParams({ page: String(page), limit: String(LIMIT) });
     if (search) p.set("search", search);
     if (statusFilter !== "") p.set("status", statusFilter);
+    if (memberType) p.set("member_type", memberType);
+    if ((isMaster || isOwner) && branchId) p.set("branch_id", branchId);
     return p.toString();
-  }, [page, search, statusFilter]);
+  }, [page, search, statusFilter, memberType, branchId, isMaster, isOwner]);
 
   useEffect(() => {
-    if (!authLoading && !canRead) {
-      router.replace("/");
-    }
+    if (!authLoading && !canRead) router.replace("/");
   }, [authLoading, canRead, router]);
 
   useEffect(() => {
@@ -96,6 +101,71 @@ export default function Members() {
   const handleFilterChange = (setter: (v: string) => void) => (v: string) => {
     setter(v);
     setPage(1);
+  };
+
+  const showStoreBranch = isMaster || isOwner;
+  const hasActiveFilter = !!(search || statusFilter || memberType || branchId);
+
+  const columns: { key: ColKey; label: string }[] = [
+    { key: "member", label: "สมาชิก" },
+    { key: "role", label: "สิทธิ์" },
+    { key: "phone", label: "เบอร์โทร" },
+    { key: "credits", label: "เครดิต" },
+    ...(showStoreBranch ? [{ key: "store_branch" as ColKey, label: "ร้าน / สาขา" }] : []),
+    { key: "status", label: "สถานะ" },
+  ];
+
+  const renderCell = (m: MemberData, key: ColKey) => {
+    switch (key) {
+      case "member":
+        return (
+          <User
+            avatarProps={{
+              radius: "lg",
+              src: m.image ? `${API_BASE}${m.image}` : undefined,
+              name: m.fname,
+            }}
+            name={`${m.fname} ${m.lname}`}
+            description={m.code}
+          />
+        );
+      case "role":
+        return m.user?.role ? (
+          <Chip size="sm" variant="flat" color="default">
+            {m.user.role.display_name || m.user.role.name}
+          </Chip>
+        ) : (
+          <span className="text-xs text-black/30">-</span>
+        );
+      case "phone":
+        return <span className="text-sm text-black/70">{m.phone || "-"}</span>;
+      case "credits":
+        return (
+          <span className="font-bold text-[#c09c42]">
+            {m.credits.toLocaleString(undefined, {
+              minimumFractionDigits: 2,
+              maximumFractionDigits: 2,
+            })}
+          </span>
+        );
+      case "store_branch":
+        return (
+          <div className="flex flex-col">
+            <span className="text-xs text-black/70">{m.store?.name || "-"}</span>
+            <span className="text-[10px] text-black/40">{m.branch?.name || ""}</span>
+          </div>
+        );
+      case "status":
+        return (
+          <Chip
+            color={statusColorMap[String(m.status)] || "default"}
+            size="sm"
+            variant="dot"
+          >
+            {statusTextMap[String(m.status)] || String(m.status)}
+          </Chip>
+        );
+    }
   };
 
   const inputStyle =
@@ -137,6 +207,7 @@ export default function Members() {
           isClearable
           onClear={() => handleFilterChange(setSearch)("")}
         />
+
         <Select
           placeholder="สถานะทั้งหมด"
           selectedKeys={statusFilter !== "" ? [statusFilter] : []}
@@ -148,7 +219,33 @@ export default function Members() {
           <SelectItem key="1">ระงับ</SelectItem>
           <SelectItem key="2">รอตรวจ</SelectItem>
         </Select>
-        {(search || statusFilter !== "") && (
+
+        <Select
+          placeholder="ประเภทสมาชิก"
+          selectedKeys={memberType !== "" ? [memberType] : []}
+          onChange={(e) => handleFilterChange(setMemberType)(e.target.value)}
+          classNames={{ trigger: inputStyle }}
+          className="w-44"
+        >
+          <SelectItem key="customer">ลูกค้าทั่วไป</SelectItem>
+          <SelectItem key="staff">มีบัญชีระบบ</SelectItem>
+        </Select>
+
+        {showStoreBranch && branches.length > 0 && (
+          <Select
+            placeholder="ทุกสาขา"
+            selectedKeys={branchId !== "" ? [branchId] : []}
+            onChange={(e) => handleFilterChange(setBranchId)(e.target.value)}
+            classNames={{ trigger: inputStyle }}
+            className="w-44"
+          >
+            {branches.map((b) => (
+              <SelectItem key={String(b.id)}>{b.name}</SelectItem>
+            ))}
+          </Select>
+        )}
+
+        {hasActiveFilter && (
           <Button
             size="sm"
             variant="light"
@@ -156,6 +253,8 @@ export default function Members() {
             onPress={() => {
               setSearch("");
               setStatusFilter("");
+              setMemberType("");
+              setBranchId("");
               setPage(1);
             }}
           >
@@ -178,88 +277,21 @@ export default function Members() {
               base: "flex flex-col flex-1 min-h-0 overflow-y-scroll scrollbar-hide border-1 border-black/10 bg-black/5 backdrop-blur-xl rounded-2xl p-2",
             }}
           >
-            <TableHeader>
-              <TableColumn>สมาชิก</TableColumn>
-              <TableColumn>สิทธิ์</TableColumn>
-              <TableColumn>เบอร์โทร</TableColumn>
-              <TableColumn>เครดิต</TableColumn>
-              <TableColumn>ร้าน / สาขา</TableColumn>
-              <TableColumn>สถานะ</TableColumn>
+            <TableHeader columns={columns}>
+              {(col) => <TableColumn key={col.key}>{col.label}</TableColumn>}
             </TableHeader>
-            <TableBody emptyContent="ไม่พบข้อมูล">
-              {members.map((m) => (
+            <TableBody items={members} emptyContent="ไม่พบข้อมูล">
+              {(m) => (
                 <TableRow
                   key={m.id}
                   className="hover:bg-white rounded-2xl cursor-pointer"
                   onClick={() => router.push(`/members/read?id=${m.id}`)}
                 >
-                  <TableCell>
-                    <User
-                      avatarProps={{
-                        radius: "lg",
-                        src: m.image ? `${API_BASE}${m.image}` : undefined,
-                        name: m.fname,
-                      }}
-                      name={`${m.fname} ${m.lname}`}
-                      description={m.code}
-                    />
-                  </TableCell>
-                  <TableCell>
-                    {m.user?.role ? (
-                      <Chip size="sm" variant="flat" color="default">
-                        {m.user.role.display_name || m.user.role.name}
-                      </Chip>
-                    ) : (
-                      <span className="text-xs text-black/30">-</span>
-                    )}
-                  </TableCell>
-                  <TableCell>
-                    <span className="text-sm text-black/70">
-                      {m.phone || "-"}
-                    </span>
-                  </TableCell>
-                  <TableCell>
-                    <span className="font-bold text-[#c09c42]">
-                      {m.credits.toLocaleString(undefined, {
-                        minimumFractionDigits: 2,
-                        maximumFractionDigits: 2,
-                      })}
-                    </span>
-                  </TableCell>
-                  {isMaster ? (
-                    <TableCell>
-                      <div className="flex flex-col">
-                        <span className="text-xs text-black/70">
-                          {m.store?.name || "-"}
-                        </span>
-                        <span className="text-[10px] text-black/40">
-                          {m.branch?.name || ""}
-                        </span>
-                      </div>
-                    </TableCell>
-                  ) : (
-                    <TableCell>
-                      <div className="flex flex-col">
-                        <span className="text-xs text-black/70">
-                          {m.store?.name || "-"}
-                        </span>
-                        <span className="text-[10px] text-black/40">
-                          {m.branch?.name || ""}
-                        </span>
-                      </div>
-                    </TableCell>
+                  {(columnKey) => (
+                    <TableCell>{renderCell(m, columnKey as ColKey)}</TableCell>
                   )}
-                  <TableCell>
-                    <Chip
-                      color={statusColorMap[String(m.status)] || "default"}
-                      size="sm"
-                      variant="dot"
-                    >
-                      {statusTextMap[String(m.status)] || String(m.status)}
-                    </Chip>
-                  </TableCell>
                 </TableRow>
-              ))}
+              )}
             </TableBody>
           </Table>
 
