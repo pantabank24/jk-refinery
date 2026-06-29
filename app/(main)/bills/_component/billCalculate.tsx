@@ -1,7 +1,7 @@
 'use client'
 
 import { BoxCard } from "@/components/boxcard";
-import { ArrowUp, ArrowDown, Minus, Plus, List } from "lucide-react";
+import { ArrowUp, ArrowDown, Minus, Plus } from "lucide-react";
 import { useState, useEffect } from "react";
 import { QuotationProps } from "../../quotation/_component/quotation";
 import { api } from "@/lib/api";
@@ -19,8 +19,6 @@ interface GoldPrice {
 
 interface Props {
   onAdd: (item: QuotationProps) => void;
-  onOpenList?: () => void;
-  billCount?: number;
 }
 
 // Weight is in baht (gold weight unit), stepped up/down and cannot be typed:
@@ -33,7 +31,7 @@ const WEIGHT_MAX = 1000;
 // hardcoding an id (ids vary across environments / reseeds).
 const isGoldBar = (t: GoldType) => /แท่ง/.test(t.name) && /96\.5/.test(t.name);
 
-export const BillCalculate = ({ onAdd, onOpenList, billCount = 0 }: Props) => {
+export const BillCalculate = ({ onAdd }: Props) => {
   const [goldBar, setGoldBar] = useState<GoldType | null>(null);
   const [goldPrice, setGoldPrice] = useState<GoldPrice | null>(null);
   const [price, setPrice] = useState(0);
@@ -201,22 +199,7 @@ export const BillCalculate = ({ onAdd, onOpenList, billCount = 0 }: Props) => {
           value={total.toLocaleString()}
         />
 
-        <div className="flex h-full w-full items-end justify-between mt-2">
-          {/* Mobile: รายการ button — hidden on desktop */}
-          <button
-            type="button"
-            onClick={onOpenList}
-            className="lg:hidden flex items-center gap-x-2 bg-gradient-to-br from-[#c09c42]/30 to-transparent border-1 border-black/10 rounded-2xl h-14 px-4 font-bold text-sm relative"
-          >
-            <List size={18} className="text-[#c09c42]" />
-            <span className="bg-gradient-to-l from-black/90 to-yellow-600 bg-clip-text text-transparent">รายการ</span>
-            {billCount > 0 && (
-              <span className="absolute -top-1.5 -right-1.5 bg-yellow-600 text-white text-[10px] font-bold rounded-full w-5 h-5 flex items-center justify-center">
-                {billCount}
-              </span>
-            )}
-          </button>
-
+        <div className="flex h-full w-full items-end justify-end mt-2">
           <div
             onClick={handleAdd}
             className="cursor-pointer bg-gradient-to-br from-blue-600/50 to-transparent border-1 border-black/10 rounded-full w-14 h-14 flex items-center justify-center hover:from-blue-600/70 transition-all"
