@@ -10,12 +10,8 @@ import { useAuth } from "@/contexts/auth-context";
 import { Spinner } from "@heroui/spinner";
 import { Button } from "@heroui/button";
 import { Input } from "@heroui/input";
-import { Select, SelectItem } from "@heroui/select";
 import { Switch } from "@heroui/switch";
 import { Modal, ModalContent, ModalHeader, ModalBody, ModalFooter, useDisclosure } from "@heroui/modal";
-
-interface StoreOption { id: number; name: string }
-interface BranchOption { id: number; name: string }
 
 interface Customer {
   id: number;
@@ -23,10 +19,8 @@ interface Customer {
   email: string;
   phone: string;
   is_active: boolean;
+  store_name?: string | null;
   store?: { id: number; name: string } | null;
-  branch?: { id: number; name: string } | null;
-  store_id: number | null;
-  branch_id: number | null;
 }
 
 export default function CustomersPage() {
@@ -40,8 +34,6 @@ export default function CustomersPage() {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
-  const [stores, setStores] = useState<StoreOption[]>([]);
-  const [branches, setBranches] = useState<BranchOption[]>([]);
 
   const formDisc = useDisclosure();
   const deleteDisc = useDisclosure();
@@ -54,8 +46,7 @@ export default function CustomersPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [phone, setPhone] = useState("");
-  const [storeId, setStoreId] = useState("");
-  const [branchId, setBranchId] = useState("");
+  const [storeName, setStoreName] = useState("");
   const [isActive, setIsActive] = useState(true);
 
   const [target, setTarget] = useState<Customer | null>(null);
@@ -81,32 +72,17 @@ export default function CustomersPage() {
 
   useEffect(() => { if (canRead) fetchCustomers(); }, [fetchCustomers, canRead]);
 
-  useEffect(() => {
-    if (!canRead) return;
-    api.get<StoreOption[]>("/stores?limit=100").then((r) => setStores((r.data as unknown as StoreOption[]) || []));
-  }, [canRead]);
-
-  useEffect(() => {
-    if (storeId) {
-      api.get<BranchOption[]>(`/stores/${storeId}/branches?limit=100`)
-        .then((r) => setBranches((r.data as unknown as BranchOption[]) || []));
-    } else {
-      setBranches([]);
-    }
-  }, [storeId]);
-
   const openCreate = () => {
     setEditing(null);
     setName(""); setEmail(""); setPassword(""); setPhone("");
-    setStoreId(""); setBranchId(""); setIsActive(true); setError("");
+    setStoreName(""); setIsActive(true); setError("");
     formDisc.onOpen();
   };
 
   const openEdit = (c: Customer) => {
     setEditing(c);
     setName(c.name); setEmail(c.email); setPassword(""); setPhone(c.phone || "");
-    setStoreId(c.store_id ? String(c.store_id) : "");
-    setBranchId(c.branch_id ? String(c.branch_id) : "");
+    setStoreName(c.store_name || c.store?.name || "");
     setIsActive(c.is_active); setError("");
     formDisc.onOpen();
   };
@@ -114,8 +90,6 @@ export default function CustomersPage() {
   const handleSave = async () => {
     if (!name || !email) return setError("กรุณากรอกชื่อและอีเมล");
     if (!editing && !password) return setError("กรุณากำหนดรหัสผ่าน");
-    if (!storeId) return setError("กรุณาเลือกร้าน");
-    if (!branchId) return setError("กรุณาเลือกสาขา");
     setError("");
     setSaving(true);
     try {
@@ -124,15 +98,13 @@ export default function CustomersPage() {
           name, email,
           ...(password ? { password } : {}),
           phone,
-          store_id: Number(storeId),
-          branch_id: Number(branchId),
+          store_name: storeName || undefined,
           is_active: isActive,
         });
       } else {
         await api.post("/customers", {
           name, email, password, phone,
-          store_id: Number(storeId),
-          branch_id: Number(branchId),
+          store_name: storeName || undefined,
         });
       }
       formDisc.onClose();
@@ -207,9 +179,11 @@ export default function CustomersPage() {
                       {!c.is_active && <span className="ml-2 text-[10px] text-red-500">(ปิดใช้งาน)</span>}
                     </span>
                     <span className="text-[11px] text-black/40">{c.email}</span>
-                    <span className="text-[10px] text-black/40">
-                      {c.store?.name}{c.branch ? ` / ${c.branch.name}` : ""}
-                    </span>
+                    {(c.store_name || c.store?.name) && (
+                      <span className="text-[10px] text-black/40">
+                        {c.store_name || c.store?.name}
+                      </span>
+                    )}
                   </div>
                 </div>
                 <div className="flex flex-row items-center gap-x-1">
@@ -248,21 +222,7 @@ export default function CustomersPage() {
                 isRequired={!editing}
               />
               <Input label="เบอร์โทร" value={phone} onChange={(e) => setPhone(e.target.value)} />
-              <Select
-                label="ร้าน" selectedKeys={storeId ? [storeId] : []}
-                onChange={(e) => { setStoreId(e.target.value); setBranchId(""); }}
-                isRequired
-              >
-                {stores.map((s) => <SelectItem key={String(s.id)}>{s.name}</SelectItem>)}
-              </Select>
-              <Select
-                label="สาขา" selectedKeys={branchId ? [branchId] : []}
-                onChange={(e) => setBranchId(e.target.value)}
-                isDisabled={!storeId}
-                isRequired
-              >
-                {branches.map((b) => <SelectItem key={String(b.id)}>{b.name}</SelectItem>)}
-              </Select>
+              <Input label="ร้านค้า" value={storeName} onChange={(e) => setStoreName(e.target.value)} placeholder="ชื่อร้านค้า" />
               {editing && (
                 <div className="flex items-center justify-between">
                   <span className="text-sm text-black/60">เปิดใช้งาน</span>

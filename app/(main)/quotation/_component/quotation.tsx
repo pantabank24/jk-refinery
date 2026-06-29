@@ -6,6 +6,7 @@ export interface QuotationProps {
     typeName: string;
     price: number;
     plus: number;
+    plus_type?: number; // 0=บาท, 1=%
     percent: number;
     weight: number;
     perGram: number;
@@ -48,8 +49,8 @@ export const Quotation = ({ quotation, onRemove, onSave, saving }: Props) => {
                                     <span className=" font-bold text-md bg-gradient-to-l from-black/90 to-yellow-600 bg-clip-text text-transparent pl-2">{item.price.toLocaleString()}</span>
                                 </div>
                                 <div className="flex flex-col h-full w-full border-1 border-black/10 bg-black/5 shadow-xl backdrop-blur-xl rounded-xl p-1">
-                                    <span className=" font-bold text-xs text-black pl-2">ราคาบวก</span>
-                                    <span className=" font-bold text-md bg-gradient-to-l from-black/90 to-yellow-600 bg-clip-text text-transparent pl-2">{item.plus.toLocaleString()}</span>
+                                    <span className=" font-bold text-xs text-black pl-2">ราคาบวก ({item.plus_type === 1 ? "%" : "฿"})</span>
+                                    <span className=" font-bold text-md bg-gradient-to-l from-black/90 to-yellow-600 bg-clip-text text-transparent pl-2">{item.plus.toLocaleString()}{item.plus_type === 1 ? "%" : ""}</span>
                                 </div>
                                 <div className="flex flex-col h-full w-full border-1 border-black/10 bg-black/5 shadow-xl backdrop-blur-xl rounded-xl p-1">
                                     <span className=" font-bold text-xs text-black pl-2">เปอร์เซ็นต์</span>

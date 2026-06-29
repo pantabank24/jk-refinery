@@ -8,6 +8,7 @@ import { CmpSelect, Option } from "@/components/cmpSelect";
 import { QuotationProps } from "./quotation";
 import { api } from "@/lib/api";
 import { Tabs, Tab } from "@heroui/tabs";
+import { Input } from "@heroui/input";
 import {
   OperandType,
   GoldType,
@@ -64,18 +65,23 @@ interface Props {
   onAdd: (item: QuotationProps) => void;
   onOpenList?: () => void;
   quotationCount?: number;
+  /** When true, locks to gold melt type and hides metal tabs + type dropdown */
+  lockMeltType?: boolean;
+  /** When set, overrides the auto-filled price with a fixed value (read-only) */
+  forcedPrice?: number;
 }
 
-export const Calculate = ({ onAdd, onOpenList, quotationCount = 0 }: Props) => {
+export const Calculate = ({ onAdd, onOpenList, quotationCount = 0, lockMeltType, forcedPrice }: Props) => {
   const [goldTypes, setGoldTypes] = useState<GoldType[]>([]);
   const [goldPrice, setGoldPrice] = useState<GoldPrice | null>(null);
   const [silverPrice, setSilverPrice] = useState<SilverPrice | null>(null);
   const [metal, setMetal] = useState<string>("gold");
 
-  const [price, setPrice] = useState(0);
+  const [price, setPrice] = useState(forcedPrice ?? 0);
   const [typeId, setTypeId] = useState("");
   const [percent, setPercent] = useState(0);
   const [plus, setPlus] = useState(0);
+  const [plusType, setPlusType] = useState(0); // 0=บาท, 1=%
   const [weight, setWeight] = useState(0);
 
   useEffect(() => {
@@ -83,6 +89,8 @@ export const Calculate = ({ onAdd, onOpenList, quotationCount = 0 }: Props) => {
       .then((res) => {
         const types = (res.data as unknown as GoldType[]) || [];
         setGoldTypes(types);
+        // Always default to gold melt type (or first gold type); when locked, this
+        // also prevents the user from switching away.
         const defGold = pickType(types, "gold") ?? types[0];
         if (defGold) setTypeId(String(defGold.id));
       })
@@ -95,6 +103,7 @@ export const Calculate = ({ onAdd, onOpenList, quotationCount = 0 }: Props) => {
     api.get<SilverPrice>("/metal-prices/latest?symbol=XAG")
       .then((res) => setSilverPrice((res.data as unknown as SilverPrice) || null))
       .catch(() => {});
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Product types belonging to the active metal tab.
@@ -126,18 +135,23 @@ export const Calculate = ({ onAdd, onOpenList, quotationCount = 0 }: Props) => {
 
   // When type or feed prices change: auto-fill price from price_source (or clear
   // for manual metals) and pre-fill percent/plus from the type's defaults.
+  // forcedPrice overrides auto-fill when provided.
   useEffect(() => {
     if (!typeId || goldTypes.length === 0) return;
     const gt = goldTypes.find((t) => String(t.id) === typeId);
     if (!gt) return;
-    const p = resolvePrice(gt);
-    setPrice(p ?? 0);
-    setPercent(gt.default_percent);
+    if (forcedPrice !== undefined) {
+      setPrice(forcedPrice);
+    } else {
+      const p = resolvePrice(gt);
+      setPrice(p ?? 0);
+    }
+    setPercent(0);
     setPlus(gt.default_plus);
+    setPlusType(gt.plus_type ?? 0);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [typeId, goldTypes, goldPrice, silverPrice]);
+  }, [typeId, goldTypes, goldPrice, silverPrice, forcedPrice]);
 
-  // Switch metal tab → jump to that metal's default product type (gold → ทองหลอม).
   const handleMetalChange = (key: string) => {
     setMetal(key);
     const def = pickType(goldTypes, key);
@@ -159,7 +173,7 @@ export const Calculate = ({ onAdd, onOpenList, quotationCount = 0 }: Props) => {
     : new Set(["percent", "plus"] as OperandType[]);
 
   // Shared with the edit screen — single source of truth for per-gram/total.
-  const { perGram, total } = computeItem({ goldType: selectedGoldType, price, percent, plus, weight });
+  const { perGram, total } = computeItem({ goldType: selectedGoldType, price, percent, plus, weight, plusType });
 
   const handleAdd = () => {
     if (weight <= 0) return;
@@ -168,6 +182,7 @@ export const Calculate = ({ onAdd, onOpenList, quotationCount = 0 }: Props) => {
       typeName: getTypeName(typeId),
       price,
       plus,
+      plus_type: plusType,
       percent,
       weight,
       perGram,
@@ -194,7 +209,6 @@ export const Calculate = ({ onAdd, onOpenList, quotationCount = 0 }: Props) => {
   return (
     <div className=" flex flex-col h-full w-full xl:w-[700px] overflow-hidden">
       <div className="flex flex-col h-full border-1 border-black/10 bg-black/5  backdrop-blur-xl rounded-4xl p-3 gap-y-2 overflow-y-scroll scrollbar-hide">
-        {/* Metal tabs */}
         <Tabs
           aria-label="โลหะ"
           selectedKey={metal}
@@ -281,11 +295,13 @@ export const Calculate = ({ onAdd, onOpenList, quotationCount = 0 }: Props) => {
             label={isManualPrice ? `ราคา${metalLabel} (ต่อกรัม)` : "ราคา"}
             placeholder="0"
             value={price === 0 ? "" : price.toString()}
-            onChange={(e: React.ChangeEvent<HTMLInputElement>) => setPrice(parseFloat(e.target.value) || 0)}
+            onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+              if (forcedPrice === undefined) setPrice(parseFloat(e.target.value) || 0);
+            }}
+            isReadOnly={forcedPrice !== undefined}
           />
-          {/* Only show the type selector when the metal has more than one type
-              (gold). Silver/platinum/palladium have a single type — auto-selected. */}
-          {metalTypes.length > 1 && (
+          {/* Type selector hidden when locked to melt type or when metal has only one type */}
+          {!lockMeltType && metalTypes.length > 1 && (
             <CmpSelect
               data={typeOptions}
               label="ประเภท"
@@ -304,11 +320,31 @@ export const Calculate = ({ onAdd, onOpenList, quotationCount = 0 }: Props) => {
             />
           )}
           {usedVars.has("plus") && (
-            <CmpInput
-              label={selectedGoldType?.plus_type === 1 ? "ราคาบวก (%)" : "ราคาบวก (บาท)"}
+            <Input
+              labelPlacement="inside"
+              label={<div className="font-bold text-md">ราคาบวก</div>}
               placeholder="0"
               value={plus === 0 ? "" : plus.toString()}
               onChange={(e: React.ChangeEvent<HTMLInputElement>) => setPlus(parseFloat(e.target.value) || 0)}
+              classNames={{ inputWrapper: "bg-gradient-to-br from-black/10 to-transparent border-1 border-black/10 rounded-2xl" }}
+              endContent={
+                <div className="flex gap-0.5 items-center shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => setPlusType(0)}
+                    className={`text-[11px] font-bold px-1.5 py-0.5 rounded-full transition-all ${plusType === 0 ? "bg-yellow-600/70 text-white" : "text-black/40 hover:text-black/70"}`}
+                  >
+                    ฿
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPlusType(1)}
+                    className={`text-[11px] font-bold px-1.5 py-0.5 rounded-full transition-all ${plusType === 1 ? "bg-yellow-600/70 text-white" : "text-black/40 hover:text-black/70"}`}
+                  >
+                    %
+                  </button>
+                </div>
+              }
             />
           )}
           <CmpInput

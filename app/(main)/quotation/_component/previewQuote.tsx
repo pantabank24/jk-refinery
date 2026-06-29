@@ -268,7 +268,7 @@ export const PreviewQuote = ({items, onPrint, hidePrint, store, title, customerN
                         )}
                         {showList && (
                             <td className="border border-gray-400 px-2 text-center text-[10px]">
-                            {item.typeName}
+                            {item.typeName.replace("ทองหลอม", "ทองรูปพรรณเก่า")}
                             </td>
                         )}
                         <td className="border border-gray-400 px-2 text-center text-[10px]">

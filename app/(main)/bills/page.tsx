@@ -46,6 +46,7 @@ interface BillData {
   // The master-issued quotation (once issued) — its items/photos/signature are the
   // real bill shown to the customer.
   issued_quotation?: {
+    total_amount?: number;
     items?: BillItem[];
     images?: { id: number; image_url: string; type?: string }[];
     signer_name?: string;
@@ -103,6 +104,12 @@ export default function BillsList() {
   // together). Approve/cancel apply to all of them.
   const [groupBillIds, setGroupBillIds] = useState<number[]>([]);
 
+  // Bill balance (debt/credit) for the customer whose bill is open.
+  const [billBalance, setBillBalance] = useState<number | null>(null);
+  const [billBalanceHistory, setBillBalanceHistory] = useState<{ id: number; amount: number; description: string; created_at: string }[]>([]);
+  // Per-session delivery logs for the open bill.
+  const [deliveryLogs, setDeliveryLogs] = useState<{ id: number; weight: number; amount: number; note: string; created_at: string }[]>([]);
+
   const issueDisc = useDisclosure();
   const [issuing, setIssuing] = useState(false);
 
@@ -126,7 +133,7 @@ export default function BillsList() {
       // live in "บิลทั้งหมด".
       return bills
         .filter((b) => b.status !== 12)
-        .map((b) => ({ key: `b${b.id}`, rep: b, billIds: [b.id], status: b.status, total: b.total_amount, count: 1 }));
+        .map((b) => ({ key: `b${b.id}`, rep: b, billIds: [b.id], status: b.status, total: b.issued_quotation?.total_amount ?? b.total_amount, count: 1 }));
     }
     const map = new Map<string, BillData[]>();
     for (const b of bills) {
@@ -140,7 +147,9 @@ export default function BillsList() {
       rep: list[0],
       billIds: list.map((x) => x.id),
       status: list[0].status,
-      total: list.reduce((s, x) => s + x.total_amount, 0),
+      // Bills issued together share one quotation — use its total as the real amount.
+      total: list[0].issued_quotation?.total_amount
+        ?? list.reduce((s, x) => s + x.total_amount, 0),
       count: list.length,
     }));
   }, [bills, isCustomer]);
@@ -171,11 +180,29 @@ export default function BillsList() {
   useEffect(() => { if (canRead) fetchBills(); }, [fetchBills, canRead]);
 
   const openDetail = async (b: BillData) => {
+    setBillBalance(null);
+    setBillBalanceHistory([]);
+    setDeliveryLogs([]);
     try {
       const res = await api.get<BillData>(`/bills/${b.id}`);
       setDetailB(res.data as unknown as BillData);
     } catch {
       setDetailB(b);
+    }
+    // Fetch balance + delivery logs (staff/master view only).
+    if (!isCustomer) {
+      if (b.creator?.id) {
+        api.get(`/bills/balance?user_id=${b.creator.id}`)
+          .then((res) => {
+            const d = res.data as unknown as { balance: number; history: { id: number; amount: number; description: string; created_at: string }[] };
+            setBillBalance(d.balance ?? 0);
+            setBillBalanceHistory(d.history ?? []);
+          })
+          .catch(() => {});
+      }
+      api.get(`/bills/${b.id}/delivery-logs`)
+        .then((res) => setDeliveryLogs((res.data as unknown as { id: number; weight: number; amount: number; note: string; created_at: string }[]) ?? []))
+        .catch(() => {});
     }
     detailDisc.onOpen();
   };
@@ -360,6 +387,72 @@ export default function BillsList() {
           </ModalHeader>
 
           <ModalBody className="px-2">
+            {/* Delivery logs + diff — staff/master view only */}
+            {!isCustomer && (deliveryLogs.length > 0 || detailB?.issued_quotation) && (() => {
+              const issuedTotal = detailB?.issued_quotation?.total_amount ?? 0;
+              const lockedTotal = detailB?.total_amount ?? 0;
+              const diff = issuedTotal - lockedTotal;
+              const hasDiff = issuedTotal > 0;
+              return (
+                <div className="flex flex-col gap-y-2 border-1 border-black/10 bg-black/5 rounded-2xl p-3 mb-2">
+                  <span className="text-xs font-bold text-black/60">การส่งหลอม</span>
+
+                  {/* Per-session partial delivery logs */}
+                  {deliveryLogs.length > 0 && (
+                    <div className="flex flex-col gap-y-1">
+                      {deliveryLogs.map((log, i) => (
+                        <div key={log.id} className="flex items-center justify-between bg-white/60 border border-black/10 rounded-xl px-3 py-1.5 text-xs">
+                          <div className="flex items-center gap-x-2">
+                            <span className="text-black/40 font-bold w-4">{i + 1}</span>
+                            <span className="text-black/60">{moment(log.created_at).format("DD/MM/YY HH:mm")}</span>
+                          </div>
+                          <div className="flex items-center gap-x-3">
+                            <span className="text-black/50">{log.weight.toLocaleString(undefined, { maximumFractionDigits: 4 })} บาท</span>
+                            <span className="font-bold text-yellow-700">{log.amount.toLocaleString(undefined, { minimumFractionDigits: 2 })} บาท</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Final issuance row */}
+                  {detailB?.issued_quotation && (
+                    <div className="flex items-center justify-between bg-yellow-50 border border-yellow-200 rounded-xl px-3 py-1.5 text-xs">
+                      <span className="font-bold text-yellow-700">ออกบิลแล้ว (รวมทั้งหมด)</span>
+                      <span className="font-bold text-yellow-700">{issuedTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })} บาท</span>
+                    </div>
+                  )}
+
+                  {/* Customer's original sell total */}
+                  <div className="flex items-center justify-between bg-white/60 border border-black/10 rounded-xl px-3 py-1.5 text-xs">
+                    <span className="text-black/50 font-bold">ยอดที่ลูกค้าส่งขาย</span>
+                    <span className="font-bold text-black/70">{lockedTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })} บาท</span>
+                  </div>
+
+                  {/* Diff: เกิน/ขาด */}
+                  {hasDiff && (
+                    <div className={`flex items-center justify-between rounded-xl px-3 py-1.5 text-xs border-1 ${diff > 0 ? "bg-green-50 border-green-200" : diff < 0 ? "bg-red-50 border-red-200" : "bg-black/5 border-black/10"}`}>
+                      <span className={`font-bold ${diff > 0 ? "text-green-700" : diff < 0 ? "text-red-600" : "text-black/50"}`}>
+                        {diff > 0 ? "เกิน" : diff < 0 ? "ขาด" : "ตรงกัน"}
+                      </span>
+                      <span className={`font-bold text-base ${diff > 0 ? "text-green-700" : diff < 0 ? "text-red-600" : "text-black/40"}`}>
+                        {diff > 0 ? "+" : ""}{diff.toLocaleString(undefined, { minimumFractionDigits: 2 })} บาท
+                      </span>
+                    </div>
+                  )}
+
+                  {/* Running balance across all bills for this customer */}
+                  {billBalance !== null && billBalance !== 0 && (
+                    <div className="flex items-center justify-between text-[10px] text-black/40 px-1 mt-0.5">
+                      <span>ยอดคงค้างสะสม</span>
+                      <span className={`font-bold ${billBalance < 0 ? "text-red-500" : "text-green-600"}`}>
+                        {billBalance > 0 ? "+" : ""}{billBalance.toLocaleString(undefined, { minimumFractionDigits: 2 })} บาท
+                      </span>
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
             {detailB?.status === 13 && detailB.reject_reason && (
               <div className="flex items-start gap-x-2 bg-red-50 border-1 border-red-200 rounded-2xl p-3 mb-2">
                 <XCircle size={14} className="text-red-500 mt-0.5 shrink-0" />
@@ -376,19 +469,38 @@ export default function BillsList() {
                 <span className="text-sm font-bold text-black/60">รายการที่ขาย</span>
                 <div className="border-1 border-black/10 rounded-2xl overflow-hidden">
                   {(detailB.items ?? []).map((it, i) => (
-                    <div key={it.id} className="flex items-center justify-between px-3 py-2 border-b last:border-b-0 border-black/5">
-                      <span className="text-sm">{i + 1}. {it.type_name}</span>
-                      <div className="flex gap-x-4 text-sm">
-                        <span className="text-black/50">{it.weight} บาท</span>
-                        <span className="font-bold text-yellow-700">{it.total.toLocaleString()} บาท</span>
+                    <div key={it.id} className="flex flex-col px-3 py-2 border-b last:border-b-0 border-black/5 gap-y-0.5">
+                      <span className="text-sm font-bold text-black/70">{i + 1}. {it.type_name}</span>
+                      <div className="flex items-center gap-x-3 text-xs text-black/50">
+                        <span>น้ำหนัก {it.weight} บาท</span>
+                        <span>ราคา {it.price.toLocaleString()}</span>
+                        <span className="font-bold text-yellow-700 ml-auto">{it.total.toLocaleString()} บาท</span>
                       </div>
                     </div>
                   ))}
                 </div>
-                <div className="flex justify-between px-3 pt-1">
-                  <span className="text-sm font-bold">รวม</span>
-                  <span className="text-sm font-bold text-yellow-700">{detailB.total_amount.toLocaleString()} บาท</span>
-                </div>
+                {(() => {
+                  const items = detailB.items ?? [];
+                  const sumW = items.reduce((s, it) => s + it.weight, 0);
+                  const sumT = items.reduce((s, it) => s + it.total, 0);
+                  const avg = sumW > 0 ? sumT / sumW : 0;
+                  return (
+                    <div className="grid grid-cols-3 gap-1.5 px-1 pt-1">
+                      <div className="flex flex-col border-1 border-black/10 bg-black/5 rounded-xl p-1.5">
+                        <span className="text-[10px] font-bold text-black/40">น้ำหนักรวม</span>
+                        <span className="text-xs font-bold text-black/70">{sumW.toLocaleString(undefined, { maximumFractionDigits: 4 })} บาท</span>
+                      </div>
+                      <div className="flex flex-col border-1 border-yellow-300 bg-yellow-50 rounded-xl p-1.5">
+                        <span className="text-[10px] font-bold text-black/40">ราคาเฉลี่ย</span>
+                        <span className="text-xs font-bold text-yellow-700">{avg.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                      </div>
+                      <div className="flex flex-col border-1 border-black/10 bg-black/5 rounded-xl p-1.5">
+                        <span className="text-[10px] font-bold text-black/40">ยอดรวม</span>
+                        <span className="text-xs font-bold text-yellow-700">{sumT.toLocaleString(undefined, { minimumFractionDigits: 2 })} บาท</span>
+                      </div>
+                    </div>
+                  );
+                })()}
               </div>
             )}
             {detailB && (!isCustomer || (detailB.status === 11 && detailB.issued_quotation)) && (() => {
@@ -426,12 +538,39 @@ export default function BillsList() {
                     <span className="text-sm font-bold text-black/60">รายการที่ลูกค้าส่งมา</span>
                     <div className="border-1 border-black/10 bg-white/60 rounded-xl overflow-hidden">
                       {(detailB.items ?? []).map((it, i) => (
-                        <div key={it.id} className="flex items-center justify-between px-3 py-2 border-b last:border-b-0 border-black/5 text-sm">
-                          <span className="text-black/70">{i + 1}. {it.type_name}</span>
-                          <span className="text-black/50">น้ำหนัก {it.weight}</span>
+                        <div key={it.id} className="flex flex-col px-3 py-2 border-b last:border-b-0 border-black/5 gap-y-0.5">
+                          <span className="text-sm font-bold text-black/70">{i + 1}. {it.type_name}</span>
+                          <div className="flex items-center gap-x-3 text-xs text-black/50">
+                            <span>น้ำหนัก {it.weight} บาท</span>
+                            <span>ราคา {it.price.toLocaleString()}</span>
+                            <span className="font-bold text-yellow-700 ml-auto">{it.total.toLocaleString()} บาท</span>
+                          </div>
                         </div>
                       ))}
                     </div>
+                    {/* Weighted average summary */}
+                    {(() => {
+                      const items = detailB.items ?? [];
+                      const sumW = items.reduce((s, it) => s + it.weight, 0);
+                      const sumT = items.reduce((s, it) => s + it.total, 0);
+                      const avg = sumW > 0 ? sumT / sumW : 0;
+                      return items.length > 0 ? (
+                        <div className="grid grid-cols-3 gap-1.5 pt-1">
+                          <div className="flex flex-col border-1 border-black/10 bg-white/60 rounded-xl p-1.5">
+                            <span className="text-[10px] font-bold text-black/40">น้ำหนักรวม</span>
+                            <span className="text-xs font-bold text-black/70">{sumW.toLocaleString(undefined, { maximumFractionDigits: 4 })} บาท</span>
+                          </div>
+                          <div className="flex flex-col border-1 border-yellow-300 bg-yellow-50 rounded-xl p-1.5">
+                            <span className="text-[10px] font-bold text-black/40">ราคาเฉลี่ย</span>
+                            <span className="text-xs font-bold text-yellow-700">{avg.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                          </div>
+                          <div className="flex flex-col border-1 border-black/10 bg-white/60 rounded-xl p-1.5">
+                            <span className="text-[10px] font-bold text-black/40">ยอดรวม</span>
+                            <span className="text-xs font-bold text-black/70">{sumT.toLocaleString(undefined, { minimumFractionDigits: 2 })} บาท</span>
+                          </div>
+                        </div>
+                      ) : null;
+                    })()}
                   </div>
                   <div className="min-w-0">{preview}</div>
                 </div>
@@ -500,9 +639,9 @@ export default function BillsList() {
           <ModalBody>
             <div className="flex flex-col gap-y-3">
               <div className="flex flex-col border-1 border-green-200 bg-green-50 rounded-2xl p-3 gap-y-1">
-                <span className="text-xs text-black/50">ยอดรวม</span>
+                <span className="text-xs text-black/50">ยอดจริง (ใบเสนอราคา)</span>
                 <span className="font-bold text-xl text-green-700">
-                  {detailB?.total_amount.toLocaleString(undefined, { minimumFractionDigits: 2 })} บาท
+                  {(detailB?.issued_quotation?.total_amount ?? detailB?.total_amount ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2 })} บาท
                 </span>
               </div>
               <p className="text-sm text-black/60 text-center">ยืนยันว่าลูกค้าตกลงและปิดบิลนี้ — ไม่สามารถย้อนกลับได้</p>

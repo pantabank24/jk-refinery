@@ -23,6 +23,7 @@ import { useStore } from "@/contexts/store-context";
 import { useSalesStatus } from "@/hooks/use-sales-status";
 import { SalesStatusBanner } from "@/components/sales-status-banner";
 import { SignaturePad } from "@/components/signature-pad";
+import { Truck } from "lucide-react";
 
 // Reusable typed image-upload block (click to add, thumbnails with remove).
 function ImageUploadGroup({
@@ -100,11 +101,19 @@ export default function QuotationPage() {
   // The customer's submitted items — shown only for reference. The gold has been
   // melted, so the master builds a fresh quote; these are NOT added to it.
   const [referenceItems, setReferenceItems] = useState<QuotationProps[]>([]);
+  // Partial delivery tracking: accumulated processed weight/amount across all customer's bills.
+  const [processedWeight, setProcessedWeight] = useState(0);
+  const [processedAmount, setProcessedAmount] = useState(0);
+  // "รอส่งเพิ่ม / บันทึกเลย" choice modal — shown when master clicks the save button in bill mode.
+  const [showDeliveryChoice, setShowDeliveryChoice] = useState(false);
+  const [partialSaving, setPartialSaving] = useState(false);
+  const [partialError, setPartialError] = useState("");
+
+  type BillItemLite = { type_id: string; type_name: string; price: number; percent: number; plus: number; weight: number; per_gram: number; total: number };
+  type BillLite = { id: number; total_amount: number; processed_weight: number; processed_amount: number; items?: BillItemLite[]; creator?: { id: number; name: string } };
 
   useEffect(() => {
     if (!billId) return;
-    type BillItemLite = { type_id: string; type_name: string; price: number; percent: number; plus: number; weight: number; per_gram: number; total: number };
-    type BillLite = { id: number; items?: BillItemLite[]; creator?: { id: number; name: string } };
     (async () => {
       try {
         const res = await api.get(`/bills/${billId}`);
@@ -118,14 +127,18 @@ export default function QuotationPage() {
         let bills: BillLite[] = [];
         if (clicked?.creator?.id) {
           const listRes = await api.get(`/bills?created_by=${clicked.creator.id}&status=10&limit=100`);
-          bills = (listRes.data as unknown as BillLite[]) || [];
+          bills = (listRes.data as unknown as { data: BillLite[] }).data || [];
         }
         if (bills.length === 0 && clicked) bills = [clicked];
 
         const ids: number[] = [];
         const reference: QuotationProps[] = [];
+        let totalProcessedW = 0;
+        let totalProcessedA = 0;
         for (const b of bills) {
           ids.push(b.id);
+          totalProcessedW += b.processed_weight || 0;
+          totalProcessedA += b.processed_amount || 0;
           for (const i of b.items ?? []) {
             reference.push({
               typeId: i.type_id, typeName: i.type_name, price: i.price, plus: i.plus,
@@ -135,6 +148,8 @@ export default function QuotationPage() {
         }
         setBillIds(ids);
         setReferenceItems(reference); // reference only — quote stays empty
+        setProcessedWeight(totalProcessedW);
+        setProcessedAmount(totalProcessedA);
       } catch { /* ignore */ }
     })();
   }, [billId]);
@@ -156,7 +171,8 @@ export default function QuotationPage() {
     setQuotation((prev) => prev.filter((_, i) => i !== index));
   };
 
-  // Opens the rules/terms step (signature required) before the preview.
+  // Opens delivery choice ("รอส่งเพิ่ม" vs "บันทึกเลย") in bill mode, else goes
+  // straight to the terms step.
   const handleRequestSave = () => {
     if (quotation.length === 0) return;
     if (salesClosed) {
@@ -164,7 +180,33 @@ export default function QuotationPage() {
       return;
     }
     setSaveError("");
+    if (billId) {
+      setPartialError("");
+      setShowDeliveryChoice(true);
+      return;
+    }
     setShowTerms(true);
+  };
+
+  // "รอส่งเพิ่ม": record partial delivery for all bill IDs and stay on page.
+  const handlePartialDeliver = async () => {
+    setPartialSaving(true);
+    setPartialError("");
+    const totalW = quotation.reduce((s, i) => s + (i.weight || 0), 0);
+    const totalA = quotation.reduce((s, i) => s + i.total, 0);
+    try {
+      for (const bid of billIds) {
+        await api.post(`/bills/${bid}/partial-deliver`, { weight: totalW, amount: totalA });
+      }
+      setProcessedWeight((p) => p + totalW);
+      setProcessedAmount((p) => p + totalA);
+      setQuotation([]);
+      setShowDeliveryChoice(false);
+    } catch {
+      setPartialError("บันทึกส่งบางส่วนไม่สำเร็จ กรุณาลองใหม่");
+    } finally {
+      setPartialSaving(false);
+    }
   };
 
   // From the terms step → preview. Signature is optional (the seller may sign
@@ -175,16 +217,33 @@ export default function QuotationPage() {
     setShowPreview(true);
   };
 
-  const totalAmount = quotation.reduce((sum, item) => sum + item.total, 0);
-  const totalWeight = quotation.reduce((sum, item) => sum + (item.weight || 0), 0);
-  // Summary of the customer's submitted (reference) items. The weighted-average
-  // price = Σ(ราคา × น้ำหนัก)/Σน้ำหนัก belongs here since those items may have been
-  // sold at different times when the gold price differed.
   const refTotal = referenceItems.reduce((s, i) => s + i.total, 0);
   const refWeight = referenceItems.reduce((s, i) => s + (i.weight || 0), 0);
-  const refAvgPrice = refWeight > 0
-    ? referenceItems.reduce((s, i) => s + i.price * (i.weight || 0), 0) / refWeight
-    : 0;
+  // Weighted-average effective rate: Σ(total) / Σ(weight) — this is what
+  // the customer was actually locked in at (total includes percent/plus adjustments).
+  const refAvgPrice = refWeight > 0 ? refTotal / refWeight : 0;
+
+  // In bill mode ("บันทึกเลย"), combine all partial deliveries + current batch
+  // into ONE item so the preview and the saved quotation both show the full amount.
+  const previewItems: QuotationProps[] = (() => {
+    if (billIds.length === 0 || quotation.length === 0) return quotation;
+    const currentW = quotation.reduce((s, i) => s + (i.weight || 0), 0);
+    const currentT = quotation.reduce((s, i) => s + i.total, 0);
+    const totalW = processedWeight + currentW;
+    const totalT = processedAmount + currentT;
+    const avgPrice = totalW > 0 ? totalT / totalW : quotation[0].price;
+    const first = quotation[0];
+    return [{
+      ...first,
+      price: Math.round(avgPrice * 100) / 100,
+      weight: totalW,
+      perGram: totalW > 0 ? totalT / totalW : first.perGram,
+      total: totalT,
+    }];
+  })();
+
+  const totalAmount = previewItems.reduce((sum, item) => sum + item.total, 0);
+  const totalWeight = previewItems.reduce((sum, item) => sum + (item.weight || 0), 0);
   // Whether the current user's quotations deduct credits (role holds credits.use).
   const usesCredits = hasPermission("credits.use");
   // Would this quotation push the user's credit balance below zero?
@@ -227,23 +286,27 @@ export default function QuotationPage() {
     setSaving(true);
     setSaveError("");
     try {
+      // previewItems already contains the correctly-combined single item in bill
+      // mode (processedAmount + current batch), so reuse it directly.
+      const saveItems = previewItems.map((item) => ({
+        type_id: item.typeId,
+        type_name: item.typeName,
+        plus: item.plus,
+        plus_type: item.plus_type ?? 0,
+        price: item.price,
+        percent: item.percent,
+        weight: item.weight,
+        per_gram: item.perGram,
+        total: item.total,
+      }));
+
       const res = await api.post<{id: number}>("/quotations", {
         signer_name: signerName,
         signer_phone: signerPhone,
         pdpa_consent: consent,
         store_id: selectedStore?.id, // used only for master; others derive from JWT
         bill_ids: billIds.length ? billIds : undefined, // links to the customer's bill(s)
-
-        items: quotation.map((item) => ({
-          type_id: item.typeId,
-          type_name: item.typeName,
-          plus: item.plus,
-          price: item.price,
-          percent: item.percent,
-          weight: item.weight,
-          per_gram: item.perGram,
-          total: item.total,
-        })),
+        items: saveItems,
       });
       const quotationId = (res.data as unknown as {id: number}).id;
 
@@ -299,7 +362,13 @@ export default function QuotationPage() {
       )}
       <div className="flex flex-row gap-x-5 flex-1 min-h-0">
         <div className="flex flex-col w-full min-w-0 lg:flex-col-reverse justify-center items-center">
-          <Calculate onAdd={handleAddItem} onOpenList={() => setListOpen(true)} quotationCount={quotation.length} />
+          <Calculate
+            onAdd={handleAddItem}
+            onOpenList={() => setListOpen(true)}
+            quotationCount={quotation.length}
+            lockMeltType={!!billId}
+            forcedPrice={billId && refAvgPrice > 0 ? refAvgPrice : undefined}
+          />
         </div>
         {/* Right column: reference card (customer's submitted items) above the quote card */}
         <div className="flex flex-col gap-y-3 w-[500px] min-w-0 max-lg:hidden">
@@ -308,26 +377,36 @@ export default function QuotationPage() {
               <span className="font-bold text-sm bg-gradient-to-l from-black/90 to-yellow-600 bg-clip-text text-transparent pl-2">
                 รายการที่ลูกค้าส่งมา (อ้างอิง · หลอมแล้ว)
               </span>
-              {/* Summary of submitted items — weighted average price lives here */}
-              <div className="grid grid-cols-3 gap-2">
+              {/* Summary: sold total, processed so far, remaining (can go negative) */}
+              <div className="grid grid-cols-2 gap-2">
                 <div className="flex flex-col border-1 border-black/10 bg-black/5 rounded-xl p-1.5">
-                  <span className="font-bold text-[10px] text-black/50 pl-1">น้ำหนักรวม</span>
-                  <span className="font-bold text-sm bg-gradient-to-l from-black/90 to-yellow-600 bg-clip-text text-transparent pl-1">
-                    {refWeight.toLocaleString(undefined, { maximumFractionDigits: 2 })}
-                  </span>
-                </div>
-                <div className="flex flex-col border-1 border-yellow-300 bg-yellow-50 rounded-xl p-1.5">
                   <span className="font-bold text-[10px] text-black/50 pl-1">ราคาเฉลี่ย (บาท)</span>
                   <span className="font-bold text-sm text-yellow-700 pl-1">
                     {refAvgPrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </span>
                 </div>
                 <div className="flex flex-col border-1 border-black/10 bg-black/5 rounded-xl p-1.5">
-                  <span className="font-bold text-[10px] text-black/50 pl-1">ยอดรวม</span>
+                  <span className="font-bold text-[10px] text-black/50 pl-1">ยอดรวมที่ขาย</span>
                   <span className="font-bold text-sm bg-gradient-to-l from-black/90 to-yellow-600 bg-clip-text text-transparent pl-1">
                     {refTotal.toLocaleString()}
                   </span>
                 </div>
+                {processedAmount > 0 && (
+                  <>
+                    <div className="flex flex-col border-1 border-blue-200 bg-blue-50 rounded-xl p-1.5">
+                      <span className="font-bold text-[10px] text-black/50 pl-1">ส่งไปแล้ว</span>
+                      <span className="font-bold text-sm text-blue-700 pl-1">
+                        {processedAmount.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                      </span>
+                    </div>
+                    <div className={`flex flex-col border-1 rounded-xl p-1.5 ${(refTotal - processedAmount) < 0 ? "border-red-200 bg-red-50" : "border-green-200 bg-green-50"}`}>
+                      <span className="font-bold text-[10px] text-black/50 pl-1">คงเหลือ</span>
+                      <span className={`font-bold text-sm pl-1 ${(refTotal - processedAmount) < 0 ? "text-red-600" : "text-green-700"}`}>
+                        {(refTotal - processedAmount).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                      </span>
+                    </div>
+                  </>
+                )}
               </div>
               <div className="flex flex-col gap-y-1 overflow-y-auto scrollbar-hide">
                 {referenceItems.map((it, i) => (
@@ -430,6 +509,65 @@ export default function QuotationPage() {
         </div>
       </div>
 
+      {/* Delivery choice: รอส่งเพิ่ม vs บันทึกเลย — shown in bill mode only */}
+      <Modal isOpen={showDeliveryChoice} onOpenChange={setShowDeliveryChoice} size="sm" backdrop="blur">
+        <ModalContent>
+          {(onClose) => (
+            <>
+              <ModalHeader className="flex flex-col gap-0.5">
+                <div className="flex items-center gap-2">
+                  <Truck size={18} className="text-yellow-600" />
+                  <span className="font-bold text-base bg-gradient-to-l from-black/90 to-yellow-600 bg-clip-text text-transparent">
+                    บันทึกทองที่หลอม
+                  </span>
+                </div>
+                <span className="text-xs font-normal text-black/50">เลือกการดำเนินการสำหรับรายการนี้</span>
+              </ModalHeader>
+              <ModalBody className="gap-y-3">
+                {partialError && (
+                  <div className="text-red-500 text-sm bg-red-50 border border-red-200 rounded-xl px-4 py-2">
+                    {partialError}
+                  </div>
+                )}
+                <div className="flex flex-col gap-y-2">
+                  <div className="flex flex-col border-1 border-black/10 bg-black/5 rounded-2xl p-3 gap-y-1">
+                    <span className="font-bold text-sm text-black/70">น้ำหนักรวม</span>
+                    <span className="font-bold text-lg bg-gradient-to-l from-black/90 to-yellow-600 bg-clip-text text-transparent">
+                      {quotation.reduce((s, i) => s + (i.weight || 0), 0).toLocaleString(undefined, { maximumFractionDigits: 4 })}
+                    </span>
+                  </div>
+                  <div className="flex flex-col border-1 border-black/10 bg-black/5 rounded-2xl p-3 gap-y-1">
+                    <span className="font-bold text-sm text-black/70">ยอดรวม</span>
+                    <span className="font-bold text-lg bg-gradient-to-l from-black/90 to-yellow-600 bg-clip-text text-transparent">
+                      {quotation.reduce((s, i) => s + i.total, 0).toLocaleString(undefined, { minimumFractionDigits: 2 })} บาท
+                    </span>
+                  </div>
+                </div>
+              </ModalBody>
+              <ModalFooter className="flex-col gap-y-2">
+                <Button
+                  className="w-full bg-gradient-to-r from-blue-500 to-blue-600 text-white font-bold"
+                  onPress={handlePartialDeliver}
+                  isLoading={partialSaving}
+                >
+                  รอส่งเพิ่ม
+                </Button>
+                <Button
+                  className="w-full bg-gradient-to-r from-[#c09c42] to-yellow-600 text-white font-bold"
+                  onPress={() => { onClose(); setShowTerms(true); }}
+                  isDisabled={partialSaving}
+                >
+                  บันทึกเลย (ออกบิล)
+                </Button>
+                <Button variant="light" onPress={onClose} isDisabled={partialSaving} className="w-full">
+                  ยกเลิก
+                </Button>
+              </ModalFooter>
+            </>
+          )}
+        </ModalContent>
+      </Modal>
+
       {/* Rules + signature step — shown before the quotation preview */}
       <Modal isOpen={showTerms} onOpenChange={setShowTerms} size="2xl" scrollBehavior="inside">
         <ModalContent>
@@ -511,7 +649,7 @@ export default function QuotationPage() {
                   <ImageUploadGroup label="รูปบนตราชั่ง / หลังหลอม (ไม่บังคับ)" files={afterFiles} setFiles={setAfterFiles} />
                 </div>
                 <PreviewQuote
-                  items={quotation}
+                  items={previewItems}
                   onPrint={() => window.print()}
                   store={headerStore}
                   customerName={signerName}

@@ -74,6 +74,7 @@ export interface ComputeInput {
   percent: number;
   plus: number; // raw plus as entered (baht or %, per the gold type's plus_type)
   weight: number;
+  plusType?: number; // per-item override: 0=บาท, 1=% (falls back to goldType.plus_type)
 }
 
 // computeItem mirrors the create screen exactly:
@@ -81,13 +82,14 @@ export interface ComputeInput {
 // - per-gram comes from the formula steps, or the legacy price·%+plus when none
 // - when the formula already consumes weight, its output IS the total (do NOT
 //   multiply by weight again); otherwise total = perGram · weight
-export function computeItem({ goldType, price, percent, plus, weight }: ComputeInput): { perGram: number; total: number } {
+export function computeItem({ goldType, price, percent, plus, weight, plusType }: ComputeInput): { perGram: number; total: number } {
   const hasFormula = goldType ? parseSteps(goldType.formula_steps).length > 0 : false;
   const usedVars: Set<OperandType> = goldType && hasFormula
     ? getUsedVars(goldType)
     : new Set<OperandType>(["percent", "plus"]);
 
-  const plusBaht = goldType?.plus_type === 1 ? price * (plus / 100) : plus;
+  const effectivePlusType = plusType ?? goldType?.plus_type ?? 0;
+  const plusBaht = effectivePlusType === 1 ? price * (plus / 100) : plus;
   const vars: FormulaVars = { price, percent, plus: plusBaht, weight };
 
   const perGram = goldType && hasFormula

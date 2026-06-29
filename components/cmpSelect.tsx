@@ -26,7 +26,7 @@ export const CmpSelect = ({
         label ? <div className=" font-bold text-md">{label}</div> : undefined
       }
       placeholder={placeholder}
-      value={value}
+      selectedKeys={value ? [value] : []}
       onSelectionChange={(value) => onChange(value.currentKey as string)}
       classNames={{
         trigger:
