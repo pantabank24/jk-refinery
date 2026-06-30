@@ -4,12 +4,14 @@ import { useEffect, useState } from "react";
 import { Input } from "@heroui/input";
 import { Button } from "@heroui/button";
 import { Textarea } from "@heroui/input";
-import { ArrowLeft, Save } from "lucide-react";
+import { ArrowLeft, Save, Trash2 } from "lucide-react";
 import { useRouter, useParams } from "next/navigation";
 import { api } from "@/lib/api";
 import { Switch } from "@heroui/switch";
+import { useDisclosure } from "@heroui/modal";
 import { useAuth } from "@/contexts/auth-context";
 import { ShieldOff } from "lucide-react";
+import { ConfirmDeleteModal } from "@/components/confirmDeleteModal";
 
 export default function EditStorePage() {
   const router = useRouter();
@@ -34,6 +36,21 @@ export default function EditStorePage() {
   const [isActive, setIsActive] = useState(true);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const delDisc = useDisclosure();
+  const [deleting, setDeleting] = useState(false);
+
+  const handleDelete = async () => {
+    setDeleting(true);
+    try {
+      await api.delete(`/stores/${storeId}`);
+      router.push("/stores");
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "ลบร้านไม่สำเร็จ");
+      delDisc.onClose();
+    } finally {
+      setDeleting(false);
+    }
+  };
 
   useEffect(() => {
     api.get<{ name: string; address: string; phone: string; tax_id: string; tax_name: string; website: string; is_active: boolean }>(`/stores/${storeId}`).then((res) => {
@@ -70,9 +87,14 @@ export default function EditStorePage() {
         <Button isIconOnly variant="light" onPress={() => router.back()} className="text-[#c09c42]">
           <ArrowLeft size={20} />
         </Button>
-        <div className="font-bold text-2xl bg-gradient-to-l from-black/90 to-yellow-600 bg-clip-text text-transparent">
+        <div className="font-bold text-2xl bg-gradient-to-l from-black/90 to-yellow-600 bg-clip-text text-transparent flex-1">
           แก้ไขร้าน
         </div>
+        {hasPermission("stores.delete") && (
+          <Button isIconOnly variant="light" color="danger" onPress={delDisc.onOpen}>
+            <Trash2 size={20} />
+          </Button>
+        )}
       </div>
 
       <div className="w-full max-w-xl border-1 border-black/10 bg-black/5 backdrop-blur-xl rounded-3xl p-6">
@@ -102,6 +124,15 @@ export default function EditStorePage() {
           </Button>
         </form>
       </div>
+
+      <ConfirmDeleteModal
+        isOpen={delDisc.isOpen}
+        onClose={delDisc.onClose}
+        onConfirm={handleDelete}
+        name={name}
+        related="สาขาทั้งหมดของร้านนี้จะถูกลบไปด้วย"
+        loading={deleting}
+      />
     </div>
   );
 }

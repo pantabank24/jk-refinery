@@ -13,8 +13,9 @@ import {
   useDisclosure, Tabs, Tab, Select, SelectItem,
   Popover, PopoverTrigger, PopoverContent,
 } from "@heroui/react";
-import { ArrowLeft, Coins, Pencil, Plus, Filter } from "lucide-react";
+import { ArrowLeft, Coins, Pencil, Plus, Filter, Trash2 } from "lucide-react";
 import { BoxCard } from "@/components/boxcard";
+import { ConfirmDeleteModal } from "@/components/confirmDeleteModal";
 import { MemberCard } from "../_components/memberCard";
 
 interface MemberUser {
@@ -48,6 +49,7 @@ interface CreditTx {
 interface QuotationItem {
   type_name: string;
   weight: number;
+  total?: number;
 }
 
 interface Quotation {
@@ -75,7 +77,7 @@ const fmtMoney = (n: number) => n.toLocaleString(undefined, { minimumFractionDig
 const fmtGram = (n: number) => n.toLocaleString(undefined, { maximumFractionDigits: 2 });
 
 // Compact overview stat card used in the member quotation summary.
-function StatCard({ title, value, unit, highlight }: { title: string; value: string; unit?: string; highlight?: boolean }) {
+function StatCard({ title, value, unit, highlight, sub }: { title: string; value: string; unit?: string; highlight?: boolean; sub?: string }) {
   return (
     <div className={`flex flex-col border-1 border-black/10 rounded-xl p-2 ${highlight ? "bg-gradient-to-br from-yellow-200/60 to-transparent" : "bg-black/5"}`}>
       <span className="text-[10px] font-bold text-black/50">{title}</span>
@@ -83,6 +85,7 @@ function StatCard({ title, value, unit, highlight }: { title: string; value: str
         <span className="font-bold text-sm bg-gradient-to-l from-black/90 to-yellow-600 bg-clip-text text-transparent break-all">{value}</span>
         {unit && <span className="text-[10px] text-black/40">{unit}</span>}
       </div>
+      {sub && <span className="text-[10px] font-bold text-yellow-700/70 break-all">{sub}</span>}
     </div>
   );
 }
@@ -119,6 +122,17 @@ export const MemberDetail = () => {
 
   // Credit modal
   const { isOpen, onOpen, onOpenChange } = useDisclosure();
+  const delDisc = useDisclosure();
+  const [deleting, setDeleting] = useState(false);
+
+  const handleDeleteMember = async () => {
+    if (!memberId) return;
+    setDeleting(true);
+    try {
+      await api.delete(`/members/${memberId}`);
+      router.push("/members");
+    } catch { delDisc.onClose(); } finally { setDeleting(false); }
+  };
   const [creditAction, setCreditAction] = useState<"deposit" | "withdraw">("deposit");
   const [creditAmount, setCreditAmount] = useState("");
   const [creditDesc, setCreditDesc] = useState("");
@@ -235,6 +249,7 @@ export const MemberDetail = () => {
     });
 
     const grams: Record<Metal, number> = { gold: 0, silver: 0, platinum: 0, palladium: 0 };
+    const amounts: Record<Metal, number> = { gold: 0, silver: 0, platinum: 0, palladium: 0 };
     let total = 0;
     let creditUsed = 0;
     for (const q of list) {
@@ -242,10 +257,13 @@ export const MemberDetail = () => {
       if (q.status === 1) creditUsed += q.total_amount; // approved → credit deducted
       for (const it of q.items ?? []) {
         const metal = metalOf(it.type_name);
-        if (metal) grams[metal] += it.weight || 0;
+        if (metal) {
+          grams[metal] += it.weight || 0;
+          amounts[metal] += it.total || 0;
+        }
       }
     }
-    return { filteredQuotations: list, overview: { count: list.length, total, creditUsed, grams } };
+    return { filteredQuotations: list, overview: { count: list.length, total, creditUsed, grams, amounts } };
   }, [quotations, qSearch, qStatus, qFrom, qTo]);
 
   if (loading) {
@@ -294,6 +312,11 @@ export const MemberDetail = () => {
             </span>
           </Button>
         )}
+        {hasPermission("members.delete") && memberId && (
+          <Button isIconOnly size="sm" variant="light" color="danger" onPress={delDisc.onOpen}>
+            <Trash2 size={18} />
+          </Button>
+        )}
       </div>
 
       <div className="flex flex-col md:flex-row w-full flex-1 min-h-0 gap-x-5 gap-y-4 overflow-y-auto md:overflow-hidden scrollbar-hide">
@@ -334,10 +357,10 @@ export const MemberDetail = () => {
             <div className="grid grid-cols-2 gap-2">
               <StatCard title="จำนวนใบ" value={overview.count.toLocaleString()} unit="ใบ" />
               <StatCard title="ใช้เครดิตไป" value={fmtMoney(overview.creditUsed)} unit="บาท" />
-              <StatCard title="ทอง" value={fmtGram(overview.grams.gold)} unit="กรัม" />
-              <StatCard title="เงิน" value={fmtGram(overview.grams.silver)} unit="กรัม" />
-              <StatCard title="แพลทินัม" value={fmtGram(overview.grams.platinum)} unit="กรัม" />
-              <StatCard title="แพลเลเดียม" value={fmtGram(overview.grams.palladium)} unit="กรัม" />
+              <StatCard title="ทอง" value={fmtGram(overview.grams.gold)} unit="กรัม" sub={`${fmtMoney(overview.amounts.gold)} บาท`} />
+              <StatCard title="เงิน" value={fmtGram(overview.grams.silver)} unit="กรัม" sub={`${fmtMoney(overview.amounts.silver)} บาท`} />
+              <StatCard title="แพลทินัม" value={fmtGram(overview.grams.platinum)} unit="กรัม" sub={`${fmtMoney(overview.amounts.platinum)} บาท`} />
+              <StatCard title="แพลเลเดียม" value={fmtGram(overview.grams.palladium)} unit="กรัม" sub={`${fmtMoney(overview.amounts.palladium)} บาท`} />
             </div>
           </div>
         </div>
@@ -606,6 +629,15 @@ export const MemberDetail = () => {
           )}
         </ModalContent>
       </Modal>
+
+      <ConfirmDeleteModal
+        isOpen={delDisc.isOpen}
+        onClose={delDisc.onClose}
+        onConfirm={handleDeleteMember}
+        name={member ? `${member.fname} ${member.lname}`.trim() : undefined}
+        related="ประวัติใบเสนอราคา/เครดิตจะยังคงอยู่ในระบบ"
+        loading={deleting}
+      />
     </div>
   );
 };

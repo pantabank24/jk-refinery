@@ -2,7 +2,8 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { Avatar } from "@heroui/avatar";
-import { Download, CheckCircle, XCircle, Pencil, ChevronDown, AlertCircle } from "lucide-react";
+import { Download, CheckCircle, XCircle, Pencil, ChevronDown, AlertCircle, Trash2 } from "lucide-react";
+import { ConfirmDeleteModal } from "@/components/confirmDeleteModal";
 import moment from "moment";
 import { CmpInput } from "@/components/cmpInput";
 import { api } from "@/lib/api";
@@ -105,6 +106,10 @@ export default function QuoteList() {
   const approveDisc = useDisclosure();
   const [approving, setApproving] = useState(false);
 
+  // ── Delete modal ──
+  const deleteDisc = useDisclosure();
+  const [deleting, setDeleting] = useState(false);
+
   // ── Reject modal ──
   const rejectDisc = useDisclosure();
   const [rejectReason, setRejectReason] = useState("");
@@ -177,6 +182,17 @@ export default function QuoteList() {
 
   // ── Approve ──
   const openApprove = () => { approveDisc.onOpen(); };
+
+  const handleDeleteQuotation = async () => {
+    if (!detailQ) return;
+    setDeleting(true);
+    try {
+      await api.delete(`/quotations/${detailQ.id}`);
+      deleteDisc.onClose();
+      detailDisc.onClose();
+      fetchQuotations();
+    } catch { /* ignore */ } finally { setDeleting(false); }
+  };
 
   const handleApprove = async () => {
     if (!detailQ) return;
@@ -487,9 +503,24 @@ export default function QuoteList() {
                 ยกเลิก
               </Button>
             )}
+            {/* Permanently delete the quotation (cascade soft-delete) */}
+            {hasPermission("quotations.delete") && (
+              <Button color="danger" startContent={<Trash2 size={14} />} onPress={deleteDisc.onOpen}>
+                ลบ
+              </Button>
+            )}
           </ModalFooter>
         </ModalContent>
       </Modal>
+
+      <ConfirmDeleteModal
+        isOpen={deleteDisc.isOpen}
+        onClose={deleteDisc.onClose}
+        onConfirm={handleDeleteQuotation}
+        name={detailQ?.code}
+        related={detailQ?.items?.length ? `รวมรายการสินค้า ${detailQ.items.length} รายการ (เครดิตไม่คืน แต่ยังแสดงในประวัติ)` : undefined}
+        loading={deleting}
+      />
 
       {/* ════════════════════════════════
            APPROVE CONFIRM MODAL

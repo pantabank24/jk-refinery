@@ -2,7 +2,8 @@
 
 import { useEffect, useState, useCallback, useMemo } from "react";
 import { Avatar } from "@heroui/avatar";
-import { CheckCircle, XCircle, FileUp, AlertCircle } from "lucide-react";
+import { CheckCircle, XCircle, FileUp, AlertCircle, Trash2 } from "lucide-react";
+import { ConfirmDeleteModal } from "@/components/confirmDeleteModal";
 import moment from "moment";
 import { CmpInput } from "@/components/cmpInput";
 import { api } from "@/lib/api";
@@ -115,6 +116,9 @@ export default function BillsList() {
 
   const approveDisc = useDisclosure();
   const [approving, setApproving] = useState(false);
+
+  const deleteDisc = useDisclosure();
+  const [deleting, setDeleting] = useState(false);
 
   const cancelDisc = useDisclosure();
   const [cancelReason, setCancelReason] = useState("");
@@ -268,6 +272,19 @@ export default function BillsList() {
       await afterAction();
     } catch { /* ignore */ } finally {
       setCancelling(false);
+    }
+  };
+
+  const handleDeleteBill = async () => {
+    if (!detailB) return;
+    setDeleting(true);
+    try {
+      await api.delete(`/bills/${detailB.id}`);
+      deleteDisc.onClose();
+      detailDisc.onClose();
+      await afterAction();
+    } catch { /* ignore */ } finally {
+      setDeleting(false);
     }
   };
 
@@ -606,9 +623,24 @@ export default function BillsList() {
                 อนุมัติปิดบิล
               </Button>
             )}
+            {/* Permanently delete the bill (cascade soft-delete; drops debt) */}
+            {canApprove && detailB && (
+              <Button color="danger" startContent={<Trash2 size={14} />} onPress={deleteDisc.onOpen}>
+                ลบ
+              </Button>
+            )}
           </ModalFooter>
         </ModalContent>
       </Modal>
+
+      <ConfirmDeleteModal
+        isOpen={deleteDisc.isOpen}
+        onClose={deleteDisc.onClose}
+        onConfirm={handleDeleteBill}
+        name={detailB?.code}
+        related="รายการสินค้า ประวัติการส่ง และยอดหนี้/เครดิตของบิลนี้จะถูกลบออกจากการคำนวณ"
+        loading={deleting}
+      />
 
       {/* ISSUE CONFIRM */}
       <Modal isOpen={issueDisc.isOpen} onClose={issueDisc.onClose} size="sm">

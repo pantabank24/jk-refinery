@@ -2,12 +2,14 @@
 
 import { useEffect, useState } from "react";
 import { Button } from "@heroui/button";
-import { ArrowLeft, Plus, Edit, MapPin, Phone } from "lucide-react";
+import { ArrowLeft, Plus, Edit, MapPin, Phone, Trash2 } from "lucide-react";
 import { useRouter, useParams } from "next/navigation";
 import { api } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
 import { Chip } from "@heroui/chip";
 import { Spinner } from "@heroui/spinner";
+import { useDisclosure } from "@heroui/modal";
+import { ConfirmDeleteModal } from "@/components/confirmDeleteModal";
 
 interface BranchData {
   id: number;
@@ -36,6 +38,16 @@ export default function StoreDetailPage() {
   const { hasPermission } = useAuth();
   const [store, setStore] = useState<StoreDetail | null>(null);
   const [loading, setLoading] = useState(true);
+  const delDisc = useDisclosure();
+  const [deleting, setDeleting] = useState(false);
+
+  const handleDelete = async () => {
+    setDeleting(true);
+    try {
+      await api.delete(`/stores/${storeId}`);
+      router.push("/stores");
+    } catch { delDisc.onClose(); } finally { setDeleting(false); }
+  };
 
   useEffect(() => {
     const fetchStore = async () => {
@@ -84,6 +96,11 @@ export default function StoreDetailPage() {
               onPress={() => router.push(`/stores/${storeId}/edit`)}
             >
               <div className="bg-gradient-to-r from-black/90 to-yellow-600 bg-clip-text text-transparent">แก้ไข</div>
+            </Button>
+          )}
+          {hasPermission("stores.delete") && (
+            <Button isIconOnly variant="light" color="danger" size="md" className="rounded-4xl" onPress={delDisc.onOpen}>
+              <Trash2 size={18} />
             </Button>
           )}
         </div>
@@ -155,6 +172,15 @@ export default function StoreDetailPage() {
           </div>
         )}
       </div>
+
+      <ConfirmDeleteModal
+        isOpen={delDisc.isOpen}
+        onClose={delDisc.onClose}
+        onConfirm={handleDelete}
+        name={store.name}
+        related={store.branches?.length ? `สาขาทั้งหมด ${store.branches.length} สาขาจะถูกลบไปด้วย` : undefined}
+        loading={deleting}
+      />
     </div>
   );
 }

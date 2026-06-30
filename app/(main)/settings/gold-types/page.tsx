@@ -9,6 +9,7 @@ import { Input } from "@heroui/input";
 import { Select, SelectItem } from "@heroui/select";
 import { Modal, ModalContent, ModalHeader, ModalBody, ModalFooter, useDisclosure } from "@heroui/modal";
 import { Pencil, Plus, Trash2, ChevronUp, ChevronDown } from "lucide-react";
+import { ConfirmDeleteModal } from "@/components/confirmDeleteModal";
 
 type OperandType = "number" | "price" | "percent" | "plus" | "weight" | "service";
 type Operator = "+" | "-" | "*" | "/";
@@ -108,6 +109,9 @@ export default function GoldTypesPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const { isOpen, onOpen, onClose } = useDisclosure();
+  const delDisc = useDisclosure();
+  const [delTarget, setDelTarget] = useState<GoldType | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const [selected, setSelected] = useState<GoldType | null>(null);
   const [metal, setMetal] = useState("gold");
   const [priceSource, setPriceSource] = useState("bar_buy");
@@ -133,6 +137,17 @@ export default function GoldTypesPage() {
   };
 
   useEffect(() => { fetchTypes(); }, []);
+
+  const askDelete = (gt: GoldType) => { setDelTarget(gt); delDisc.onOpen(); };
+  const handleDelete = async () => {
+    if (!delTarget) return;
+    setDeleting(true);
+    try {
+      await api.delete(`/gold-types/${delTarget.id}`);
+      delDisc.onClose();
+      fetchTypes();
+    } catch { /* ignore */ } finally { setDeleting(false); }
+  };
 
   const openEdit = (gt: GoldType) => {
     setSelected(gt);
@@ -231,11 +246,18 @@ export default function GoldTypesPage() {
                     </div>
                     {gt.description && <span className="text-xs text-black/50">{gt.description}</span>}
                   </div>
-                  {hasPermission("gold_types.update") && (
-                    <Button isIconOnly size="sm" variant="light" onPress={() => openEdit(gt)}>
-                      <Pencil size={15} className="text-[#c09c42]" />
-                    </Button>
-                  )}
+                  <div className="flex items-center gap-x-1">
+                    {hasPermission("gold_types.update") && (
+                      <Button isIconOnly size="sm" variant="light" onPress={() => openEdit(gt)}>
+                        <Pencil size={15} className="text-[#c09c42]" />
+                      </Button>
+                    )}
+                    {hasPermission("gold_types.delete") && (
+                      <Button isIconOnly size="sm" variant="light" color="danger" onPress={() => askDelete(gt)}>
+                        <Trash2 size={15} />
+                      </Button>
+                    )}
+                  </div>
                 </div>
                 <div className="flex flex-col gap-y-1.5">
                   <span className="text-xs text-black/50">
@@ -520,6 +542,15 @@ export default function GoldTypesPage() {
           </ModalFooter>
         </ModalContent>
       </Modal>
+
+      <ConfirmDeleteModal
+        isOpen={delDisc.isOpen}
+        onClose={delDisc.onClose}
+        onConfirm={handleDelete}
+        name={delTarget?.name}
+        related="ประเภททองนี้จะถูกลบถาวร (ใบเสนอราคาเดิมที่อ้างชื่อนี้ไม่กระทบ)"
+        loading={deleting}
+      />
     </div>
   );
 }

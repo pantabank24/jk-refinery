@@ -8,6 +8,7 @@ import { Button } from "@heroui/button";
 import { Input } from "@heroui/input";
 import { Switch } from "@heroui/switch";
 import { Save, Radio, Building2, Plus, Trash2, CalendarDays, ChevronLeft, ChevronRight } from "lucide-react";
+import { ConfirmDeleteModal } from "@/components/confirmDeleteModal";
 
 interface SystemConfig { key: string; value: string; description: string; }
 
@@ -126,9 +127,16 @@ export default function SalesPricePage() {
     fetchAll();
   };
 
-  const deleteRule = async (id: number) => {
-    await api.delete(`/sales-schedules/${id}`);
-    fetchAll();
+  const [delId, setDelId] = useState<number | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const confirmDeleteRule = async () => {
+    if (delId == null) return;
+    setDeleting(true);
+    try {
+      await api.delete(`/sales-schedules/${delId}`);
+      setDelId(null);
+      fetchAll();
+    } catch { /* ignore */ } finally { setDeleting(false); }
   };
 
   // The range rule covering a given calendar day (latest start wins).
@@ -311,7 +319,7 @@ export default function SalesPricePage() {
                       {canEdit && (
                         <div className="flex items-center gap-x-1">
                           <Button size="sm" variant="light" className="rounded-xl" onPress={() => setForm(r)}>แก้ไข</Button>
-                          <Button size="sm" variant="light" color="danger" isIconOnly className="rounded-xl" onPress={() => deleteRule(r.id)}>
+                          <Button size="sm" variant="light" color="danger" isIconOnly className="rounded-xl" onPress={() => setDelId(r.id)}>
                             <Trash2 size={15} />
                           </Button>
                         </div>
@@ -387,6 +395,14 @@ export default function SalesPricePage() {
           </div>
         </div>
       )}
+
+      <ConfirmDeleteModal
+        isOpen={delId != null}
+        onClose={() => setDelId(null)}
+        onConfirm={confirmDeleteRule}
+        name="กฎนี้"
+        loading={deleting}
+      />
     </div>
   );
 }
