@@ -1,10 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-
-// Same sidecar URL the /realtime-gold POC page uses. The browser connects to
-// tv-price-svc directly over SSE (live, like the POC) instead of polling jk-api.
-const RT_URL = process.env.NEXT_PUBLIC_REALTIME_URL || "http://localhost:8000";
+import { api } from "@/lib/api";
 
 export interface RealtimeGold {
   spot: number | null;
@@ -18,35 +15,42 @@ export interface RealtimeGold {
   version: number;
 }
 
-// useRealtimeGold streams the live gold price from the tv-price-svc sidecar via
-// SSE while `active`. Returns the latest price plus the direction of the last
-// change so callers can flash the number (exactly like the /realtime-gold page).
-export function useRealtimeGold(active: boolean) {
+// useRealtimeGold polls jk-api's /gold-prices/realtime (which proxies the
+// tv-price-svc sidecar over the internal Docker network) while `active`. Going
+// through jk-api keeps the call authenticated and needs no extra public
+// endpoint for the sidecar. Returns the latest price + the direction of the
+// last change so callers can flash the number.
+export function useRealtimeGold(active: boolean, intervalMs = 2000) {
   const [data, setData] = useState<RealtimeGold | null>(null);
   const [dir, setDir] = useState<"up" | "down" | "flat">("flat");
   const prevSpot = useRef<number | null>(null);
 
   useEffect(() => {
     if (!active) return;
-    const es = new EventSource(`${RT_URL}/stream`);
+    let stopped = false;
 
-    es.onmessage = (e) => {
-      let d: RealtimeGold;
+    const tick = async () => {
       try {
-        d = JSON.parse(e.data);
+        const res = await api.get<RealtimeGold>("/gold-prices/realtime");
+        const d = (res.data as unknown as RealtimeGold) || null;
+        if (stopped || !d || d.spot == null) return;
+        if (prevSpot.current != null) {
+          setDir(d.spot > prevSpot.current ? "up" : d.spot < prevSpot.current ? "down" : "flat");
+        }
+        prevSpot.current = d.spot;
+        setData(d);
       } catch {
-        return;
+        /* keep last value on transient errors */
       }
-      if (d.spot == null) return;
-      if (prevSpot.current != null) {
-        setDir(d.spot > prevSpot.current ? "up" : d.spot < prevSpot.current ? "down" : "flat");
-      }
-      prevSpot.current = d.spot;
-      setData(d);
     };
 
-    return () => es.close();
-  }, [active]);
+    tick();
+    const id = setInterval(tick, intervalMs);
+    return () => {
+      stopped = true;
+      clearInterval(id);
+    };
+  }, [active, intervalMs]);
 
   return { data, dir };
 }
