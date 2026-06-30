@@ -4,10 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { Spinner } from "@heroui/spinner";
 import { Chip } from "@heroui/chip";
 import { ArrowUp, ArrowDown, Minus, Radio, Wifi, WifiOff } from "lucide-react";
-
-// Sidecar base URL. In the POC the browser talks to tv-price-svc directly;
-// once wired through jk-api this becomes a normal /api/v1 call instead.
-const RT_URL = process.env.NEXT_PUBLIC_REALTIME_URL || "http://localhost:8000";
+import { api } from "@/lib/api";
 
 interface RtState {
   symbol: string;
@@ -48,47 +45,60 @@ export default function RealtimeGoldPage() {
     key: 0,
   });
   const prevSpot = useRef<number | null>(null);
+  const lastVersion = useRef<number | null>(null);
 
+  // Poll jk-api's realtime proxy (works on prod; the sidecar stays internal).
   useEffect(() => {
-    const es = new EventSource(`${RT_URL}/stream`);
+    let stopped = false;
 
-    es.onopen = () => setLive(true);
-    es.onerror = () => setLive(false);
-    es.onmessage = (e) => {
-      let d: RtState;
+    const tick = async () => {
       try {
-        d = JSON.parse(e.data);
+        const res = await api.get<RtState>("/gold-prices/realtime");
+        const d = (res.data as unknown as RtState) || null;
+        if (stopped) return;
+        if (!d || d.spot == null) {
+          setLive(false);
+          return;
+        }
+        setLive(!!d.connected);
+        // Skip if the sidecar hasn't produced a new tick since last poll.
+        if (d.version === lastVersion.current) return;
+        lastVersion.current = d.version;
+
+        // Work out direction vs the previous spot we rendered.
+        let dir: "up" | "down" | "flat" = "flat";
+        if (prevSpot.current != null) {
+          if (d.spot > prevSpot.current) dir = "up";
+          else if (d.spot < prevSpot.current) dir = "down";
+        }
+        prevSpot.current = d.spot;
+
+        setState(d);
+        setFlash({ dir, key: d.version });
+        setTicks((prev) =>
+          [
+            {
+              v: d.version,
+              spot: d.spot!,
+              bar_buy: d.bar_buy!,
+              bar_sell: d.bar_sell!,
+              dir,
+              ts: d.spot_time,
+            },
+            ...prev,
+          ].slice(0, 30)
+        );
       } catch {
-        return;
+        if (!stopped) setLive(false);
       }
-      if (d.spot == null) return;
-
-      // Work out direction vs the previous spot we rendered.
-      let dir: "up" | "down" | "flat" = "flat";
-      if (prevSpot.current != null) {
-        if (d.spot > prevSpot.current) dir = "up";
-        else if (d.spot < prevSpot.current) dir = "down";
-      }
-      prevSpot.current = d.spot;
-
-      setState(d);
-      setFlash({ dir, key: d.version });
-      setTicks((prev) =>
-        [
-          {
-            v: d.version,
-            spot: d.spot!,
-            bar_buy: d.bar_buy!,
-            bar_sell: d.bar_sell!,
-            dir,
-            ts: d.spot_time,
-          },
-          ...prev,
-        ].slice(0, 30)
-      );
     };
 
-    return () => es.close();
+    tick();
+    const id = setInterval(tick, 1500);
+    return () => {
+      stopped = true;
+      clearInterval(id);
+    };
   }, []);
 
   const up = (state?.change ?? 0) >= 0;
