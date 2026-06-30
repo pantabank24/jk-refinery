@@ -2,13 +2,15 @@
 
 import { BoxCard } from "@/components/boxcard";
 import { ArrowUp, ArrowDown, Minus, Plus, List } from "lucide-react";
-import { CmpInput } from "@/components/cmpInput";
+import { DecimalInput } from "@/components/decimalInput";
 import { useState, useEffect } from "react";
 import { CmpSelect, Option } from "@/components/cmpSelect";
 import { QuotationProps } from "./quotation";
 import { api } from "@/lib/api";
 import { Tabs, Tab } from "@heroui/tabs";
-import { Input } from "@heroui/input";
+import { useSalesStatus } from "@/hooks/use-sales-status";
+import { useRealtimeGold } from "@/hooks/use-realtime-gold";
+import { PriceModeChip } from "@/components/sales-status-banner";
 import {
   OperandType,
   GoldType,
@@ -84,6 +86,26 @@ export const Calculate = ({ onAdd, onOpenList, quotationCount = 0, lockMeltType,
   const [plusType, setPlusType] = useState(0); // 0=บาท, 1=%
   const [weight, setWeight] = useState(0);
 
+  // Real-time pricing: when the shop is outside association hours and real-time
+  // mode is on, gold prices stream live. Only applies to the gold tab.
+  const { status: salesStatus } = useSalesStatus();
+  const realtimeActive = salesStatus?.price_mode === "realtime" && metal === "gold";
+  const { data: rt, dir: rtDir } = useRealtimeGold(!!realtimeActive);
+
+  // Effective gold feed: real-time overrides the association price when active.
+  const effGold: GoldPrice | null =
+    realtimeActive && rt && rt.bar_buy != null
+      ? {
+          bar_buy: rt.bar_buy,
+          bar_sell: rt.bar_sell ?? rt.bar_buy,
+          ornament_buy: rt.bar_buy,
+          ornament_sell: rt.bar_sell ?? rt.bar_buy,
+          change_today: rt.change ?? 0,
+          gold_date: "",
+          gold_time: "",
+        }
+      : goldPrice;
+
   useEffect(() => {
     api.get<GoldType[]>("/gold-types")
       .then((res) => {
@@ -113,12 +135,12 @@ export const Calculate = ({ onAdd, onOpenList, quotationCount = 0, lockMeltType,
   // Returns null for manual sources (platinum/palladium) — the user types it.
   const resolvePrice = (gt: GoldType): number | null => {
     const m = gt.metal || "gold";
-    if (m === "gold" && goldPrice) {
+    if (m === "gold" && effGold) {
       const map: Record<string, number> = {
-        bar_buy: goldPrice.bar_buy,
-        bar_sell: goldPrice.bar_sell,
-        ornament_buy: goldPrice.ornament_buy,
-        ornament_sell: goldPrice.ornament_sell,
+        bar_buy: effGold.bar_buy,
+        bar_sell: effGold.bar_sell,
+        ornament_buy: effGold.ornament_buy,
+        ornament_sell: effGold.ornament_sell,
       };
       return map[gt.price_source] ?? 0;
     }
@@ -151,6 +173,17 @@ export const Calculate = ({ onAdd, onOpenList, quotationCount = 0, lockMeltType,
     setPlusType(gt.plus_type ?? 0);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [typeId, goldTypes, goldPrice, silverPrice, forcedPrice]);
+
+  // Real-time tick: live-update ONLY the base price (leave percent/plus/weight
+  // untouched so the user's inputs survive each refresh).
+  useEffect(() => {
+    if (!realtimeActive || !rt || forcedPrice !== undefined) return;
+    const gt = goldTypes.find((t) => String(t.id) === typeId);
+    if (!gt) return;
+    const p = resolvePrice(gt);
+    if (p != null) setPrice(p);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rt, realtimeActive, typeId, goldTypes, forcedPrice]);
 
   const handleMetalChange = (key: string) => {
     setMetal(key);
@@ -196,14 +229,21 @@ export const Calculate = ({ onAdd, onOpenList, quotationCount = 0, lockMeltType,
 
   // Metal-aware price header values.
   const metalLabel = METALS.find((m) => m.key === metal)?.label ?? "";
-  const hasFeed = metal === "gold" ? !!goldPrice : metal === "silver" ? !!silverPrice : false;
-  const headerBuy = metal === "gold" ? goldPrice?.bar_buy : metal === "silver" ? silverPrice?.buy : undefined;
-  const headerSell = metal === "gold" ? goldPrice?.bar_sell : metal === "silver" ? silverPrice?.sell : undefined;
-  const headerChange = (metal === "gold" ? goldPrice?.change_today : metal === "silver" ? silverPrice?.change_today : 0) ?? 0;
-  const headerDate = metal === "gold"
+  const hasFeed = metal === "gold" ? !!effGold : metal === "silver" ? !!silverPrice : false;
+  const headerBuy = metal === "gold" ? effGold?.bar_buy : metal === "silver" ? silverPrice?.buy : undefined;
+  const headerSell = metal === "gold" ? effGold?.bar_sell : metal === "silver" ? silverPrice?.sell : undefined;
+  const headerChange = (metal === "gold" ? effGold?.change_today : metal === "silver" ? silverPrice?.change_today : 0) ?? 0;
+  const headerDate = realtimeActive
+    ? `เรียลไทม์ ${salesStatus?.now ?? ""}`.trim()
+    : metal === "gold"
     ? `${goldPrice?.gold_date ?? ""} ${goldPrice?.gold_time ?? ""}`.trim()
     : metal === "silver"
     ? `${silverPrice?.price_date ?? ""} ${silverPrice?.price_time ?? ""}`.trim()
+    : "";
+
+  // Flash the header price cards green/red on each real-time change.
+  const flashClass = realtimeActive
+    ? rtDir === "up" ? "rt-flash-up" : rtDir === "down" ? "rt-flash-down" : ""
     : "";
 
   return (
@@ -221,6 +261,12 @@ export const Calculate = ({ onAdd, onOpenList, quotationCount = 0, lockMeltType,
             <Tab key={m.key} title={<span className="font-bold text-xs">{m.label}</span>} />
           ))}
         </Tabs>
+
+        {salesStatus && (
+          <div className="flex justify-end px-1">
+            <PriceModeChip status={salesStatus} />
+          </div>
+        )}
 
         {isManualPrice ? (
           <div className="flex flex-row w-full bg-gradient-to-br from-black/10 to-transparent border-1 border-black/10 p-2 rounded-3xl">
@@ -261,7 +307,7 @@ export const Calculate = ({ onAdd, onOpenList, quotationCount = 0, lockMeltType,
         )}
 
         {!isManualPrice && (
-          <div className="w-full grid grid-cols-2 gap-x-2">
+          <div key={realtimeActive ? rt?.version : undefined} className={`w-full grid grid-cols-2 gap-x-2 ${flashClass}`}>
             <BoxCard
               textColor="bg-gradient-to-l from-black/90 to-yellow-600 bg-clip-text text-transparent"
               flex
@@ -291,13 +337,10 @@ export const Calculate = ({ onAdd, onOpenList, quotationCount = 0, lockMeltType,
         )}
 
         <div className=" w-full grid grid-cols-2 gap-2 mb-5">
-          <CmpInput
+          <DecimalInput
             label={isManualPrice ? `ราคา${metalLabel} (ต่อกรัม)` : "ราคา"}
-            placeholder="0"
-            value={price === 0 ? "" : price.toString()}
-            onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-              if (forcedPrice === undefined) setPrice(parseFloat(e.target.value) || 0);
-            }}
+            value={price}
+            onChange={(n) => { if (forcedPrice === undefined) setPrice(n); }}
             isReadOnly={forcedPrice !== undefined}
           />
           {/* Type selector hidden when locked to melt type or when metal has only one type */}
@@ -312,21 +355,17 @@ export const Calculate = ({ onAdd, onOpenList, quotationCount = 0, lockMeltType,
           )}
           {/* Show each variable input only when the formula uses it */}
           {usedVars.has("percent") && (
-            <CmpInput
+            <DecimalInput
               label="เปอร์เซ็นต์"
-              placeholder="0"
-              value={percent === 0 ? "" : percent.toString()}
-              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setPercent(parseFloat(e.target.value) || 0)}
+              value={percent}
+              onChange={setPercent}
             />
           )}
           {usedVars.has("plus") && (
-            <Input
-              labelPlacement="inside"
-              label={<div className="font-bold text-md">ราคาบวก</div>}
-              placeholder="0"
-              value={plus === 0 ? "" : plus.toString()}
-              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setPlus(parseFloat(e.target.value) || 0)}
-              classNames={{ inputWrapper: "bg-gradient-to-br from-black/10 to-transparent border-1 border-black/10 rounded-2xl" }}
+            <DecimalInput
+              label="ราคาบวก"
+              value={plus}
+              onChange={setPlus}
               endContent={
                 <div className="flex gap-0.5 items-center shrink-0">
                   <button
@@ -347,11 +386,10 @@ export const Calculate = ({ onAdd, onOpenList, quotationCount = 0, lockMeltType,
               }
             />
           )}
-          <CmpInput
+          <DecimalInput
             label="น้ำหนัก"
-            placeholder="0"
-            value={weight === 0 ? "" : weight.toString()}
-            onChange={(e: React.ChangeEvent<HTMLInputElement>) => setWeight(parseFloat(e.target.value) || 0)}
+            value={weight}
+            onChange={setWeight}
           />
         </div>
 
@@ -388,6 +426,19 @@ export const Calculate = ({ onAdd, onOpenList, quotationCount = 0, lockMeltType,
           </div>
         </div>
       </div>
+
+      <style jsx>{`
+        .rt-flash-up { animation: rtUp 0.6s ease-out; }
+        .rt-flash-down { animation: rtDown 0.6s ease-out; }
+        @keyframes rtUp {
+          0% { background-color: rgba(22,163,74,0.18); border-radius: 1rem; }
+          100% { background-color: transparent; }
+        }
+        @keyframes rtDown {
+          0% { background-color: rgba(220,38,38,0.18); border-radius: 1rem; }
+          100% { background-color: transparent; }
+        }
+      `}</style>
     </div>
   );
 }

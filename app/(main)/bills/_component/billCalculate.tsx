@@ -6,6 +6,9 @@ import { useState, useEffect } from "react";
 import { QuotationProps } from "../../quotation/_component/quotation";
 import { api } from "@/lib/api";
 import { GoldType, computeItem } from "@/lib/gold-calc";
+import { useSalesStatus } from "@/hooks/use-sales-status";
+import { useRealtimeGold } from "@/hooks/use-realtime-gold";
+import { PriceModeChip } from "@/components/sales-status-banner";
 
 interface GoldPrice {
   bar_buy: number;
@@ -37,6 +40,24 @@ export const BillCalculate = ({ onAdd }: Props) => {
   const [price, setPrice] = useState(0);
   const [weight, setWeight] = useState(WEIGHT_MIN);
 
+  // Real-time pricing when outside association hours and the mode is on.
+  const { status: salesStatus } = useSalesStatus();
+  const realtimeActive = salesStatus?.price_mode === "realtime";
+  const { data: rt, dir: rtDir } = useRealtimeGold(!!realtimeActive);
+
+  const effGold: GoldPrice | null =
+    realtimeActive && rt && rt.bar_buy != null
+      ? {
+          bar_buy: rt.bar_buy,
+          bar_sell: rt.bar_sell ?? rt.bar_buy,
+          ornament_buy: rt.bar_buy,
+          ornament_sell: rt.bar_sell ?? rt.bar_buy,
+          change_today: rt.change ?? 0,
+          gold_date: "",
+          gold_time: "",
+        }
+      : goldPrice;
+
   useEffect(() => {
     api.get<GoldType[]>("/gold-types")
       .then((res) => {
@@ -50,17 +71,19 @@ export const BillCalculate = ({ onAdd }: Props) => {
       .catch(() => { });
   }, []);
 
-  // Auto-fill price from the gold bar's price source whenever data loads.
+  // Auto-fill price from the gold bar's price source whenever the feed changes
+  // (association load, or each real-time tick via effGold).
   useEffect(() => {
-    if (!goldBar || !goldPrice) return;
+    if (!goldBar || !effGold) return;
     const sourceMap: Record<string, number> = {
-      bar_buy: goldPrice.bar_buy,
-      bar_sell: goldPrice.bar_sell,
-      ornament_buy: goldPrice.ornament_buy,
-      ornament_sell: goldPrice.ornament_sell,
+      bar_buy: effGold.bar_buy,
+      bar_sell: effGold.bar_sell,
+      ornament_buy: effGold.ornament_buy,
+      ornament_sell: effGold.ornament_sell,
     };
-    setPrice(sourceMap[goldBar.price_source] ?? goldPrice.bar_buy ?? 0);
-  }, [goldBar, goldPrice]);
+    setPrice(sourceMap[goldBar.price_source] ?? effGold.bar_buy ?? 0);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [goldBar, goldPrice, rt, realtimeActive]);
 
   // Gold-bar price is quoted per baht-weight, so total = price × weight(บาท).
   // perGram is the per-gram figure (informational, weight-independent).
@@ -97,28 +120,34 @@ export const BillCalculate = ({ onAdd }: Props) => {
   return (
     <div className="flex flex-col h-full w-full xl:w-[700px] overflow-hidden">
       <div className="flex flex-col h-full border-1 border-black/10 bg-black/5 backdrop-blur-xl rounded-4xl p-3 gap-y-2 overflow-y-scroll scrollbar-hide">
-        {goldPrice ? (
+        {salesStatus && (
+          <div className="flex justify-end px-1">
+            <PriceModeChip status={salesStatus} />
+          </div>
+        )}
+
+        {effGold ? (
           <div className="flex flex-row w-full bg-gradient-to-br from-black/10 to-transparent border-1 border-black/10 p-2 rounded-3xl">
             <div className="flex flex-row w-full justify-between">
               <span className="text-[10px] font-bold text-black/50">
-                อัปเดท: {goldPrice.gold_date} {goldPrice.gold_time}
+                {realtimeActive ? `เรียลไทม์ ${salesStatus?.now ?? ""}` : `อัปเดท: ${effGold.gold_date} ${effGold.gold_time}`}
               </span>
               <div className="flex flex-row items-center gap-x-2">
-                {goldPrice.change_today !== 0 && (
-                  <div className={`flex flex-row items-center ${changeColor(goldPrice.change_today)}`}>
-                    {goldPrice.change_today > 0 ? (
+                {effGold.change_today !== 0 && (
+                  <div className={`flex flex-row items-center ${changeColor(effGold.change_today)}`}>
+                    {effGold.change_today > 0 ? (
                       <ArrowUp size={10} className="font-bold" />
-                    ) : goldPrice.change_today < 0 ? (
+                    ) : effGold.change_today < 0 ? (
                       <ArrowDown size={10} className="font-bold" />
                     ) : (
                       <Minus size={10} />
                     )}
-                    <span className="text-[10px] font-bold ml-0.5">{Math.abs(goldPrice.change_today)}</span>
+                    <span className="text-[10px] font-bold ml-0.5">{Math.abs(effGold.change_today)}</span>
                   </div>
                 )}
-                <div className={`flex flex-row items-center ${changeColor(goldPrice.change_today)}`}>
+                <div className={`flex flex-row items-center ${changeColor(effGold.change_today)}`}>
                   <span className="text-[10px] font-bold">วันนี้</span>
-                  <span className="text-[10px] font-bold ml-1">{goldPrice.change_today > 0 ? "+" : ""}{goldPrice.change_today}</span>
+                  <span className="text-[10px] font-bold ml-1">{effGold.change_today > 0 ? "+" : ""}{effGold.change_today}</span>
                 </div>
               </div>
             </div>
@@ -129,18 +158,21 @@ export const BillCalculate = ({ onAdd }: Props) => {
           </div>
         )}
 
-        <div className="w-full grid grid-cols-2 gap-x-2">
+        <div
+          key={realtimeActive ? rt?.version : undefined}
+          className={`w-full grid grid-cols-2 gap-x-2 ${realtimeActive && rtDir === "up" ? "rt-flash-up" : realtimeActive && rtDir === "down" ? "rt-flash-down" : ""}`}
+        >
           <BoxCard
             textColor="bg-gradient-to-l from-black/90 to-yellow-600 bg-clip-text text-transparent"
             flex
             title="ราคารับซื้อ (บาท)"
-            value={goldPrice ? goldPrice.bar_buy.toLocaleString() : "-"}
+            value={effGold ? effGold.bar_buy.toLocaleString() : "-"}
           />
           <BoxCard
             textColor="bg-gradient-to-l from-black/90 to-yellow-600 bg-clip-text text-transparent"
             flex
             title="ราคาขาย (บาท)"
-            value={goldPrice ? goldPrice.bar_sell.toLocaleString() : "-"}
+            value={effGold ? effGold.bar_sell.toLocaleString() : "-"}
           />
         </div>
 
@@ -208,6 +240,19 @@ export const BillCalculate = ({ onAdd }: Props) => {
           </div>
         </div>
       </div>
+
+      <style jsx>{`
+        .rt-flash-up { animation: rtUp 0.6s ease-out; }
+        .rt-flash-down { animation: rtDown 0.6s ease-out; }
+        @keyframes rtUp {
+          0% { background-color: rgba(22,163,74,0.18); border-radius: 1rem; }
+          100% { background-color: transparent; }
+        }
+        @keyframes rtDown {
+          0% { background-color: rgba(220,38,38,0.18); border-radius: 1rem; }
+          100% { background-color: transparent; }
+        }
+      `}</style>
     </div>
   );
 }

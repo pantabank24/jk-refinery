@@ -3,11 +3,16 @@
 import { useEffect, useState, useCallback } from "react";
 import { api } from "@/lib/api";
 
+export type PriceMode = "closed" | "association" | "realtime";
+
 export interface SalesStatus {
   enabled: boolean;
   is_open: boolean;
+  price_mode: PriceMode;
   open_time: string;
   close_time: string;
+  realtime_after_hours: boolean;
+  rule_source: string; // date|weekday|default
   now: string;
 }
 
