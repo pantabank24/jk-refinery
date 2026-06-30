@@ -58,7 +58,7 @@ export const Sidebar = ({ isOpen = false, onClose }: SidebarProps) => {
     { id: 8, name: "ประเภททอง", href: "/settings/gold-types", icon: <Gem size={18} />, show: hasPermission("gold_types.read") },
     { id: 9, name: "ราคาทองคำ", href: "/settings/gold-price", icon: <TrendingUp size={18} />, show: hasPermission("gold_prices.read") },
     { id: 18, name: "ราคาทองเรียลไทม์", href: "/realtime-gold", icon: <Radio size={18} />, show: hasPermission("gold_prices.read") },
-    { id: 13, name: "ราคาเงิน", href: "/settings/silver-price", icon: <Coins size={18} />, show: hasPermission("metal_prices.read") },
+    { id: 19, name: "ราคาเงิน", href: "/settings/silver-price", icon: <Coins size={18} />, show: hasPermission("metal_prices.read") },
     { id: 10, name: "ตั้งค่าระบบ", href: "/settings/config", icon: <SlidersHorizontal size={18} />, show: hasPermission("config.read") },
     { id: 11, name: "จัดการสิทธิ์", href: "/settings/roles", icon: <Shield size={18} />, show: hasPermission("roles.read") },
     { id: 12, name: "Logs การใช้งาน", href: "/settings/logs", icon: <ScrollText size={18} />, show: hasPermission("logs.read") },

@@ -7,7 +7,7 @@ import { Spinner } from "@heroui/spinner";
 import { Button } from "@heroui/button";
 import { Input } from "@heroui/input";
 import { Switch } from "@heroui/switch";
-import { Save, ChevronRight, Tag } from "lucide-react";
+import { Save, ChevronRight, Tag, Keyboard } from "lucide-react";
 import Link from "next/link";
 
 interface SystemConfig {
@@ -60,11 +60,12 @@ export default function ConfigPage() {
   const autoFetch = values["gold_price_auto_fetch"] === "true";
   const cronExpr = values["gold_price_cron"] || "";
 
-  // Keys rendered by dedicated sections / the sales-price page (excluded here).
+  // Keys rendered by dedicated sections / the sales-price & customer-sell pages (excluded here).
   const HANDLED_KEYS = [
     "gold_price_auto_fetch", "gold_price_cron",
     "sales_hours_enabled", "sales_open_time", "sales_close_time",
     "sales_enabled", "sales_realtime_after_hours",
+    "custom_weight_enabled",
   ];
 
   const CRON_PRESETS = [
@@ -176,6 +177,25 @@ export default function ConfigPage() {
               </span>
               <span className="text-xs text-black/50">
                 เปิด/ปิดการขาย · เวลาสมาคม · ราคาเรียลไทม์ · ตารางเวลาล่วงหน้า
+              </span>
+            </div>
+          </div>
+          <ChevronRight size={20} className="text-black/40" />
+        </Link>
+
+        {/* Customer-sell settings — opens a dedicated page */}
+        <Link
+          href="/settings/customer-sell"
+          className="flex flex-row items-center justify-between border-1 border-black/10 bg-black/5 hover:bg-black/10 transition-colors backdrop-blur-xl rounded-3xl p-5"
+        >
+          <div className="flex flex-row items-center gap-x-3">
+            <span className="text-[#c09c42]"><Keyboard size={20} /></span>
+            <div className="flex flex-col">
+              <span className="font-bold text-md bg-gradient-to-l from-black/90 to-yellow-600 bg-clip-text text-transparent">
+                ตั้งค่าลูกค้าขาย
+              </span>
+              <span className="text-xs text-black/50">
+                กำหนดวัน/เวลาที่ลูกค้าพิมพ์น้ำหนักเองได้
               </span>
             </div>
           </div>

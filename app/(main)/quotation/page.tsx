@@ -8,13 +8,14 @@ import { TermsForm } from "./_component/termsForm";
 import { api } from "@/lib/api";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/contexts/auth-context";
-import { ShieldOff, X, Save, AlertCircle, Receipt } from "lucide-react";
+import { ShieldOff, X, Save, AlertCircle, Receipt, Trash2, Camera, Image as ImageIcon } from "lucide-react";
 import {
   Modal,
   ModalContent,
   ModalHeader,
   ModalBody,
   ModalFooter,
+  useDisclosure,
 } from "@heroui/modal";
 import { Button } from "@heroui/button";
 import { Input } from "@heroui/input";
@@ -23,50 +24,72 @@ import { useStore } from "@/contexts/store-context";
 import { useSalesStatus } from "@/hooks/use-sales-status";
 import { SalesStatusBanner } from "@/components/sales-status-banner";
 import { SignaturePad } from "@/components/signature-pad";
+import { WebcamCaptureModal } from "@/components/webcam-capture-modal";
 import { Truck } from "lucide-react";
+import { ConfirmDeleteModal } from "@/components/confirmDeleteModal";
 
-// Reusable typed image-upload block (click to add, thumbnails with remove).
+// Reusable typed image-upload block — a single compact row of thumbnails
+// with an inline "+" tile to add more, instead of a separate dropzone box.
+// The "+" tile offers a choice between picking a file or capturing from the webcam.
 function ImageUploadGroup({
   label, files, setFiles,
 }: { label: string; files: File[]; setFiles: React.Dispatch<React.SetStateAction<File[]>> }) {
+  const [showWebcam, setShowWebcam] = useState(false);
+
   return (
     <div>
-      <label className="block text-sm font-bold text-black/70 mb-2">{label}</label>
-      <label className="flex flex-col items-center justify-center w-full h-20 border-2 border-dashed border-black/20 rounded-2xl cursor-pointer hover:border-[#c09c42]/60 hover:bg-[#c09c42]/5 transition-all">
-        <span className="text-xs text-black/40">คลิกหรือลากรูปมาวาง</span>
-        <input
-          type="file"
-          multiple
-          accept="image/*"
-          className="hidden"
-          onChange={(e) => {
-            if (e.target.files) setFiles((prev) => [...prev, ...Array.from(e.target.files!)]);
-          }}
-        />
-      </label>
-      {files.length > 0 && (
-        <div className="flex flex-wrap gap-2 mt-2">
-          {files.map((f, i) => (
-            <div key={i} className="relative">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={URL.createObjectURL(f)} className="w-12 h-12 object-cover rounded-lg border border-black/10" alt="" />
-              <button
-                type="button"
-                onClick={() => setFiles((prev) => prev.filter((_, idx) => idx !== i))}
-                className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white rounded-full text-[10px] flex items-center justify-center"
-              >
-                ×
-              </button>
-            </div>
-          ))}
-        </div>
-      )}
+      <label className="block text-xs font-bold text-black/60 mb-1.5">{label}</label>
+      <div className="flex flex-wrap gap-1.5">
+        {files.map((f, i) => (
+          <div key={i} className="relative w-12 h-12 shrink-0">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={URL.createObjectURL(f)} className="w-12 h-12 object-cover rounded-lg border border-black/10" alt="" />
+            <button
+              type="button"
+              onClick={() => setFiles((prev) => prev.filter((_, idx) => idx !== i))}
+              className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white rounded-full text-[10px] flex items-center justify-center"
+            >
+              ×
+            </button>
+          </div>
+        ))}
+        <label
+          title="เลือกไฟล์"
+          className="flex items-center justify-center w-12 h-12 shrink-0 border-2 border-dashed border-black/20 rounded-lg cursor-pointer hover:border-[#c09c42]/60 hover:bg-[#c09c42]/5 transition-all"
+        >
+          <ImageIcon size={16} className="text-black/30" />
+          <input
+            key={files.length}
+            type="file"
+            multiple
+            accept="image/*"
+            className="hidden"
+            onChange={(e) => {
+              if (e.target.files) setFiles((prev) => [...prev, ...Array.from(e.target.files!)]);
+            }}
+          />
+        </label>
+        <button
+          type="button"
+          title="ถ่ายภาพจากกล้อง"
+          onClick={() => setShowWebcam(true)}
+          className="flex items-center justify-center w-12 h-12 shrink-0 border-2 border-dashed border-black/20 rounded-lg cursor-pointer hover:border-[#c09c42]/60 hover:bg-[#c09c42]/5 transition-all"
+        >
+          <Camera size={16} className="text-black/30" />
+        </button>
+      </div>
+
+      <WebcamCaptureModal
+        isOpen={showWebcam}
+        onClose={() => setShowWebcam(false)}
+        onCapture={(file) => setFiles((prev) => [...prev, file])}
+      />
     </div>
   );
 }
 
 export default function QuotationPage() {
-  const { hasPermission, credits, refreshUser, user } = useAuth();
+  const { hasPermission, permissions, credits, refreshUser, user } = useAuth();
   const { selectedStore } = useStore();
   // Header store: owner/employee → their own store; master → the store they
   // selected (master users have no personal store_id).
@@ -76,7 +99,12 @@ export default function QuotationPage() {
   const [quotation, setQuotation] = useState<QuotationProps[]>([]);
   const [saving, setSaving] = useState(false);
   const [showTerms, setShowTerms] = useState(false); // rules + signature, before preview
-  const [showPreview, setShowPreview] = useState(false);
+  const [showPreview, setShowPreview] = useState(false); // pre-save review step — no print here
+  // Post-save: shown after the quotation is actually saved, with the real
+  // document number + a print button. The form's state is kept around until
+  // this is dismissed, so the print preview still has its data.
+  const [showPostSavePreview, setShowPostSavePreview] = useState(false);
+  const [savedQuotation, setSavedQuotation] = useState<{ id: number; code: string } | null>(null);
   const router = useRouter();
   const [saveError, setSaveError] = useState("");
   const [showCreditWarning, setShowCreditWarning] = useState(false);
@@ -108,6 +136,10 @@ export default function QuotationPage() {
   const [showDeliveryChoice, setShowDeliveryChoice] = useState(false);
   const [partialSaving, setPartialSaving] = useState(false);
   const [partialError, setPartialError] = useState("");
+
+  // Delete the bill being issued — เผื่อกรณีกดเข้ามาผิดหรือบิลนี้ไม่ควรออกแล้ว.
+  const deleteBillDisc = useDisclosure();
+  const [deletingBill, setDeletingBill] = useState(false);
 
   type BillItemLite = { type_id: string; type_name: string; price: number; percent: number; plus: number; weight: number; per_gram: number; total: number };
   type BillLite = { id: number; total_amount: number; processed_weight: number; processed_amount: number; items?: BillItemLite[]; creator?: { id: number; name: string } };
@@ -188,6 +220,19 @@ export default function QuotationPage() {
     setShowTerms(true);
   };
 
+  // Delete the bill that this page was opened to issue, then return to the list.
+  const handleDeleteBill = async () => {
+    if (!billId) return;
+    setDeletingBill(true);
+    try {
+      await api.delete(`/bills/${billId}`);
+      deleteBillDisc.onClose();
+      router.push("/bills");
+    } catch { /* ignore */ } finally {
+      setDeletingBill(false);
+    }
+  };
+
   // "รอส่งเพิ่ม": record partial delivery for all bill IDs and stay on page.
   const handlePartialDeliver = async () => {
     setPartialSaving(true);
@@ -245,7 +290,9 @@ export default function QuotationPage() {
   const totalAmount = previewItems.reduce((sum, item) => sum + item.total, 0);
   const totalWeight = previewItems.reduce((sum, item) => sum + (item.weight || 0), 0);
   // Whether the current user's quotations deduct credits (role holds credits.use).
-  const usesCredits = hasPermission("credits.use");
+  // Strict check — credits.use is a constraint, not a privilege, so master is
+  // never auto-granted it (mirrors the backend's HasPermissionStrict).
+  const usesCredits = permissions.includes("credits.use");
   // Would this quotation push the user's credit balance below zero?
   const willGoNegative = usesCredits && credits - totalAmount < 0;
 
@@ -300,7 +347,7 @@ export default function QuotationPage() {
         total: item.total,
       }));
 
-      const res = await api.post<{id: number}>("/quotations", {
+      const res = await api.post<{id: number; code: string}>("/quotations", {
         signer_name: signerName,
         signer_phone: signerPhone,
         pdpa_consent: consent,
@@ -308,7 +355,8 @@ export default function QuotationPage() {
         bill_ids: billIds.length ? billIds : undefined, // links to the customer's bill(s)
         items: saveItems,
       });
-      const quotationId = (res.data as unknown as {id: number}).id;
+      const saved = res.data as unknown as { id: number; code: string };
+      const quotationId = saved.id;
 
       // Upload images grouped by type
       const uploadGroup = async (files: File[], type: string) => {
@@ -329,17 +377,15 @@ export default function QuotationPage() {
         await api.upload(`/quotations/${quotationId}/images`, fd);
       }
 
-      setQuotation([]);
-      setBeforeFiles([]);
-      setAfterFiles([]);
-      setSignatureDataUrl(null);
-      setSignerName("");
-      setSignerPhone("");
-      setConsent(false);
+      // Saved — show the post-save preview (real document number, today's
+      // date, print button) instead of navigating away immediately. The
+      // form state (quotation/files/signature) stays put until the user
+      // dismisses that preview, since it's still needed to render it.
       setShowPreview(false);
       setShowCreditWarning(false);
+      setSavedQuotation(saved);
+      setShowPostSavePreview(true);
       await refreshUser(); // credit balance changed
-      router.push(billId ? "/bills" : "/quote-list");
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "บันทึกไม่สำเร็จ กรุณาลองใหม่";
       setSaveError(msg);
@@ -348,16 +394,43 @@ export default function QuotationPage() {
     }
   };
 
+  // Dismiss the post-save print preview: now it's safe to clear the form and
+  // navigate away (deferred from doSave so the preview still had its data).
+  const handleFinishPostSave = () => {
+    setQuotation([]);
+    setBeforeFiles([]);
+    setAfterFiles([]);
+    setSignatureDataUrl(null);
+    setSignerName("");
+    setSignerPhone("");
+    setConsent(false);
+    setShowPostSavePreview(false);
+    setSavedQuotation(null);
+    router.push(billId ? "/bills" : "/quote-list");
+  };
+
   return (
     <div className="h-full flex flex-col gap-y-3">
       {salesClosed && <SalesStatusBanner status={salesStatus} />}
       {billId && (
         <div className="flex items-center gap-x-2 bg-blue-50 border-1 border-blue-200 rounded-2xl p-3">
           <Receipt size={16} className="text-blue-600 shrink-0" />
-          <span className="text-sm font-bold text-blue-700">
+          <span className="text-sm font-bold text-blue-700 flex-1">
             ออกบิลให้ลูกค้า{billCustomer ? ` : ${billCustomer}` : ""}
             {billIds.length > 1 ? ` (${billIds.length} รายการ)` : ""} — กรอกรายการใหม่จากทองที่หลอมเสร็จ
           </span>
+          {hasPermission("bills.approve") && (
+            <Button
+              size="sm"
+              color="danger"
+              variant="flat"
+              startContent={<Trash2 size={14} />}
+              onPress={deleteBillDisc.onOpen}
+              className="shrink-0"
+            >
+              ลบบิล
+            </Button>
+          )}
         </div>
       )}
       <div className="flex flex-row gap-x-5 flex-1 min-h-0">
@@ -510,7 +583,12 @@ export default function QuotationPage() {
       </div>
 
       {/* Delivery choice: รอส่งเพิ่ม vs บันทึกเลย — shown in bill mode only */}
-      <Modal isOpen={showDeliveryChoice} onOpenChange={setShowDeliveryChoice} size="sm" backdrop="blur">
+      <Modal
+        isOpen={showDeliveryChoice}
+        onOpenChange={setShowDeliveryChoice}
+        size="sm"
+        classNames={{ base: "rounded-3xl border-1 border-black/10 shadow-2xl" }}
+      >
         <ModalContent>
           {(onClose) => (
             <>
@@ -569,7 +647,13 @@ export default function QuotationPage() {
       </Modal>
 
       {/* Rules + signature step — shown before the quotation preview */}
-      <Modal isOpen={showTerms} onOpenChange={setShowTerms} size="2xl" scrollBehavior="inside">
+      <Modal
+        isOpen={showTerms}
+        onOpenChange={setShowTerms}
+        size="2xl"
+        scrollBehavior="inside"
+        classNames={{ base: "rounded-3xl border-1 border-black/10 shadow-2xl" }}
+      >
         <ModalContent>
           {(onClose) => (
             <>
@@ -633,6 +717,7 @@ export default function QuotationPage() {
         onOpenChange={setShowPreview}
         size="3xl"
         scrollBehavior="inside"
+        classNames={{ base: "rounded-3xl border-1 border-black/10 shadow-2xl" }}
       >
         <ModalContent>
           {(onClose) => (
@@ -649,8 +734,8 @@ export default function QuotationPage() {
                   <ImageUploadGroup label="รูปบนตราชั่ง / หลังหลอม (ไม่บังคับ)" files={afterFiles} setFiles={setAfterFiles} />
                 </div>
                 <PreviewQuote
+                  hidePrint
                   items={previewItems}
-                  onPrint={() => window.print()}
                   store={headerStore}
                   customerName={signerName}
                   customerPhone={signerPhone}
@@ -709,8 +794,61 @@ export default function QuotationPage() {
           )}
         </ModalContent>
       </Modal>
+
+      {/* Post-save preview: shown after the quotation is actually saved —
+          real document number, today's date, and a clear print button. */}
+      <Modal
+        isOpen={showPostSavePreview}
+        onOpenChange={(open) => { if (!open) handleFinishPostSave(); }}
+        size="3xl"
+        scrollBehavior="inside"
+        isDismissable={false}
+        isKeyboardDismissDisabled
+        classNames={{ base: "rounded-3xl border-1 border-black/10 shadow-2xl" }}
+      >
+        <ModalContent>
+          {() => (
+            <>
+              <ModalHeader>
+                <span className="font-bold text-lg bg-gradient-to-l from-black/90 to-yellow-600 bg-clip-text text-transparent">
+                  บันทึกสำเร็จ — พิมพ์ใบเสนอราคา
+                </span>
+              </ModalHeader>
+              <ModalBody className="px-2">
+                <PreviewQuote
+                  items={previewItems}
+                  onPrint={() => window.print()}
+                  store={headerStore}
+                  documentNo={savedQuotation?.code}
+                  customerName={signerName}
+                  customerPhone={signerPhone}
+                  date={new Date()}
+                  beforeImages={beforeImages}
+                  afterImages={afterImages}
+                  signatureImage={signatureDataUrl}
+                  signerName={signerName}
+                />
+              </ModalBody>
+              <ModalFooter>
+                <Button
+                  className="bg-gradient-to-r from-[#c09c42] to-yellow-600 text-white font-bold"
+                  onPress={handleFinishPostSave}
+                >
+                  เสร็จสิ้น
+                </Button>
+              </ModalFooter>
+            </>
+          )}
+        </ModalContent>
+      </Modal>
+
       {/* Missing-image confirmation (asks before saving without some image types) */}
-      <Modal isOpen={showMissingWarn} onOpenChange={setShowMissingWarn} size="sm" backdrop="blur">
+      <Modal
+        isOpen={showMissingWarn}
+        onOpenChange={setShowMissingWarn}
+        size="sm"
+        classNames={{ base: "rounded-3xl border-1 border-black/10 shadow-2xl" }}
+      >
         <ModalContent>
           {(onClose) => (
             <>
@@ -753,7 +891,12 @@ export default function QuotationPage() {
       </Modal>
 
       {/* Credit overdraw warning (credits will go negative) */}
-      <Modal isOpen={showCreditWarning} onOpenChange={setShowCreditWarning} size="sm" backdrop="blur">
+      <Modal
+        isOpen={showCreditWarning}
+        onOpenChange={setShowCreditWarning}
+        size="sm"
+        classNames={{ base: "rounded-3xl border-1 border-black/10 shadow-2xl" }}
+      >
         <ModalContent>
           {(onClose) => (
             <>
@@ -811,6 +954,16 @@ export default function QuotationPage() {
           )}
         </ModalContent>
       </Modal>
+
+      {/* Delete the bill being issued */}
+      <ConfirmDeleteModal
+        isOpen={deleteBillDisc.isOpen}
+        onClose={deleteBillDisc.onClose}
+        onConfirm={handleDeleteBill}
+        name={billCustomer ? `บิลของ ${billCustomer}` : undefined}
+        related="รายการสินค้า ประวัติการส่ง และยอดหนี้/เครดิตของบิลนี้จะถูกลบออกจากการคำนวณ"
+        loading={deletingBill}
+      />
     </div>
   );
 }

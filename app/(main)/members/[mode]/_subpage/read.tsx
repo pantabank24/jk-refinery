@@ -11,9 +11,11 @@ import {
   Table, TableHeader, TableColumn, TableBody, TableRow, TableCell,
   Chip, Modal, ModalContent, ModalHeader, ModalBody, ModalFooter,
   useDisclosure, Tabs, Tab, Select, SelectItem,
-  Popover, PopoverTrigger, PopoverContent,
+  Popover, PopoverTrigger, PopoverContent, DateRangePicker,
 } from "@heroui/react";
-import { ArrowLeft, Coins, Pencil, Plus, Filter, Trash2 } from "lucide-react";
+import { CalendarDate, today, getLocalTimeZone } from "@internationalized/date";
+import type { RangeValue } from "@react-types/shared";
+import { ArrowLeft, Coins, Pencil, Plus, Filter, Trash2, RotateCcw } from "lucide-react";
 import { BoxCard } from "@/components/boxcard";
 import { ConfirmDeleteModal } from "@/components/confirmDeleteModal";
 import { MemberCard } from "../_components/memberCard";
@@ -44,6 +46,19 @@ interface CreditTx {
   balance: number;
   description: string;
   created_at: string;
+}
+
+interface CreditResetItem {
+  id: number;
+  code: string;
+  total_amount: number;
+  created_at: string;
+}
+
+interface CreditResetPreview {
+  count: number;
+  amount: number;
+  items: CreditResetItem[];
 }
 
 interface QuotationItem {
@@ -114,11 +129,14 @@ export const MemberDetail = () => {
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState("quote");
 
-  // Quotation list filters (applied client-side over the fetched list)
+  // Quotation list filters (applied client-side over the fetched list).
+  // Defaults to today only — empty range (qRange=null) means "every date".
   const [qSearch, setQSearch] = useState("");
   const [qStatus, setQStatus] = useState("all");
-  const [qFrom, setQFrom] = useState("");
-  const [qTo, setQTo] = useState("");
+  const [qRange, setQRange] = useState<RangeValue<CalendarDate> | null>(() => {
+    const t = today(getLocalTimeZone());
+    return { start: t, end: t };
+  });
 
   // Credit modal
   const { isOpen, onOpen, onOpenChange } = useDisclosure();
@@ -138,6 +156,13 @@ export const MemberDetail = () => {
   const [creditDesc, setCreditDesc] = useState("");
   const [creditLoading, setCreditLoading] = useState(false);
   const [creditError, setCreditError] = useState("");
+
+  // Reset-credit modal — refunds approved-but-not-yet-refunded quotations in bulk.
+  const resetDisc = useDisclosure();
+  const [resetPreview, setResetPreview] = useState<CreditResetPreview | null>(null);
+  const [resetPreviewLoading, setResetPreviewLoading] = useState(false);
+  const [resetLoading, setResetLoading] = useState(false);
+  const [resetError, setResetError] = useState("");
 
   const fetchMember = async () => {
     if (!memberId) return;
@@ -230,10 +255,45 @@ export const MemberDetail = () => {
     }
   };
 
+  const openResetPreview = async () => {
+    if (!memberId) return;
+    setResetError("");
+    setResetPreview(null);
+    resetDisc.onOpen();
+    setResetPreviewLoading(true);
+    try {
+      const res = await api.get<CreditResetPreview>(`/quotations/credit-reset/${memberId}/preview`);
+      setResetPreview(res.data as unknown as CreditResetPreview);
+    } catch (err: unknown) {
+      setResetError(err instanceof Error ? err.message : "โหลดข้อมูลไม่สำเร็จ");
+    } finally {
+      setResetPreviewLoading(false);
+    }
+  };
+
+  const handleResetCredit = async () => {
+    if (!memberId) return;
+    setResetError("");
+    setResetLoading(true);
+    try {
+      await api.post(`/quotations/credit-reset/${memberId}`, {});
+      const [mRes] = await Promise.all([
+        api.get<Member>(`/members/${memberId}`),
+        fetchTransactions(),
+      ]);
+      setMember(mRes.data as unknown as Member);
+      resetDisc.onClose();
+    } catch (err: unknown) {
+      setResetError(err instanceof Error ? err.message : "ดำเนินการไม่สำเร็จ");
+    } finally {
+      setResetLoading(false);
+    }
+  };
+
   // Apply filters client-side + compute overview totals.
   const { filteredQuotations, overview } = useMemo(() => {
-    const from = qFrom ? new Date(`${qFrom}T00:00:00`) : null;
-    const to = qTo ? new Date(`${qTo}T23:59:59`) : null;
+    const from = qRange ? new Date(`${qRange.start.toString()}T00:00:00`) : null;
+    const to = qRange ? new Date(`${qRange.end.toString()}T23:59:59`) : null;
     const term = qSearch.trim().toLowerCase();
 
     const list = quotations.filter((q) => {
@@ -264,7 +324,7 @@ export const MemberDetail = () => {
       }
     }
     return { filteredQuotations: list, overview: { count: list.length, total, creditUsed, grams, amounts } };
-  }, [quotations, qSearch, qStatus, qFrom, qTo]);
+  }, [quotations, qSearch, qStatus, qRange]);
 
   if (loading) {
     return (
@@ -284,7 +344,17 @@ export const MemberDetail = () => {
     "bg-gradient-to-br from-black/10 to-transparent border-1 border-black/10 rounded-2xl";
 
   // Number of active filters (status/date) — shown on the filter button.
-  const filterCount = (qStatus !== "all" ? 1 : 0) + (qFrom ? 1 : 0) + (qTo ? 1 : 0);
+  const filterCount = (qStatus !== "all" ? 1 : 0) + (qRange ? 1 : 0);
+
+  const todayStr = today(getLocalTimeZone()).toString();
+  const isTodayOnly = !!qRange && qRange.start.toString() === todayStr && qRange.end.toString() === todayStr;
+  const fmtDateLabel = (d: CalendarDate) =>
+    new Date(d.toString()).toLocaleDateString("th-TH", { day: "2-digit", month: "2-digit", year: "numeric" });
+  const rangeLabel = qRange
+    ? (qRange.start.toString() === qRange.end.toString()
+        ? (isTodayOnly ? "วันนี้" : fmtDateLabel(qRange.start))
+        : `${fmtDateLabel(qRange.start)} - ${fmtDateLabel(qRange.end)}`)
+    : "ทุกวันที่";
 
   return (
     <div className="flex flex-col w-full h-full">
@@ -367,15 +437,28 @@ export const MemberDetail = () => {
 
         {/* Right: Tabs */}
         <div className="flex flex-col w-full gap-y-2 md:flex-1 md:min-h-0">
-          <Tabs
-            aria-label="member tabs"
-            selectedKey={tab}
-            onSelectionChange={(k) => setTab(k as string)}
-            classNames={{ tabList: "bg-black/5 border-1 border-black/10" }}
-          >
-            <Tab key="quote" title="ใบเสนอราคา" />
-            {memberUsesCredits && <Tab key="credit" title="ประวัติเครดิต" />}
-          </Tabs>
+          <div className="flex items-center justify-between gap-2">
+            <Tabs
+              aria-label="member tabs"
+              selectedKey={tab}
+              onSelectionChange={(k) => setTab(k as string)}
+              classNames={{ tabList: "bg-black/5 border-1 border-black/10" }}
+            >
+              <Tab key="quote" title="ใบเสนอราคา" />
+              {memberUsesCredits && <Tab key="credit" title="ประวัติเครดิต" />}
+            </Tabs>
+            {hasPermission("credits.update") && memberUsesCredits && member.user && (
+              <Button
+                variant="flat"
+                className="border-1 border-black/10 bg-black/5 backdrop-blur-xl rounded-xl font-bold shrink-0"
+                startContent={<RotateCcw size={15} />}
+                size="sm"
+                onPress={openResetPreview}
+              >
+                รีเซ็ตเครดิต
+              </Button>
+            )}
+          </div>
 
           {tab === "quote" ? (
             <div className="flex flex-col md:flex-1 md:min-h-0 gap-2">
@@ -413,23 +496,24 @@ export const MemberDetail = () => {
                           <SelectItem key="1">อนุมัติแล้ว</SelectItem>
                           <SelectItem key="2">ยกเลิก</SelectItem>
                         </Select>
-                        <Input
-                          size="sm" type="date" label="ตั้งแต่วันที่" labelPlacement="outside"
-                          value={qFrom} onValueChange={setQFrom}
-                          classNames={{ inputWrapper: inputStyle }}
-                        />
-                        <Input
-                          size="sm" type="date" label="ถึงวันที่" labelPlacement="outside"
-                          value={qTo} onValueChange={setQTo}
+                        <DateRangePicker
+                          size="sm"
+                          label="ช่วงวันที่"
+                          labelPlacement="outside"
+                          value={qRange}
+                          onChange={setQRange}
                           classNames={{ inputWrapper: inputStyle }}
                         />
                         {filterCount > 0 && (
-                          <Button
-                            size="sm" variant="light" color="danger"
-                            onPress={() => { setQStatus("all"); setQFrom(""); setQTo(""); }}
-                          >
-                            ล้างตัวกรอง
-                          </Button>
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-[11px] text-black/40">กำลังกรอง: {rangeLabel}</span>
+                            <Button
+                              size="sm" variant="light" color="danger"
+                              onPress={() => { setQStatus("all"); setQRange(null); }}
+                            >
+                              ล้างตัวกรอง
+                            </Button>
+                          </div>
                         )}
                       </div>
                     </PopoverContent>
@@ -451,7 +535,7 @@ export const MemberDetail = () => {
                     <TableColumn>สถานะ</TableColumn>
                     <TableColumn>วันที่/เวลา</TableColumn>
                   </TableHeader>
-                  <TableBody emptyContent="ไม่พบใบเสนอราคา">
+                  <TableBody emptyContent={isTodayOnly ? "ไม่มีรายการในวันนี้ กดปุ่ม ตัวกรอง เพื่อดูวันอื่น" : "ไม่พบใบเสนอราคา"}>
                     {filteredQuotations.map((q) => (
                       <TableRow key={q.id} className="hover:bg-white/50 cursor-pointer">
                         <TableCell>{q.code}</TableCell>
@@ -495,7 +579,7 @@ export const MemberDetail = () => {
             </div>
           ) : (
             <div className="flex flex-col md:flex-1 md:min-h-0 border-1 border-black/10 bg-white/20 backdrop-blur-xl rounded-xl p-2 shadow-xl md:overflow-hidden">
-              <div className="flex justify-end mb-2">
+              <div className="flex justify-end gap-2 mb-2">
                 {hasPermission("credits.update") && memberUsesCredits && (
                   <Button
                     className="border-1 border-black/10 bg-black/5 backdrop-blur-xl rounded-xl font-bold shadow-md"
@@ -623,6 +707,70 @@ export const MemberDetail = () => {
                   isLoading={creditLoading}
                 >
                   บันทึก
+                </Button>
+              </ModalFooter>
+            </>
+          )}
+        </ModalContent>
+      </Modal>
+
+      {/* Reset Credit Modal — bulk-refunds approved-but-not-yet-refunded quotations */}
+      <Modal isOpen={resetDisc.isOpen} onOpenChange={resetDisc.onOpenChange} backdrop="blur">
+        <ModalContent>
+          {(onClose) => (
+            <>
+              <ModalHeader>
+                <span className="bg-gradient-to-r from-black/90 to-yellow-600 bg-clip-text text-transparent font-bold">
+                  รีเซ็ตเครดิต
+                </span>
+              </ModalHeader>
+              <ModalBody>
+                {resetPreviewLoading ? (
+                  <div className="flex items-center justify-center py-8">
+                    <Spinner size="md" color="warning" />
+                  </div>
+                ) : resetPreview && resetPreview.count > 0 ? (
+                  <div className="flex flex-col gap-y-3">
+                    <p className="text-sm text-black/60">
+                      คืนเครดิตเท่ากับยอดใบเสนอราคาที่อนุมัติแล้วแต่ยังไม่เคยคืนเครดิต ทั้งหมด {resetPreview.count} ใบ
+                    </p>
+                    <div className="flex flex-col border-1 border-amber-200 bg-amber-50 rounded-2xl p-3 gap-y-1">
+                      <span className="text-xs text-black/50">ยอดที่จะได้คืน</span>
+                      <span className="font-bold text-xl text-green-600">
+                        +{resetPreview.amount.toLocaleString(undefined, { minimumFractionDigits: 2 })} บาท
+                      </span>
+                    </div>
+                    <div className="flex flex-col gap-y-1 max-h-48 overflow-y-auto border-1 border-black/10 rounded-2xl p-2">
+                      {resetPreview.items.map((it) => (
+                        <div key={it.id} className="flex items-center justify-between text-xs px-2 py-1">
+                          <span className="text-black/60">{it.code}</span>
+                          <span className="font-bold text-black/70">
+                            {it.total_amount.toLocaleString(undefined, { minimumFractionDigits: 2 })} บาท
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-sm text-black/40 text-center py-4">ไม่มีรายการที่ต้องคืนเครดิต</p>
+                )}
+                {resetError && (
+                  <div className="text-red-500 text-sm bg-red-50 border border-red-200 rounded-xl px-4 py-2">
+                    {resetError}
+                  </div>
+                )}
+              </ModalBody>
+              <ModalFooter>
+                <Button variant="light" onPress={onClose} isDisabled={resetLoading}>
+                  ยกเลิก
+                </Button>
+                <Button
+                  className="bg-gradient-to-r from-[#c09c42] to-yellow-600 text-white font-bold"
+                  onPress={handleResetCredit}
+                  isLoading={resetLoading}
+                  isDisabled={resetPreviewLoading || !resetPreview || resetPreview.count === 0}
+                >
+                  ยืนยันรีเซ็ตเครดิต
                 </Button>
               </ModalFooter>
             </>

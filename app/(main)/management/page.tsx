@@ -1,7 +1,7 @@
 "use client";
 
 import { Button } from "@heroui/button";
-import { Store, UserCog, Shield, FileText, Users } from "lucide-react";
+import { Store, UserCog, Shield, FileText, Users, Newspaper } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/auth-context";
 
@@ -49,6 +49,14 @@ export default function ManagementPage() {
       icon: <Users size={24} className="text-[#c09c42]" />,
       href: "/members",
       show: hasPermission("members.read"),
+    },
+    {
+      id: 6,
+      name: "จัดการข่าวสาร",
+      description: "เพิ่ม แก้ไข ลบ ข่าวสารหน้าแรก",
+      icon: <Newspaper size={24} className="text-[#c09c42]" />,
+      href: "/news",
+      show: hasPermission("news.create"),
     },
   ];
 

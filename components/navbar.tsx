@@ -3,7 +3,6 @@
 import { Badge } from "@heroui/badge";
 import {
   Bell,
-  ShoppingBag,
   LogOut,
   Menu,
   CheckCircle,
@@ -24,6 +23,8 @@ import { StoreBranchSelector } from "@/components/store-branch-selector";
 import { useEffect, useState, useCallback } from "react";
 import { api } from "@/lib/api";
 import moment from "moment";
+
+const API_BASE = (process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080/api/v1").replace(/\/api\/v1$/, "");
 
 interface NavbarProps {
   onMenuClick?: () => void;
@@ -134,7 +135,7 @@ export const Navbar = ({ onMenuClick }: NavbarProps) => {
           />
           <div className=" flex flex-col max-sm:hidden">
             <span className=" font-bold text-xl bg-[#c09c42] bg-clip-text text-transparent">
-              JK Gold Refinery
+              JK Gold & Diamond
             </span>
             <span className=" font-bold text-sm bg-[#c09c42] bg-clip-text text-transparent -mt-2">
               กรุงเทพหลอมทอง
@@ -220,15 +221,12 @@ export const Navbar = ({ onMenuClick }: NavbarProps) => {
             </PopoverContent>
           </Popover>
 
-          <Badge color="danger" content={0} isInvisible={true} shape="circle">
-            <ShoppingBag className="text-[#c09c42]" size={20} />
-          </Badge>
-
           <Dropdown>
             <DropdownTrigger>
               <div className="flex items-center gap-2 cursor-pointer">
                 <Avatar
-                  src="https://i.pravatar.cc/150?u=a042581f4e29026024d"
+                  src={user?.avatar ? `${API_BASE}${user.avatar}` : undefined}
+                  name={user?.name}
                   size="sm"
                   className="shrink-0"
                 />

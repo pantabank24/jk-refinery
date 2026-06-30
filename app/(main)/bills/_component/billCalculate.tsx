@@ -1,14 +1,16 @@
 'use client'
 
 import { BoxCard } from "@/components/boxcard";
-import { ArrowUp, ArrowDown, Minus, Plus } from "lucide-react";
+import { ArrowUp, ArrowDown, Minus, Plus, Keyboard } from "lucide-react";
 import { useState, useEffect } from "react";
 import { QuotationProps } from "../../quotation/_component/quotation";
 import { api } from "@/lib/api";
 import { GoldType, computeItem } from "@/lib/gold-calc";
 import { useSalesStatus } from "@/hooks/use-sales-status";
+import { useCustomWeightStatus } from "@/hooks/use-custom-weight-status";
 import { useRealtimeGold } from "@/hooks/use-realtime-gold";
 import { PriceModeChip } from "@/components/sales-status-banner";
+import { Input } from "@heroui/input";
 
 interface GoldPrice {
   bar_buy: number;
@@ -42,6 +44,8 @@ export const BillCalculate = ({ onAdd }: Props) => {
 
   // Real-time pricing when outside association hours and the mode is on.
   const { status: salesStatus } = useSalesStatus();
+  // Whether the customer may type the weight directly right now (scheduled by master).
+  const { status: customWeightStatus } = useCustomWeightStatus();
   const realtimeActive = salesStatus?.price_mode === "realtime";
   const { data: rt, dir: rtDir } = useRealtimeGold(!!realtimeActive);
 
@@ -97,6 +101,13 @@ export const BillCalculate = ({ onAdd }: Props) => {
       if (next > WEIGHT_MAX) return WEIGHT_MAX;
       return next;
     });
+  };
+
+  const canTypeWeight = !!customWeightStatus?.allowed;
+  const handleWeightInput = (v: string) => {
+    const n = parseFloat(v);
+    if (Number.isNaN(n)) return setWeight(0);
+    setWeight(Math.min(WEIGHT_MAX, Math.max(0, n)));
   };
 
   const handleAdd = () => {
@@ -193,33 +204,54 @@ export const BillCalculate = ({ onAdd }: Props) => {
           </div>
         </div>
 
-        {/* Weight stepper (baht) — read-only value */}
+        {/* Weight input (baht) — typed when scheduled, stepped by 5 otherwise */}
         <div className="flex flex-col px-1 gap-y-1 mt-2">
-          <span className="text-xs font-bold text-black/50 pl-1">น้ำหนัก (บาท) · ปรับทีละ {WEIGHT_STEP}</span>
-          <div className="flex items-center justify-between gap-x-3">
-            <button
-              type="button"
-              onClick={() => stepWeight(-1)}
-              disabled={weight <= WEIGHT_MIN}
-              className="shrink-0 w-14 h-14 rounded-full bg-gradient-to-br from-red-600/40 to-transparent border-1 border-black/10 flex items-center justify-center disabled:opacity-30 disabled:cursor-not-allowed hover:from-red-600/60 transition-all"
-            >
-              <Minus size={22} className="text-red-700" />
-            </button>
-            <div className="flex-1 flex flex-col items-center justify-center border-1 border-black/10 bg-black/5 rounded-2xl py-3 select-none">
-              <span className="font-bold text-3xl bg-gradient-to-l from-black/90 to-yellow-600 bg-clip-text text-transparent">
-                {weight}
-              </span>
-              <span className="text-[10px] font-bold text-black/40">บาท</span>
+          <span className="text-xs font-bold text-black/50 pl-1 flex items-center gap-x-1">
+            {canTypeWeight ? (
+              <>
+                <Keyboard size={12} className="text-green-600" /> น้ำหนัก (บาท) · พิมพ์เองได้ตอนนี้
+              </>
+            ) : (
+              `น้ำหนัก (บาท) · ปรับทีละ ${WEIGHT_STEP}`
+            )}
+          </span>
+          {canTypeWeight ? (
+            <Input
+              type="number"
+              value={weight === 0 ? "" : String(weight)}
+              onValueChange={handleWeightInput}
+              endContent={<span className="text-xs font-bold text-black/40">บาท</span>}
+              classNames={{
+                inputWrapper: "bg-black/5 border-1 border-green-500/30 rounded-2xl py-3",
+                input: "text-center font-bold text-2xl bg-gradient-to-l from-black/90 to-yellow-600 bg-clip-text text-transparent",
+              }}
+            />
+          ) : (
+            <div className="flex items-center justify-between gap-x-3">
+              <button
+                type="button"
+                onClick={() => stepWeight(-1)}
+                disabled={weight <= WEIGHT_MIN}
+                className="shrink-0 w-14 h-14 rounded-full bg-gradient-to-br from-red-600/40 to-transparent border-1 border-black/10 flex items-center justify-center disabled:opacity-30 disabled:cursor-not-allowed hover:from-red-600/60 transition-all"
+              >
+                <Minus size={22} className="text-red-700" />
+              </button>
+              <div className="flex-1 flex flex-col items-center justify-center border-1 border-black/10 bg-black/5 rounded-2xl py-3 select-none">
+                <span className="font-bold text-3xl bg-gradient-to-l from-black/90 to-yellow-600 bg-clip-text text-transparent">
+                  {weight}
+                </span>
+                <span className="text-[10px] font-bold text-black/40">บาท</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => stepWeight(1)}
+                disabled={weight >= WEIGHT_MAX}
+                className="shrink-0 w-14 h-14 rounded-full bg-gradient-to-br from-green-600/40 to-transparent border-1 border-black/10 flex items-center justify-center disabled:opacity-30 disabled:cursor-not-allowed hover:from-green-600/60 transition-all"
+              >
+                <Plus size={22} className="text-green-700" />
+              </button>
             </div>
-            <button
-              type="button"
-              onClick={() => stepWeight(1)}
-              disabled={weight >= WEIGHT_MAX}
-              className="shrink-0 w-14 h-14 rounded-full bg-gradient-to-br from-green-600/40 to-transparent border-1 border-black/10 flex items-center justify-center disabled:opacity-30 disabled:cursor-not-allowed hover:from-green-600/60 transition-all"
-            >
-              <Plus size={22} className="text-green-700" />
-            </button>
-          </div>
+          )}
         </div>
 
         <BoxCard

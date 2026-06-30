@@ -28,6 +28,7 @@ interface ActivityLogData {
   user?: { name: string; email: string } | null;
   method: string;
   path: string;
+  description: string;
   status_code: number;
   ip: string;
   user_agent: string;
@@ -287,10 +288,23 @@ export default function LogsPage() {
                       {log.method}
                     </Chip>
                     <div className="flex flex-col min-w-0">
-                      <span className="font-mono text-xs text-black/80 truncate">{log.path}</span>
-                      <span className="text-[10px] text-black/50">
-                        {log.user?.name || "Guest"} · IP: {log.ip} · {log.duration_ms}ms
-                      </span>
+                      {log.description ? (
+                        <>
+                          <span className="text-sm font-bold text-black/80 truncate">
+                            {log.user?.name || "Guest"} {log.description}
+                          </span>
+                          <span className="font-mono text-[10px] text-black/40 truncate">
+                            {log.path} · IP: {log.ip} · {log.duration_ms}ms
+                          </span>
+                        </>
+                      ) : (
+                        <>
+                          <span className="font-mono text-xs text-black/80 truncate">{log.path}</span>
+                          <span className="text-[10px] text-black/50">
+                            {log.user?.name || "Guest"} · IP: {log.ip} · {log.duration_ms}ms
+                          </span>
+                        </>
+                      )}
                     </div>
                   </div>
                   <div className="text-right shrink-0">

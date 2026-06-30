@@ -21,11 +21,11 @@ interface Props {
 
 const printStyles = `
   @media print {
-    @page { size: A5 portrait; margin: 10mm; }
+    @page { size: A5 portrait; margin: 5mm; }
     html, body { margin: 0 !important; padding: 0 !important; background: #fff !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
     /* Only the cloned document (appended to <body>) prints; everything else is
        removed from layout so it starts at the page top and paginates. */
-    body > *:not(.terms-print-clone) { display: none !important; }
+    body > *:not(.terms-print-clone):not(.print-clone) { display: none !important; }
     .terms-print-clone { display: block !important; }
     .terms-print-clone .no-print, .terms-print-clone button { display: none !important; }
     .terms-print-clone .bg-gray-100 { background: #fff !important; border: none !important; padding: 0 !important; }

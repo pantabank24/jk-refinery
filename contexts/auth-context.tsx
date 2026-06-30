@@ -9,6 +9,7 @@ interface AuthUser {
   name: string;
   email: string;
   phone: string;
+  avatar?: string;
   is_active: boolean;
   store_id: number | null;
   branch_id: number | null;

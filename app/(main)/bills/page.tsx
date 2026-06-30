@@ -62,8 +62,13 @@ interface BillGroup {
   billIds: number[];
   status: number;
   total: number;
+  weight: number;
   count: number;
 }
+
+// Once issued, the issued quotation's items are the real (re-assessed) weight;
+// otherwise fall back to what the customer originally submitted.
+const sumWeight = (items: BillItem[] | undefined) => (items ?? []).reduce((s, it) => s + (it.weight || 0), 0);
 
 // Bill statuses are distinct from staff quotation statuses (0/1/2).
 const STATUS_LABEL: Record<number, string> = { 10: "รอออกบิล", 11: "รอตรวจบิล", 12: "สำเร็จ", 13: "ยกเลิก" };
@@ -137,7 +142,12 @@ export default function BillsList() {
       // live in "บิลทั้งหมด".
       return bills
         .filter((b) => b.status !== 12)
-        .map((b) => ({ key: `b${b.id}`, rep: b, billIds: [b.id], status: b.status, total: b.issued_quotation?.total_amount ?? b.total_amount, count: 1 }));
+        .map((b) => ({
+          key: `b${b.id}`, rep: b, billIds: [b.id], status: b.status,
+          total: b.issued_quotation?.total_amount ?? b.total_amount,
+          weight: sumWeight(b.issued_quotation?.items ?? b.items),
+          count: 1,
+        }));
     }
     const map = new Map<string, BillData[]>();
     for (const b of bills) {
@@ -151,12 +161,25 @@ export default function BillsList() {
       rep: list[0],
       billIds: list.map((x) => x.id),
       status: list[0].status,
-      // Bills issued together share one quotation — use its total as the real amount.
+      // Bills issued together share one quotation — use its total/items as the real amount/weight.
       total: list[0].issued_quotation?.total_amount
         ?? list.reduce((s, x) => s + x.total_amount, 0),
+      weight: list[0].issued_quotation?.items
+        ? sumWeight(list[0].issued_quotation.items)
+        : list.reduce((s, x) => s + sumWeight(x.items), 0),
       count: list.length,
     }));
   }, [bills, isCustomer]);
+
+  // Overview of the currently-listed bills (respects the active tab/search).
+  const overview = useMemo(() => {
+    let amount = 0, weight = 0;
+    for (const g of billGroups) {
+      amount += g.total;
+      weight += g.weight;
+    }
+    return { amount, weight, count: billGroups.length };
+  }, [billGroups]);
 
   const fetchBills = useCallback(async () => {
     setLoading(true);
@@ -312,6 +335,26 @@ export default function BillsList() {
         <div className="flex-1">
           <CmpInput placeholder="ค้นหาเลขที่" value={search}
             onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSearch(e.target.value)} />
+        </div>
+      </div>
+
+      {/* Overview — reflects the currently filtered/listed bills */}
+      <div className="grid grid-cols-3 gap-2 shrink-0">
+        <div className="flex flex-col border-1 border-black/10 bg-black/5 backdrop-blur-xl rounded-2xl p-3 gap-y-1">
+          <span className="text-xs text-black/50">ยอดขายรวม</span>
+          <span className="font-bold text-lg text-yellow-700">
+            {overview.amount.toLocaleString(undefined, { maximumFractionDigits: 0 })} บาท
+          </span>
+        </div>
+        <div className="flex flex-col border-1 border-black/10 bg-black/5 backdrop-blur-xl rounded-2xl p-3 gap-y-1">
+          <span className="text-xs text-black/50">น้ำหนักรวม</span>
+          <span className="font-bold text-lg">
+            {overview.weight.toLocaleString(undefined, { maximumFractionDigits: 2 })} บาท
+          </span>
+        </div>
+        <div className="flex flex-col border-1 border-black/10 bg-black/5 backdrop-blur-xl rounded-2xl p-3 gap-y-1">
+          <span className="text-xs text-black/50">จำนวนบิล</span>
+          <span className="font-bold text-lg">{overview.count.toLocaleString()}</span>
         </div>
       </div>
 
