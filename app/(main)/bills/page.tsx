@@ -16,6 +16,7 @@ import { Modal, ModalContent, ModalHeader, ModalBody, ModalFooter, useDisclosure
 import { Select, SelectItem } from "@heroui/select";
 import { Input } from "@heroui/input";
 import { Tabs, Tab } from "@heroui/tabs";
+import { Table, TableHeader, TableColumn, TableBody, TableRow, TableCell } from "@heroui/table";
 import { PreviewQuote } from "../quotation/_component/previewQuote";
 import { QuotationProps } from "../quotation/_component/quotation";
 
@@ -62,6 +63,7 @@ interface BillGroup {
   billIds: number[];
   status: number;
   total: number;
+  rawTotal: number; // unadjusted total_amount before issued quotation
   weight: number;
   count: number;
 }
@@ -152,6 +154,7 @@ export default function BillsList() {
         .map((b) => ({
           key: `b${b.id}`, rep: b, billIds: [b.id], status: b.status,
           total: b.issued_quotation?.total_amount ?? b.total_amount,
+          rawTotal: b.total_amount,
           weight: sumWeight(b.issued_quotation?.items ?? b.items),
           count: 1,
         }));
@@ -171,6 +174,7 @@ export default function BillsList() {
       // Bills issued together share one quotation — use its total/items as the real amount/weight.
       total: list[0].issued_quotation?.total_amount
         ?? list.reduce((s, x) => s + x.total_amount, 0),
+      rawTotal: list.reduce((s, x) => s + x.total_amount, 0),
       weight: list[0].issued_quotation?.items
         ? sumWeight(list[0].issued_quotation.items)
         : list.reduce((s, x) => s + sumWeight(x.items), 0),
@@ -180,12 +184,14 @@ export default function BillsList() {
 
   // Overview of the currently-listed bills (respects the active tab/search).
   const overview = useMemo(() => {
-    let amount = 0, weight = 0;
+    let amount = 0, rawAmount = 0, weight = 0;
     for (const g of billGroups) {
       amount += g.total;
+      rawAmount += g.rawTotal;
       weight += g.weight;
     }
-    return { amount, weight, count: billGroups.length };
+    const avgPrice = weight > 0 ? rawAmount / weight : 0;
+    return { amount, rawAmount, weight, count: billGroups.length, avgPrice };
   }, [billGroups]);
 
   const fetchBills = useCallback(async () => {
@@ -358,17 +364,23 @@ export default function BillsList() {
       </div>
 
       {/* Overview — reflects the currently filtered/listed bills */}
-      <div className="grid grid-cols-3 gap-2 shrink-0">
+      <div className="grid grid-cols-2 gap-2 shrink-0">
         <div className="flex flex-col border-1 border-black/10 bg-black/5 backdrop-blur-xl rounded-2xl p-3 gap-y-1">
           <span className="text-xs text-black/50">ยอดขายรวม</span>
           <span className="font-bold text-lg text-yellow-700">
-            {overview.amount.toLocaleString(undefined, { maximumFractionDigits: 0 })} บาท
+            {overview.rawAmount.toLocaleString(undefined, { maximumFractionDigits: 0 })} บาท
           </span>
         </div>
         <div className="flex flex-col border-1 border-black/10 bg-black/5 backdrop-blur-xl rounded-2xl p-3 gap-y-1">
           <span className="text-xs text-black/50">น้ำหนักรวม</span>
           <span className="font-bold text-lg">
             {overview.weight.toLocaleString(undefined, { maximumFractionDigits: 2 })} บาท
+          </span>
+        </div>
+        <div className="flex flex-col border-1 border-yellow-300/60 bg-yellow-50/60 backdrop-blur-xl rounded-2xl p-3 gap-y-1">
+          <span className="text-xs text-black/50">ราคาเฉลี่ย</span>
+          <span className="font-bold text-lg text-yellow-700">
+            {overview.avgPrice.toLocaleString(undefined, { maximumFractionDigits: 2 })} บาท/บาท
           </span>
         </div>
         <div className="flex flex-col border-1 border-black/10 bg-black/5 backdrop-blur-xl rounded-2xl p-3 gap-y-1">
@@ -402,46 +414,111 @@ export default function BillsList() {
         ) : billGroups.length === 0 ? (
           <div className="flex items-center justify-center py-10 text-black/40 text-sm">ยังไม่มีรายการขาย</div>
         ) : (
-          <div className="flex flex-col gap-y-2 pb-4">
-            {billGroups.map((g) => (
-              <div
-                key={g.key}
-                onClick={() => handleRowClick(g)}
-                className="flex flex-col border-1 border-black/10 bg-black/5 backdrop-blur-xl rounded-2xl p-3 transition-all gap-y-2 cursor-pointer hover:shadow-md"
+          <>
+            {/* Desktop: table */}
+            <div className="hidden md:block">
+              <Table
+                isHeaderSticky
+                radius="sm"
+                removeWrapper
+                classNames={{
+                  base: "flex flex-col flex-1 min-h-0 overflow-y-scroll scrollbar-hide border-1 border-black/10 bg-black/5 backdrop-blur-xl rounded-2xl p-2",
+                }}
               >
-                <div className="flex flex-row items-center justify-between">
-                  <span className="font-bold text-sm bg-gradient-to-l from-black/90 to-yellow-600 bg-clip-text text-transparent">
-                    {g.rep.code}
-                    {g.count > 1 && (
-                      <span className="ml-1 text-[10px] font-bold text-blue-600">รวม {g.count} บิล</span>
-                    )}
-                  </span>
-                  <span className={`text-xs font-bold px-2 py-0.5 rounded-full border-1 ${STATUS_COLOR[g.status]}`}>
-                    {STATUS_LABEL[g.status]}
-                  </span>
-                </div>
+                <TableHeader>
+                  <TableColumn>เลขที่</TableColumn>
+                  <TableColumn>ลูกค้า</TableColumn>
+                  <TableColumn>ยอดเต็ม (บาท)</TableColumn>
+                  <TableColumn>ยอดจ่าย (บาท)</TableColumn>
+                  <TableColumn>สถานะ</TableColumn>
+                  <TableColumn>วันที่</TableColumn>
+                </TableHeader>
+                <TableBody items={billGroups} emptyContent="ไม่พบข้อมูล">
+                  {(g) => (
+                    <TableRow
+                      key={g.key}
+                      className="cursor-pointer hover:bg-white/60 rounded-xl"
+                      onClick={() => handleRowClick(g)}
+                    >
+                      <TableCell>
+                        <span className="font-bold text-sm bg-gradient-to-l from-black/90 to-yellow-600 bg-clip-text text-transparent">
+                          {g.rep.code}
+                          {g.count > 1 && <span className="ml-1 text-[10px] font-bold text-blue-600">รวม {g.count} บิล</span>}
+                        </span>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-x-2">
+                          <Avatar size="sm" name={g.rep.creator?.name} />
+                          <span className="text-sm font-bold text-black/70">{g.rep.creator?.name ?? "ไม่ระบุลูกค้า"}</span>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <span className="font-bold text-yellow-700">{g.rawTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                      </TableCell>
+                      <TableCell>
+                        {g.total !== g.rawTotal
+                          ? <span className="font-bold text-black/70">{g.total.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                          : <span className="text-black/25">—</span>
+                        }
+                      </TableCell>
+                      <TableCell>
+                        <span className={`text-xs font-bold px-2 py-0.5 rounded-full border-1 ${STATUS_COLOR[g.status]}`}>
+                          {STATUS_LABEL[g.status]}
+                        </span>
+                      </TableCell>
+                      <TableCell>
+                        <span className="text-xs text-black/50">{moment(g.rep.created_at).format("DD/MM/YY HH:mm")}</span>
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </div>
 
-                <div className="flex flex-row items-center justify-between">
-                  <div className="flex flex-row items-center gap-x-2">
-                    <Avatar size="sm" name={g.rep.creator ? g.rep.creator.name : undefined} />
-                    <div className="flex flex-col">
+            {/* Mobile: cards */}
+            <div className="flex flex-col gap-y-2 pb-4 md:hidden">
+              {billGroups.map((g) => (
+                <div
+                  key={g.key}
+                  onClick={() => handleRowClick(g)}
+                  className="flex flex-col border-1 border-black/10 bg-black/5 backdrop-blur-xl rounded-2xl p-3 transition-all gap-y-2 cursor-pointer hover:shadow-md"
+                >
+                  <div className="flex flex-row items-center justify-between">
+                    <span className="font-bold text-sm bg-gradient-to-l from-black/90 to-yellow-600 bg-clip-text text-transparent">
+                      {g.rep.code}
+                      {g.count > 1 && (
+                        <span className="ml-1 text-[10px] font-bold text-blue-600">รวม {g.count} บิล</span>
+                      )}
+                    </span>
+                    <span className={`text-xs font-bold px-2 py-0.5 rounded-full border-1 ${STATUS_COLOR[g.status]}`}>
+                      {STATUS_LABEL[g.status]}
+                    </span>
+                  </div>
+                  <div className="flex flex-row items-center justify-between">
+                    <div className="flex flex-row items-center gap-x-2">
+                      <Avatar size="sm" name={g.rep.creator ? g.rep.creator.name : undefined} />
                       <span className="text-sm font-bold text-black/70">
                         {g.rep.creator ? g.rep.creator.name : "ไม่ระบุลูกค้า"}
                       </span>
                     </div>
-                  </div>
-                  <div className="flex flex-col items-end">
-                    <span className="font-bold text-sm text-yellow-700">
-                      {g.total.toLocaleString()} บาท
-                    </span>
-                    <span className="text-[10px] text-black/40">
-                      {moment(g.rep.created_at).format("DD/MM/YY HH:mm")}
-                    </span>
+                    <div className="flex flex-col items-end">
+                      <span className="font-bold text-sm text-yellow-700">
+                        {g.rawTotal.toLocaleString()} บาท
+                      </span>
+                      {g.total !== g.rawTotal && (
+                        <span className="text-[10px] font-bold text-black/50">
+                          จ่าย {g.total.toLocaleString()} บาท
+                        </span>
+                      )}
+                      <span className="text-[10px] text-black/40">
+                        {moment(g.rep.created_at).format("DD/MM/YY HH:mm")}
+                      </span>
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          </>
         )}
       </div>
 
@@ -508,27 +585,30 @@ export default function BillsList() {
                     <span className="font-bold text-black/70">{lockedTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })} บาท</span>
                   </div>
 
-                  {/* Diff: เกิน/ขาด */}
-                  {hasDiff && (
-                    <div className={`flex items-center justify-between rounded-xl px-3 py-1.5 text-xs border-1 ${diff > 0 ? "bg-green-50 border-green-200" : diff < 0 ? "bg-red-50 border-red-200" : "bg-black/5 border-black/10"}`}>
-                      <span className={`font-bold ${diff > 0 ? "text-green-700" : diff < 0 ? "text-red-600" : "text-black/50"}`}>
-                        {diff > 0 ? "เกิน" : diff < 0 ? "ขาด" : "ตรงกัน"}
-                      </span>
-                      <span className={`font-bold text-base ${diff > 0 ? "text-green-700" : diff < 0 ? "text-red-600" : "text-black/40"}`}>
-                        {diff > 0 ? "+" : ""}{diff.toLocaleString(undefined, { minimumFractionDigits: 2 })} บาท
-                      </span>
-                    </div>
-                  )}
-
-                  {/* Running balance across all bills for this customer */}
-                  {billBalance !== null && billBalance !== 0 && (
-                    <div className="flex items-center justify-between text-[10px] text-black/40 px-1 mt-0.5">
-                      <span>ยอดคงค้างสะสม</span>
-                      <span className={`font-bold ${billBalance < 0 ? "text-red-500" : "text-green-600"}`}>
-                        {billBalance > 0 ? "+" : ""}{billBalance.toLocaleString(undefined, { minimumFractionDigits: 2 })} บาท
-                      </span>
-                    </div>
-                  )}
+                  {/* Net ขาด/เกิน — uses accumulated balance (includes this round) when loaded */}
+                  {hasDiff && (() => {
+                    const netBalance = billBalance !== null ? billBalance : diff;
+                    const prevBalance = billBalance !== null ? billBalance - diff : 0;
+                    const showBreakdown = billBalance !== null && Math.abs(prevBalance) >= 0.01;
+                    return (
+                      <>
+                        <div className={`flex items-center justify-between rounded-xl px-3 py-1.5 text-xs border-1 ${netBalance > 0 ? "bg-green-50 border-green-200" : netBalance < 0 ? "bg-red-50 border-red-200" : "bg-black/5 border-black/10"}`}>
+                          <span className={`font-bold ${netBalance > 0 ? "text-green-700" : netBalance < 0 ? "text-red-600" : "text-black/50"}`}>
+                            {netBalance > 0 ? "เกิน" : netBalance < 0 ? "ขาด" : "ตรงกัน"}
+                          </span>
+                          <span className={`font-bold text-base ${netBalance > 0 ? "text-green-700" : netBalance < 0 ? "text-red-600" : "text-black/40"}`}>
+                            {netBalance > 0 ? "+" : ""}{netBalance.toLocaleString(undefined, { minimumFractionDigits: 2 })} บาท
+                          </span>
+                        </div>
+                        {showBreakdown && (
+                          <div className="flex items-center justify-between text-[10px] text-black/40 px-1">
+                            <span>บิลนี้ {diff > 0 ? "+" : ""}{diff.toLocaleString(undefined, { minimumFractionDigits: 2 })} บาท</span>
+                            <span>สะสมก่อนหน้า {prevBalance > 0 ? "+" : ""}{prevBalance.toLocaleString(undefined, { minimumFractionDigits: 2 })} บาท</span>
+                          </div>
+                        )}
+                      </>
+                    );
+                  })()}
                 </div>
               );
             })()}

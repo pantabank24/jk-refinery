@@ -128,6 +128,8 @@ export default function QuotationPage() {
   const billId = searchParams.get("billId");
   const [billCustomer, setBillCustomer] = useState("");
   const [billBalance, setBillBalance] = useState<number | null>(null);
+  const [billWeight, setBillWeight] = useState(0);
+  const [billAvgPrice, setBillAvgPrice] = useState(0);
   const [billIds, setBillIds] = useState<number[]>([]);
   // The customer's submitted items — shown only for reference. The gold has been
   // melted, so the master builds a fresh quote; these are NOT added to it.
@@ -165,8 +167,10 @@ export default function QuotationPage() {
           bills = (listRes.data as unknown as { data: BillLite[] }).data || [];
           api.get(`/bills/balance?user_id=${clicked.creator.id}`)
             .then((res) => {
-              const d = res.data as unknown as { balance: number };
+              const d = res.data as unknown as { balance: number; total_weight: number; avg_price: number };
               setBillBalance(d.balance ?? 0);
+              setBillWeight(d.total_weight ?? 0);
+              setBillAvgPrice(d.avg_price ?? 0);
             })
             .catch(() => {});
         }
@@ -276,6 +280,14 @@ export default function QuotationPage() {
   // Weighted-average effective rate: Σ(total) / Σ(weight) — this is what
   // the customer was actually locked in at (total includes percent/plus adjustments).
   const refAvgPrice = refWeight > 0 ? refTotal / refWeight : 0;
+  const hasBalance = billBalance !== null && billBalance !== 0;
+  const combinedWeight = billWeight + refWeight;
+  const blendedAvgPrice = hasBalance && combinedWeight > 0
+    ? (billAvgPrice * billWeight + refAvgPrice * refWeight) / combinedWeight
+    : 0;
+  const effectiveForcedPrice = billId
+    ? (blendedAvgPrice > 0 ? blendedAvgPrice : refAvgPrice > 0 ? refAvgPrice : 0)
+    : 0;
 
   // In bill mode ("บันทึกเลย"), combine all partial deliveries + current batch
   // into ONE item so the preview and the saved quotation both show the full amount.
@@ -451,7 +463,7 @@ export default function QuotationPage() {
             onOpenList={() => setListOpen(true)}
             quotationCount={quotation.length}
             lockMeltType={!!billId}
-            forcedPrice={billId && refAvgPrice > 0 ? refAvgPrice : undefined}
+            forcedPrice={effectiveForcedPrice > 0 ? effectiveForcedPrice : undefined}
           />
         </div>
         {/* Right column: reference card (customer's submitted items) above the quote card */}
@@ -462,44 +474,53 @@ export default function QuotationPage() {
                 รายการที่ลูกค้าส่งมา (อ้างอิง · หลอมแล้ว)
               </span>
               {/* Summary: sold total, processed so far, remaining (can go negative) */}
-              <div className="grid grid-cols-2 gap-2">
-                <div className="flex flex-col border-1 border-black/10 bg-black/5 rounded-xl p-1.5">
-                  <span className="font-bold text-[10px] text-black/50 pl-1">ราคาเฉลี่ย (บาท)</span>
-                  <span className="font-bold text-sm text-yellow-700 pl-1">
-                    {refAvgPrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                  </span>
-                </div>
-                <div className="flex flex-col border-1 border-black/10 bg-black/5 rounded-xl p-1.5">
-                  <span className="font-bold text-[10px] text-black/50 pl-1">ยอดรวมที่ขาย</span>
-                  <span className="font-bold text-sm bg-gradient-to-l from-black/90 to-yellow-600 bg-clip-text text-transparent pl-1">
-                    {refTotal.toLocaleString()}
-                  </span>
-                </div>
-                {processedAmount > 0 && (
-                  <>
-                    <div className="flex flex-col border-1 border-blue-200 bg-blue-50 rounded-xl p-1.5">
-                      <span className="font-bold text-[10px] text-black/50 pl-1">ส่งไปแล้ว</span>
-                      <span className="font-bold text-sm text-blue-700 pl-1">
-                        {processedAmount.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+              {(() => {
+                const netTotal = hasBalance ? refTotal - (billBalance ?? 0) : refTotal;
+                return (
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="flex flex-col border-1 border-black/10 bg-black/5 rounded-xl p-1.5">
+                      <span className="font-bold text-[10px] text-black/50 pl-1">ราคาเฉลี่ย (บาท)</span>
+                      <span className="font-bold text-sm text-yellow-700 pl-1">
+                        {(hasBalance && billWeight > 0 && blendedAvgPrice > 0 ? blendedAvgPrice : refAvgPrice).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                       </span>
+                      {hasBalance && billWeight > 0 && blendedAvgPrice > 0 && (
+                        <span className="font-bold text-[10px] text-black/35 pl-1 mt-0.5">
+                          บิลนี้ {refAvgPrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </span>
+                      )}
                     </div>
-                    <div className={`flex flex-col border-1 rounded-xl p-1.5 ${(refTotal - processedAmount) < 0 ? "border-red-200 bg-red-50" : "border-green-200 bg-green-50"}`}>
-                      <span className="font-bold text-[10px] text-black/50 pl-1">คงเหลือ</span>
-                      <span className={`font-bold text-sm pl-1 ${(refTotal - processedAmount) < 0 ? "text-red-600" : "text-green-700"}`}>
-                        {(refTotal - processedAmount).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                    <div className="flex flex-col border-1 border-black/10 bg-black/5 rounded-xl p-1.5">
+                      <span className="font-bold text-[10px] text-black/50 pl-1">ยอดรวมที่ขาย</span>
+                      <span className="font-bold text-sm bg-gradient-to-l from-black/90 to-yellow-600 bg-clip-text text-transparent pl-1">
+                        {netTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}
                       </span>
+                      {hasBalance && (
+                        <span className="font-bold text-[10px] text-black/35 pl-1 mt-0.5">
+                          {billBalance! > 0
+                            ? `หักจากที่จ่ายเกิน ${billBalance!.toLocaleString(undefined, { minimumFractionDigits: 2 })}`
+                            : `บวกจากที่ขาดไป ${Math.abs(billBalance!).toLocaleString(undefined, { minimumFractionDigits: 2 })}`}
+                        </span>
+                      )}
                     </div>
-                  </>
-                )}
-                {billBalance !== null && billBalance !== 0 && (
-                  <div className={`flex flex-col border-1 rounded-xl p-1.5 col-span-2 ${billBalance < 0 ? "border-red-200 bg-red-50" : "border-green-200 bg-green-50"}`}>
-                    <span className="font-bold text-[10px] text-black/50 pl-1">ยอดคงค้างสะสม (จากรอบก่อน)</span>
-                    <span className={`font-bold text-sm pl-1 ${billBalance < 0 ? "text-red-600" : "text-green-700"}`}>
-                      {billBalance > 0 ? "+" : ""}{billBalance.toLocaleString(undefined, { minimumFractionDigits: 2 })} บาท
-                    </span>
+                    {processedAmount > 0 && (
+                      <>
+                        <div className="flex flex-col border-1 border-blue-200 bg-blue-50 rounded-xl p-1.5">
+                          <span className="font-bold text-[10px] text-black/50 pl-1">ส่งไปแล้ว</span>
+                          <span className="font-bold text-sm text-blue-700 pl-1">
+                            {processedAmount.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                          </span>
+                        </div>
+                        <div className={`flex flex-col border-1 rounded-xl p-1.5 ${(refTotal - processedAmount) < 0 ? "border-red-200 bg-red-50" : "border-green-200 bg-green-50"}`}>
+                          <span className="font-bold text-[10px] text-black/50 pl-1">คงเหลือ</span>
+                          <span className={`font-bold text-sm pl-1 ${(refTotal - processedAmount) < 0 ? "text-red-600" : "text-green-700"}`}>
+                            {(refTotal - processedAmount).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                          </span>
+                        </div>
+                      </>
+                    )}
                   </div>
-                )}
-              </div>
+                );
+              })()}
               <div className="flex flex-col gap-y-1 overflow-y-auto scrollbar-hide">
                 {referenceItems.map((it, i) => (
                   <div key={i} className="flex items-center justify-between gap-x-2 bg-black/5 border border-black/10 rounded-xl px-3 py-2 text-xs">
