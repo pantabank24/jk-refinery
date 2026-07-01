@@ -73,12 +73,13 @@ interface BillGroup {
 const sumWeight = (items: BillItem[] | undefined) => (items ?? []).reduce((s, it) => s + (it.weight || 0), 0);
 
 // Bill statuses are distinct from staff quotation statuses (0/1/2).
-const STATUS_LABEL: Record<number, string> = { 10: "รอออกบิล", 11: "รอตรวจบิล", 12: "สำเร็จ", 13: "ยกเลิก" };
+const STATUS_LABEL: Record<number, string> = { 10: "รอออกบิล", 11: "รอตรวจบิล", 12: "สำเร็จ", 13: "ยกเลิก", 14: "เคลียร์แล้ว" };
 const STATUS_COLOR: Record<number, string> = {
   10: "bg-yellow-500/20 text-yellow-700 border-yellow-500/30",
   11: "bg-blue-500/20 text-blue-700 border-blue-500/30",
   12: "bg-green-500/20 text-green-700 border-green-500/30",
   13: "bg-red-500/20 text-red-700 border-red-500/30",
+  14: "bg-purple-500/20 text-purple-700 border-purple-500/30",
 };
 
 const CANCEL_REASONS = [
@@ -139,8 +140,11 @@ export default function BillsList() {
   const [cancelCustom, setCancelCustom] = useState("");
   const [cancelling, setCancelling] = useState(false);
 
+  const clearDisc = useDisclosure();
+  const [clearing, setClearing] = useState(false);
+
   const statusFilter: Record<string, number | undefined> = {
-    all: undefined, pending_issue: 10, pending_review: 11, completed: 12, cancelled: 13,
+    all: undefined, pending_issue: 10, pending_review: 11, completed: 12, cancelled: 13, cleared: 14,
   };
 
   // Customers see each sell individually. Staff/master see bills that were issued
@@ -184,14 +188,15 @@ export default function BillsList() {
 
   // Overview of the currently-listed bills (respects the active tab/search).
   const overview = useMemo(() => {
-    let amount = 0, rawAmount = 0, weight = 0;
+    let amount = 0, rawAmount = 0, weight = 0, pendingClearWeight = 0;
     for (const g of billGroups) {
       amount += g.total;
       rawAmount += g.rawTotal;
       weight += g.weight;
+      if (g.status === 12) pendingClearWeight += g.weight;
     }
     const avgPrice = weight > 0 ? rawAmount / weight : 0;
-    return { amount, rawAmount, weight, count: billGroups.length, avgPrice };
+    return { amount, rawAmount, weight, pendingClearWeight, count: billGroups.length, avgPrice };
   }, [billGroups]);
 
   const fetchBills = useCallback(async () => {
@@ -311,6 +316,17 @@ export default function BillsList() {
     }
   };
 
+  const handleClearBills = async () => {
+    setClearing(true);
+    try {
+      await api.post("/bills/clear", {});
+      clearDisc.onClose();
+      await fetchBills();
+    } catch { /* ignore */ } finally {
+      setClearing(false);
+    }
+  };
+
   const handleDeleteBill = async () => {
     if (!detailB) return;
     setDeleting(true);
@@ -387,24 +403,43 @@ export default function BillsList() {
           <span className="text-xs text-black/50">จำนวนบิล</span>
           <span className="font-bold text-lg">{overview.count.toLocaleString()}</span>
         </div>
+        {!isCustomer && overview.pendingClearWeight > 0 && (
+          <div className="col-span-2 flex flex-col border-1 border-purple-300/60 bg-purple-50/60 backdrop-blur-xl rounded-2xl p-3 gap-y-1">
+            <span className="text-xs text-black/50">น้ำหนักรวม (รอเคลียร์)</span>
+            <span className="font-bold text-lg text-purple-700">
+              {overview.pendingClearWeight.toLocaleString(undefined, { maximumFractionDigits: 2 })} บาท
+            </span>
+          </div>
+        )}
       </div>
 
-      {/* Tabs */}
-      <div className="shrink-0">
-        <Tabs
-          selectedKey={activeTab}
-          onSelectionChange={(k) => setActiveTab(String(k))}
-          color="warning"
-          variant="underlined"
-          classNames={{ tabList: "gap-4" }}
-        >
-          <Tab key="all" title="ทั้งหมด" />
-          <Tab key="pending_issue" title="รอออกบิล" />
-          <Tab key="pending_review" title="รอตรวจบิล" />
-          {/* Completed bills live in "บิลทั้งหมด" for customers */}
-          {!isCustomer ? <Tab key="completed" title="สำเร็จ" /> : null}
-          <Tab key="cancelled" title="ยกเลิก" />
-        </Tabs>
+      {/* Tabs + เคลียร์บิล */}
+      <div className="flex items-center shrink-0">
+        <div className="flex-1 min-w-0">
+          <Tabs
+            selectedKey={activeTab}
+            onSelectionChange={(k) => setActiveTab(String(k))}
+            color="warning"
+            variant="underlined"
+            classNames={{ tabList: "gap-4" }}
+          >
+            <Tab key="all" title="ทั้งหมด" />
+            <Tab key="pending_issue" title="รอออกบิล" />
+            <Tab key="pending_review" title="รอตรวจบิล" />
+            {!isCustomer ? <Tab key="completed" title="สำเร็จ" /> : null}
+            {!isCustomer ? <Tab key="cleared" title="เคลียร์แล้ว" /> : null}
+            <Tab key="cancelled" title="ยกเลิก" />
+          </Tabs>
+        </div>
+        {canApprove && (
+          <Button
+            size="sm"
+            className="shrink-0 bg-purple-600 text-white font-bold text-xs ml-2"
+            onPress={clearDisc.onOpen}
+          >
+            เคลียร์บิล
+          </Button>
+        )}
       </div>
 
       {/* List */}
@@ -867,6 +902,39 @@ export default function BillsList() {
             <Button variant="light" onPress={cancelDisc.onClose} isDisabled={cancelling}>ปิด</Button>
             <Button color="danger" onPress={handleCancel} isLoading={cancelling}>
               ยืนยันยกเลิก
+            </Button>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
+
+      {/* CLEAR BILLS CONFIRM */}
+      <Modal isOpen={clearDisc.isOpen} onClose={clearDisc.onClose} size="sm">
+        <ModalContent>
+          <ModalHeader>
+            <span className="font-bold text-purple-700">ยืนยันเคลียร์บิล</span>
+          </ModalHeader>
+          <ModalBody>
+            <div className="flex flex-col gap-y-2">
+              <p className="text-sm text-black/70">
+                บิลทั้งหมดที่สถานะ <span className="font-bold text-green-700">สำเร็จ</span> จะถูกเปลี่ยนเป็น{" "}
+                <span className="font-bold text-purple-700">เคลียร์แล้ว</span>
+              </p>
+              {overview.pendingClearWeight > 0 && (
+                <div className="flex flex-col border-1 border-purple-200 bg-purple-50 rounded-xl p-2.5">
+                  <span className="text-xs text-black/50">น้ำหนักรวมที่จะเคลียร์</span>
+                  <span className="font-bold text-purple-700">{overview.pendingClearWeight.toLocaleString(undefined, { maximumFractionDigits: 2 })} บาท</span>
+                </div>
+              )}
+            </div>
+          </ModalBody>
+          <ModalFooter>
+            <Button variant="light" onPress={clearDisc.onClose} isDisabled={clearing}>ยกเลิก</Button>
+            <Button
+              className="bg-purple-600 text-white font-bold"
+              onPress={handleClearBills}
+              isLoading={clearing}
+            >
+              ยืนยันเคลียร์บิล
             </Button>
           </ModalFooter>
         </ModalContent>
