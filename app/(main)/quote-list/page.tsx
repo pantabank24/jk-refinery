@@ -302,7 +302,7 @@ export default function QuoteList() {
 
                 <div className="flex flex-row items-center justify-between">
                   <div className="flex flex-row items-center gap-x-2">
-                    <Avatar src="https://i.pravatar.cc/150?u=a042581f4e29026024d" size="sm" />
+                    <Avatar name={item.member ? `${item.member.fname} ${item.member.lname}` : "ไม่ระบุ"} size="sm" />
                     <div className="flex flex-col">
                       <span className="text-sm font-bold text-black/70">
                         {item.member ? `${item.member.fname} ${item.member.lname}` : "ไม่ระบุสมาชิก"}

@@ -404,7 +404,7 @@ export default function BillsList() {
 
                 <div className="flex flex-row items-center justify-between">
                   <div className="flex flex-row items-center gap-x-2">
-                    <Avatar size="sm" />
+                    <Avatar size="sm" name={g.rep.creator ? g.rep.creator.name : undefined} />
                     <div className="flex flex-col">
                       <span className="text-sm font-bold text-black/70">
                         {g.rep.creator ? g.rep.creator.name : "ไม่ระบุลูกค้า"}

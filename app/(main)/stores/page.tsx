@@ -9,6 +9,8 @@ import { useAuth } from "@/contexts/auth-context";
 import { Chip } from "@heroui/chip";
 import { Spinner } from "@heroui/spinner";
 
+const API_BASE = (process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080/api/v1").replace(/\/api\/v1$/, "");
+
 interface StoreData {
   id: number;
   code: string;
@@ -81,7 +83,7 @@ export default function StoresPage() {
                 <div className="flex flex-row items-center gap-x-3">
                   {store.logo ? (
                     <img
-                      src={store.logo}
+                      src={`${API_BASE}${store.logo}`}
                       alt={store.name}
                       className="w-12 h-12 rounded-xl object-cover"
                     />

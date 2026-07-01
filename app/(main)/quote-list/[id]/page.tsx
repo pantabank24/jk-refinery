@@ -32,8 +32,8 @@ export default function EmployeeQuoteListPage() {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<string>("all");
   const [search, setSearch] = useState("");
-  const [dateFrom, setDateFrom] = useState("");
-  const [dateTo, setDateTo] = useState("");
+  const [dateFrom, setDateFrom] = useState(moment().format("YYYY-MM-DD"));
+  const [dateTo, setDateTo] = useState(moment().format("YYYY-MM-DD"));
   const [members, setMembers] = useState<MemberOption[]>([]);
   const [goldTypes, setGoldTypes] = useState<GoldType[]>([]);
 
@@ -78,35 +78,52 @@ export default function EmployeeQuoteListPage() {
     all: undefined, pending: 0, approved: 1, rejected: 2,
   };
 
-  const filtered = useMemo(() => {
+  // List shows ALL days — only status tab + search apply here (date range does NOT).
+  const listFiltered = useMemo(() => {
     const s = statusFilter[activeTab];
-    const from = dateFrom ? moment(dateFrom, "YYYY-MM-DD").startOf("day") : null;
-    const to = dateTo ? moment(dateTo, "YYYY-MM-DD").endOf("day") : null;
     const q = search.trim().toLowerCase();
     return quotations.filter((item) => {
       if (s !== undefined && item.status !== s) return false;
       if (q && !item.code.toLowerCase().includes(q)) return false;
+      return true;
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [quotations, activeTab, search]);
+
+  // Overview summarizes only the selected date range (applied on top of the list set).
+  const overviewFiltered = useMemo(() => {
+    const from = dateFrom ? moment(dateFrom, "YYYY-MM-DD").startOf("day") : null;
+    const to = dateTo ? moment(dateTo, "YYYY-MM-DD").endOf("day") : null;
+    return listFiltered.filter((item) => {
       const d = moment(item.created_at);
       if (from && d.isBefore(from)) return false;
       if (to && d.isAfter(to)) return false;
       return true;
     });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [quotations, activeTab, search, dateFrom, dateTo]);
+  }, [listFiltered, dateFrom, dateTo]);
+
+  const overviewLabel = useMemo(() => {
+    const f = dateFrom ? moment(dateFrom, "YYYY-MM-DD").format("DD/MM/YYYY") : "";
+    const t = dateTo ? moment(dateTo, "YYYY-MM-DD").format("DD/MM/YYYY") : "";
+    if (!f && !t) return "สรุปทุกวัน";
+    if (f && t && f === t) return `สรุปเฉพาะวันที่ ${f}`;
+    if (f && t) return `สรุปวันที่ ${f} - ${t}`;
+    return f ? `สรุปตั้งแต่ ${f}` : `สรุปถึง ${t}`;
+  }, [dateFrom, dateTo]);
 
   const employeeName = quotations[0]?.creator?.name ?? "พนักงาน";
-  const totals = useMemo(() => sumQuotations(filtered, goldTypes), [filtered, goldTypes]);
+  const totals = useMemo(() => sumQuotations(overviewFiltered, goldTypes), [overviewFiltered, goldTypes]);
 
   // Keep the selection valid as filters change; default to the first result.
   useEffect(() => {
-    if (filtered.length === 0) { setSelectedId(null); return; }
-    if (!filtered.some((q) => q.id === selectedId)) setSelectedId(filtered[0].id);
+    if (listFiltered.length === 0) { setSelectedId(null); return; }
+    if (!listFiltered.some((q) => q.id === selectedId)) setSelectedId(listFiltered[0].id);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filtered]);
+  }, [listFiltered]);
 
   const [selectedQ, setSelectedQ] = useState<QuotationData | null>(null);
   useEffect(() => {
-    const base = filtered.find((q) => q.id === selectedId) ?? null;
+    const base = listFiltered.find((q) => q.id === selectedId) ?? null;
     if (!base) { setSelectedQ(null); return; }
     api.get<QuotationData>(`/quotations/${base.id}`)
       .then((r) => setSelectedQ(r.data as unknown as QuotationData))
@@ -152,7 +169,10 @@ export default function EmployeeQuoteListPage() {
         </div>
       </div>
 
-      <QuoteOverview totals={totals} />
+      <div className="shrink-0 flex flex-col gap-y-1">
+        <span className="text-xs font-bold text-[#c09c42] px-1">📊 {overviewLabel}</span>
+        <QuoteOverview totals={totals} />
+      </div>
 
       <div className="shrink-0">
         <Tabs
@@ -196,9 +216,13 @@ export default function EmployeeQuoteListPage() {
 
           {/* List — right on desktop, shown first on mobile */}
           <div className={`${mobileShowDetail ? "hidden" : "flex"} md:flex flex-col md:w-1/3 min-h-0 overflow-y-auto gap-y-2 pb-4`}>
-            {filtered.length === 0 ? (
+            <div className="flex items-center justify-between px-1 shrink-0">
+              <span className="text-xs font-bold text-black/50">รายการทั้งหมด (ทุกวัน)</span>
+              <span className="text-xs text-black/40">{listFiltered.length} รายการ</span>
+            </div>
+            {listFiltered.length === 0 ? (
               <div className="flex items-center justify-center py-10 text-black/40 text-sm">ยังไม่มีใบเสนอราคา</div>
-            ) : filtered.map((item) => (
+            ) : listFiltered.map((item) => (
               <div
                 key={item.id}
                 onClick={() => selectItem(item.id)}

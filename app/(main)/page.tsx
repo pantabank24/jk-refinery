@@ -192,7 +192,7 @@ export default function Home() {
       className="flex flex-col gap-y-2 mt-4 h-full overflow-y-auto scrollbar-hide pb-6"
     >
       <motion.div variants={sectionItem} className="flex flex-row gap-x-2 mb-5">
-        <Avatar name={user.name} size="lg" />
+        <Avatar src={user.avatar ? `${API_BASE}${user.avatar}` : undefined} name={user.name} size="lg" />
         <div className="flex flex-col">
           <span className="font-bold text-lg text-black">สวัสดี</span>
           <span className="font-bold text-2xl bg-gradient-to-r from-black/90 to-yellow-400 bg-clip-text text-transparent -mt-2">
