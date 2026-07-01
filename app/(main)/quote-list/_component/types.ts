@@ -5,6 +5,7 @@ export interface QuotationItem {
   price: number;
   percent: number;
   plus: number;
+  plus_type?: number; // 0=บาท, 1=%
   weight: number;
   per_gram: number;
   total: number;

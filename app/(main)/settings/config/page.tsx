@@ -65,7 +65,7 @@ export default function ConfigPage() {
     "gold_price_auto_fetch", "gold_price_cron",
     "sales_hours_enabled", "sales_open_time", "sales_close_time",
     "sales_enabled", "sales_realtime_after_hours",
-    "custom_weight_enabled",
+    "custom_weight_enabled", "bills_open",
   ];
 
   const CRON_PRESETS = [

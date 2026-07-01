@@ -1,12 +1,13 @@
 "use client";
 
 import { BillCalculate } from "../_component/billCalculate";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { QuotationProps } from "../../quotation/_component/quotation";
 import { api } from "@/lib/api";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/auth-context";
-import { ShieldOff } from "lucide-react";
+import { ShieldOff, Store } from "lucide-react";
+import { Spinner } from "@heroui/spinner";
 import {
   Modal,
   ModalContent,
@@ -22,6 +23,12 @@ export default function CreateBillPage() {
   const { permissions, refreshUnfinishedBills } = useAuth();
   const { status: salesStatus } = useSalesStatus();
   const salesClosed = !!salesStatus?.enabled && !salesStatus.is_open;
+  const [billsOpen, setBillsOpen] = useState<boolean | null>(null);
+  useEffect(() => {
+    api.get<{ open: boolean }>("/configs/bills-status")
+      .then((res) => setBillsOpen((res.data as unknown as { open: boolean }).open ?? true))
+      .catch(() => { setBillsOpen(true); });
+  }, []);
   // Creation is customer-only — raw permission, bypassing master's auto-grant.
   const canCreateBill = permissions.includes("bills.create");
   const [pendingItem, setPendingItem] = useState<QuotationProps | null>(null);
@@ -35,6 +42,24 @@ export default function CreateBillPage() {
       <div className="flex flex-col items-center justify-center h-full gap-y-3 text-black/40">
         <ShieldOff size={40} />
         <span className="font-bold text-sm">ไม่มีสิทธิ์เข้าถึงหน้านี้</span>
+      </div>
+    );
+  }
+
+  if (billsOpen === null) {
+    return (
+      <div className="flex items-center justify-center h-full">
+        <Spinner size="lg" color="warning" />
+      </div>
+    );
+  }
+
+  if (!billsOpen) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full gap-y-3 text-black/60">
+        <Store size={40} className="text-yellow-600/60" />
+        <span className="font-bold text-lg">ปิดรับซื้อชั่วคราว</span>
+        <span className="text-sm text-black/40 text-center">ขณะนี้ยังไม่เปิดรับซื้อทอง กรุณาติดต่อเจ้าหน้าที่</span>
       </div>
     );
   }

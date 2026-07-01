@@ -7,7 +7,7 @@ import { Spinner } from "@heroui/spinner";
 import { Button } from "@heroui/button";
 import { Input } from "@heroui/input";
 import { Switch } from "@heroui/switch";
-import { Keyboard, Plus, Trash2, CalendarDays, ChevronLeft, ChevronRight } from "lucide-react";
+import { Keyboard, Plus, Trash2, CalendarDays, ChevronLeft, ChevronRight, ShoppingBag } from "lucide-react";
 import { ConfirmDeleteModal } from "@/components/confirmDeleteModal";
 
 interface SystemConfig { key: string; value: string; description: string; }
@@ -87,7 +87,15 @@ export default function CustomerSellSettingsPage() {
   useEffect(() => { fetchAll(); }, []);
 
   const setC = (k: string, v: string) => setCfg((p) => ({ ...p, [k]: v }));
+  const billsOpen = cfg["bills_open"] !== "false"; // default true
   const masterOn = cfg["custom_weight_enabled"] === "true";
+
+  const toggleBillsOpen = async (v: boolean) => {
+    setC("bills_open", v ? "true" : "false");
+    try {
+      await api.put("/configs", { key: "bills_open", value: v ? "true" : "false" });
+    } catch { /* ignore */ }
+  };
 
   const weekdayRules = rules.filter((r) => r.scope === "weekday");
   const rangeRules = rules.filter((r) => r.scope === "range");
@@ -163,6 +171,22 @@ export default function CustomerSellSettingsPage() {
       </div>
 
       <div className="flex flex-col gap-y-4 overflow-y-auto pb-6">
+        {/* Open/close customer bills */}
+        <div className={`flex flex-col border-1 backdrop-blur-xl rounded-3xl p-5 gap-y-1 ${billsOpen ? "border-black/10 bg-black/5" : "border-red-300/50 bg-red-50/60"}`}>
+          <div className="flex flex-row items-center justify-between">
+            <div className="flex flex-col">
+              <span className="font-bold text-md flex items-center gap-x-2">
+                <ShoppingBag size={16} className={billsOpen ? "text-[#c09c42]" : "text-red-500"} />
+                เปิดรับซื้อของลูกค้า
+              </span>
+              <span className={`text-xs ${billsOpen ? "text-black/50" : "text-red-500 font-bold"}`}>
+                {billsOpen ? "เปิดอยู่ · ลูกค้าสามารถเข้าหน้าขายได้" : "ปิดอยู่ · ลูกค้าไม่สามารถเข้าหน้าขายได้"}
+              </span>
+            </div>
+            <Switch isDisabled={!canEdit} isSelected={billsOpen} color="warning" onValueChange={toggleBillsOpen} />
+          </div>
+        </div>
+
         {/* Master toggle */}
         <div className="flex flex-col border-1 border-black/10 bg-black/5 backdrop-blur-xl rounded-3xl p-5 gap-y-1">
           <div className="flex flex-row items-center justify-between">

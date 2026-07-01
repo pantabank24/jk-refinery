@@ -50,6 +50,7 @@ export function QuotationDetailPanel({ quotation, members, goldTypes, canUpdate,
   const editDisc = useDisclosure();
   const [editNote, setEditNote] = useState("");
   const [editMemberId, setEditMemberId] = useState("");
+  const [editDate, setEditDate] = useState("");
   const [editItems, setEditItems] = useState<QuotationItem[]>([]);
   const [editSaving, setEditSaving] = useState(false);
 
@@ -112,18 +113,20 @@ export function QuotationDetailPanel({ quotation, members, goldTypes, canUpdate,
     if (!quotation) return;
     setEditNote(quotation.note || "");
     setEditMemberId(quotation.member ? String(quotation.member.id) : "");
+    setEditDate(quotation.created_at ? quotation.created_at.slice(0, 10) : new Date().toISOString().slice(0, 10));
     setEditItems(quotation.items ? quotation.items.map((i) => ({ ...i })) : []);
     editDisc.onOpen();
   };
 
-  const updateEditItem = (idx: number, field: keyof QuotationItem, val: string) => {
+  const updateEditItem = (idx: number, field: keyof QuotationItem, val: string | number) => {
     setEditItems((prev) =>
       prev.map((item, i) => {
         if (i !== idx) return item;
-        const updated = { ...item, [field]: parseFloat(val) || 0 };
+        const numVal = typeof val === "number" ? val : (parseFloat(val) || 0);
+        const updated = { ...item, [field]: numVal };
         // Recalculate per_gram/total via the shared gold-calc — same formula as
         // the create screen (respects formula steps, plus_type, weight-in-formula).
-        if (["price", "percent", "plus", "weight"].includes(field)) {
+        if (["price", "percent", "plus", "plus_type", "weight"].includes(field)) {
           const gt = goldTypes.find((t) => String(t.id) === String(updated.type_id)) ?? null;
           const { perGram, total } = computeItem({
             goldType: gt,
@@ -131,6 +134,7 @@ export function QuotationDetailPanel({ quotation, members, goldTypes, canUpdate,
             percent: updated.percent,
             plus: updated.plus,
             weight: updated.weight,
+            plusType: updated.plus_type ?? 0,
           });
           updated.per_gram = perGram;
           updated.total = total;
@@ -160,12 +164,15 @@ export function QuotationDetailPanel({ quotation, members, goldTypes, canUpdate,
       await api.patch(`/quotations/${quotation.id}`, {
         member_id: editMemberId ? Number(editMemberId) : null,
         note: editNote,
+        created_at: editDate,
         items: editItems.map((i) => ({
+          id: i.id,
           type_id: i.type_id,
           type_name: i.type_name,
           price: i.price,
           percent: i.percent,
           plus: i.plus,
+          plus_type: i.plus_type ?? 0,
           weight: i.weight,
           per_gram: i.per_gram,
           total: i.total,
@@ -419,6 +426,16 @@ export function QuotationDetailPanel({ quotation, members, goldTypes, canUpdate,
             </span>
           </ModalHeader>
           <ModalBody className="gap-y-4">
+            {/* Date */}
+            <Input
+              size="sm"
+              type="date"
+              label="วันที่ในเอกสาร"
+              value={editDate}
+              onValueChange={setEditDate}
+              classNames={{ inputWrapper: "bg-gradient-to-br from-black/10 to-transparent border-1 border-black/10 rounded-2xl" }}
+            />
+
             {/* Member */}
             <Select
               label="สมาชิก (ไม่บังคับ)"
@@ -449,6 +466,14 @@ export function QuotationDetailPanel({ quotation, members, goldTypes, canUpdate,
                     <Input size="sm" label="ราคาบวก" type="number"
                       value={item.plus === 0 ? "" : item.plus.toString()}
                       onValueChange={(v) => updateEditItem(idx, "plus", v)}
+                      endContent={
+                        <div className="flex gap-0.5 items-center shrink-0">
+                          <button type="button" onClick={() => updateEditItem(idx, "plus_type", 0)}
+                            className={`text-[11px] font-bold px-1.5 py-0.5 rounded-full transition-all ${(item.plus_type ?? 0) === 0 ? "bg-yellow-600/70 text-white" : "text-black/40 hover:text-black/70"}`}>฿</button>
+                          <button type="button" onClick={() => updateEditItem(idx, "plus_type", 1)}
+                            className={`text-[11px] font-bold px-1.5 py-0.5 rounded-full transition-all ${(item.plus_type ?? 0) === 1 ? "bg-yellow-600/70 text-white" : "text-black/40 hover:text-black/70"}`}>%</button>
+                        </div>
+                      }
                       classNames={{ inputWrapper: "bg-white/60 border-1 border-black/10 rounded-xl" }} />
                     <Input size="sm" label="น้ำหนัก" type="number"
                       value={item.weight === 0 ? "" : item.weight.toString()}

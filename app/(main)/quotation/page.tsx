@@ -96,6 +96,7 @@ export default function QuotationPage() {
   const headerStore = user?.store ?? selectedStore ?? undefined;
   const { status: salesStatus } = useSalesStatus();
   const salesClosed = !!salesStatus?.enabled && !salesStatus.is_open;
+  const canBypassSales = hasPermission("sales.bypass");
   const [quotation, setQuotation] = useState<QuotationProps[]>([]);
   const [saving, setSaving] = useState(false);
   const [showTerms, setShowTerms] = useState(false); // rules + signature, before preview
@@ -116,6 +117,7 @@ export default function QuotationPage() {
   const [signatureDataUrl, setSignatureDataUrl] = useState<string | null>(null);
   const [signerName, setSignerName] = useState("");
   const [signerPhone, setSignerPhone] = useState("");
+  const [quotationDate, setQuotationDate] = useState(() => new Date().toISOString().split("T")[0]);
   const beforeImages = beforeFiles.map((f) => URL.createObjectURL(f));
   const afterImages = afterFiles.map((f) => URL.createObjectURL(f));
   const [listOpen, setListOpen] = useState(false);
@@ -125,6 +127,7 @@ export default function QuotationPage() {
   const searchParams = useSearchParams();
   const billId = searchParams.get("billId");
   const [billCustomer, setBillCustomer] = useState("");
+  const [billBalance, setBillBalance] = useState<number | null>(null);
   const [billIds, setBillIds] = useState<number[]>([]);
   // The customer's submitted items — shown only for reference. The gold has been
   // melted, so the master builds a fresh quote; these are NOT added to it.
@@ -160,6 +163,12 @@ export default function QuotationPage() {
         if (clicked?.creator?.id) {
           const listRes = await api.get(`/bills?created_by=${clicked.creator.id}&status=10&limit=100`);
           bills = (listRes.data as unknown as { data: BillLite[] }).data || [];
+          api.get(`/bills/balance?user_id=${clicked.creator.id}`)
+            .then((res) => {
+              const d = res.data as unknown as { balance: number };
+              setBillBalance(d.balance ?? 0);
+            })
+            .catch(() => {});
         }
         if (bills.length === 0 && clicked) bills = [clicked];
 
@@ -207,7 +216,7 @@ export default function QuotationPage() {
   // straight to the terms step.
   const handleRequestSave = () => {
     if (quotation.length === 0) return;
-    if (salesClosed) {
+    if (salesClosed && !canBypassSales) {
       setSaveError("ขณะนี้ปิดทำการ ไม่สามารถออกใบเสนอราคาได้");
       return;
     }
@@ -354,6 +363,7 @@ export default function QuotationPage() {
         store_id: selectedStore?.id, // used only for master; others derive from JWT
         bill_ids: billIds.length ? billIds : undefined, // links to the customer's bill(s)
         items: saveItems,
+        created_at: quotationDate,
       });
       const saved = res.data as unknown as { id: number; code: string };
       const quotationId = saved.id;
@@ -403,6 +413,7 @@ export default function QuotationPage() {
     setSignatureDataUrl(null);
     setSignerName("");
     setSignerPhone("");
+    setQuotationDate(new Date().toISOString().split("T")[0]);
     setConsent(false);
     setShowPostSavePreview(false);
     setSavedQuotation(null);
@@ -479,6 +490,14 @@ export default function QuotationPage() {
                       </span>
                     </div>
                   </>
+                )}
+                {billBalance !== null && billBalance !== 0 && (
+                  <div className={`flex flex-col border-1 rounded-xl p-1.5 col-span-2 ${billBalance < 0 ? "border-red-200 bg-red-50" : "border-green-200 bg-green-50"}`}>
+                    <span className="font-bold text-[10px] text-black/50 pl-1">ยอดคงค้างสะสม (จากรอบก่อน)</span>
+                    <span className={`font-bold text-sm pl-1 ${billBalance < 0 ? "text-red-600" : "text-green-700"}`}>
+                      {billBalance > 0 ? "+" : ""}{billBalance.toLocaleString(undefined, { minimumFractionDigits: 2 })} บาท
+                    </span>
+                  </div>
                 )}
               </div>
               <div className="flex flex-col gap-y-1 overflow-y-auto scrollbar-hide">
@@ -670,6 +689,14 @@ export default function QuotationPage() {
                 {/* Signature input — ผู้ขาย/เจ้าของสินทรัพย์ */}
                 <div className="flex flex-col gap-y-2 mt-4">
                   <label className="block text-sm font-bold text-black/70">เซ็นชื่อ ผู้ขาย / เจ้าของสินทรัพย์</label>
+                  <Input
+                    size="sm"
+                    type="date"
+                    label="วันที่ในเอกสาร"
+                    value={quotationDate}
+                    onValueChange={setQuotationDate}
+                    classNames={{ inputWrapper: "bg-gradient-to-br from-black/10 to-transparent border-1 border-black/10 rounded-2xl" }}
+                  />
                   <div className="grid grid-cols-2 gap-2">
                     <Input
                       size="sm"
@@ -739,6 +766,7 @@ export default function QuotationPage() {
                   store={headerStore}
                   customerName={signerName}
                   customerPhone={signerPhone}
+                  date={quotationDate}
                   beforeImages={beforeImages}
                   afterImages={afterImages}
                   signatureImage={signatureDataUrl}
@@ -822,7 +850,7 @@ export default function QuotationPage() {
                   documentNo={savedQuotation?.code}
                   customerName={signerName}
                   customerPhone={signerPhone}
-                  date={new Date()}
+                  date={quotationDate}
                   beforeImages={beforeImages}
                   afterImages={afterImages}
                   signatureImage={signatureDataUrl}

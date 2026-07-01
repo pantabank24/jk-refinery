@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback, useMemo } from "react";
 import { Avatar } from "@heroui/avatar";
-import { CheckCircle, XCircle, FileUp, AlertCircle, Trash2 } from "lucide-react";
+import { CheckCircle, XCircle, FileUp, AlertCircle, Trash2, Store } from "lucide-react";
 import { ConfirmDeleteModal } from "@/components/confirmDeleteModal";
 import moment from "moment";
 import { CmpInput } from "@/components/cmpInput";
@@ -98,6 +98,13 @@ export default function BillsList() {
   // Creation is customer-only — use the raw permission (master is auto-granted by
   // hasPermission, but master manages bills rather than creating them).
   const canCreate = permissions.includes("bills.create");
+
+  const [billsOpen, setBillsOpen] = useState(true);
+  useEffect(() => {
+    api.get<{ open: boolean }>("/configs/bills-status")
+      .then((res) => setBillsOpen((res.data as unknown as { open: boolean }).open ?? true))
+      .catch(() => {});
+  }, []);
 
   const [bills, setBills] = useState<BillData[]>([]);
   const [loading, setLoading] = useState(true);
@@ -322,13 +329,25 @@ export default function BillsList() {
         </span>
         {canCreate && (
           <Button
-            className="bg-gradient-to-r from-[#c09c42] to-yellow-600 text-white font-bold"
+            className="bg-gradient-to-r from-[#c09c42] to-yellow-600 text-white font-bold disabled:opacity-40"
+            isDisabled={!billsOpen}
             onPress={() => router.push("/bills/create")}
           >
             + ขาย
           </Button>
         )}
       </div>
+
+      {/* Closed banner */}
+      {!billsOpen && (
+        <div className="flex items-center gap-x-3 border-1 border-red-300/60 bg-red-50/80 rounded-2xl px-4 py-3 shrink-0">
+          <Store size={18} className="text-red-500 shrink-0" />
+          <div className="flex flex-col">
+            <span className="font-bold text-sm text-red-700">ปิดรับซื้อชั่วคราว</span>
+            <span className="text-xs text-red-500">ขณะนี้ยังไม่เปิดรับซื้อทอง กรุณาติดต่อเจ้าหน้าที่</span>
+          </div>
+        </div>
+      )}
 
       {/* Filter bar */}
       <div className="flex flex-row items-center gap-x-2 shrink-0">

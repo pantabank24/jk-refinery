@@ -9,14 +9,10 @@ const METAL_COLOR: Record<string, string> = {
 
 export function QuoteOverview({ totals }: { totals: QuoteTotals }) {
   return (
-    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2 shrink-0">
+    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-2 shrink-0">
       <div className="flex flex-col border-1 border-black/10 bg-black/5 backdrop-blur-xl rounded-2xl p-3 gap-y-1">
         <span className="text-xs text-black/50">ยอดรวม</span>
         <span className="font-bold text-lg text-yellow-700">{totals.amount.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
-      </div>
-      <div className="flex flex-col border-1 border-black/10 bg-black/5 backdrop-blur-xl rounded-2xl p-3 gap-y-1">
-        <span className="text-xs text-black/50">น้ำหนักรวม (กรัม)</span>
-        <span className="font-bold text-lg">{totals.weight.toLocaleString(undefined, { maximumFractionDigits: 2 })}</span>
       </div>
       {METALS.map((m) => (
         <div key={m} className="flex flex-col border-1 border-black/10 bg-black/5 backdrop-blur-xl rounded-2xl p-3 gap-y-1">

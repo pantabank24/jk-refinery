@@ -105,9 +105,13 @@ export const BillCalculate = ({ onAdd }: Props) => {
 
   const canTypeWeight = !!customWeightStatus?.allowed;
   const handleWeightInput = (v: string) => {
-    const n = parseFloat(v);
+    const clean = v.replace(/[^0-9]/g, "");
+    const n = parseInt(clean, 10);
     if (Number.isNaN(n)) return setWeight(0);
     setWeight(Math.min(WEIGHT_MAX, Math.max(0, n)));
+  };
+  const adjustWeight = (delta: number) => {
+    setWeight((w) => Math.min(WEIGHT_MAX, Math.max(0, w + delta)));
   };
 
   const handleAdd = () => {
@@ -216,16 +220,40 @@ export const BillCalculate = ({ onAdd }: Props) => {
             )}
           </span>
           {canTypeWeight ? (
-            <Input
-              type="number"
-              value={weight === 0 ? "" : String(weight)}
-              onValueChange={handleWeightInput}
-              endContent={<span className="text-xs font-bold text-black/40">บาท</span>}
-              classNames={{
-                inputWrapper: "bg-black/5 border-1 border-green-500/30 rounded-2xl py-3",
-                input: "text-center font-bold text-2xl bg-gradient-to-l from-black/90 to-yellow-600 bg-clip-text text-transparent",
-              }}
-            />
+            <div className="flex items-center gap-x-2">
+              <button
+                type="button"
+                onClick={() => adjustWeight(-1)}
+                disabled={weight <= 0}
+                className="shrink-0 w-14 h-14 rounded-full bg-gradient-to-br from-red-600/40 to-transparent border-1 border-black/10 flex items-center justify-center disabled:opacity-30 disabled:cursor-not-allowed hover:from-red-600/60 transition-all"
+              >
+                <Minus size={22} className="text-red-700" />
+              </button>
+              <Input
+                type="text"
+                inputMode="numeric"
+                pattern="[0-9]*"
+                value={weight === 0 ? "" : String(weight)}
+                onValueChange={handleWeightInput}
+                onKeyDown={(e) => {
+                  if ([".", ",", "e", "E", "+", "-"].includes(e.key)) e.preventDefault();
+                }}
+                endContent={<span className="text-xs font-bold text-black/40">บาท</span>}
+                classNames={{
+                  base: "flex-1",
+                  inputWrapper: "bg-black/5 border-1 border-green-500/30 rounded-2xl py-3",
+                  input: "text-center font-bold text-2xl bg-gradient-to-l from-black/90 to-yellow-600 bg-clip-text text-transparent",
+                }}
+              />
+              <button
+                type="button"
+                onClick={() => adjustWeight(1)}
+                disabled={weight >= WEIGHT_MAX}
+                className="shrink-0 w-14 h-14 rounded-full bg-gradient-to-br from-green-600/40 to-transparent border-1 border-black/10 flex items-center justify-center disabled:opacity-30 disabled:cursor-not-allowed hover:from-green-600/60 transition-all"
+              >
+                <Plus size={22} className="text-green-700" />
+              </button>
+            </div>
           ) : (
             <div className="flex items-center justify-between gap-x-3">
               <button

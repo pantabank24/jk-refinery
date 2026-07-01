@@ -11,11 +11,14 @@ import {
   Table, TableHeader, TableColumn, TableBody, TableRow, TableCell,
   Chip, Modal, ModalContent, ModalHeader, ModalBody, ModalFooter,
   useDisclosure, Tabs, Tab, Select, SelectItem,
-  Popover, PopoverTrigger, PopoverContent, DateRangePicker,
+  DateRangePicker,
 } from "@heroui/react";
 import { CalendarDate, today, getLocalTimeZone } from "@internationalized/date";
 import type { RangeValue } from "@react-types/shared";
-import { ArrowLeft, Coins, Pencil, Plus, Filter, Trash2, RotateCcw } from "lucide-react";
+import { ArrowLeft, Coins, Pencil, Plus, Filter, Trash2, RotateCcw, Settings } from "lucide-react";
+import { QuotationData, MemberOption as QuoteMemberOption } from "@/app/(main)/quote-list/_component/types";
+import { GoldType } from "@/lib/gold-calc";
+import { QuotationDetailPanel } from "@/app/(main)/quote-list/_component/quotationDetailPanel";
 import { BoxCard } from "@/components/boxcard";
 import { ConfirmDeleteModal } from "@/components/confirmDeleteModal";
 import { MemberCard } from "../_components/memberCard";
@@ -121,7 +124,7 @@ export const MemberDetail = () => {
   const router = useRouter();
   const searchParams = useSearchParams();
   const memberId = searchParams.get("id");
-  const { hasPermission } = useAuth();
+  const { hasPermission, isMaster } = useAuth();
 
   const [member, setMember] = useState<Member | null>(null);
   const [transactions, setTransactions] = useState<CreditTx[]>([]);
@@ -133,10 +136,18 @@ export const MemberDetail = () => {
   // Defaults to today only — empty range (qRange=null) means "every date".
   const [qSearch, setQSearch] = useState("");
   const [qStatus, setQStatus] = useState("all");
+  const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [qRange, setQRange] = useState<RangeValue<CalendarDate> | null>(() => {
     const t = today(getLocalTimeZone());
     return { start: t, end: t };
   });
+
+  // Quotation preview modal
+  const quoteDisc = useDisclosure();
+  const [selectedQuotation, setSelectedQuotation] = useState<QuotationData | null>(null);
+  const [quoteLoadingFull, setQuoteLoadingFull] = useState(false);
+  const [goldTypes, setGoldTypes] = useState<GoldType[]>([]);
+  const [allMembers, setAllMembers] = useState<QuoteMemberOption[]>([]);
 
   // Credit modal
   const { isOpen, onOpen, onOpenChange } = useDisclosure();
@@ -288,6 +299,39 @@ export const MemberDetail = () => {
     } finally {
       setResetLoading(false);
     }
+  };
+
+  const handleQuoteRowClick = async (q: Quotation) => {
+    quoteDisc.onOpen();
+    setSelectedQuotation(null);
+    setQuoteLoadingFull(true);
+    if (goldTypes.length === 0) {
+      api.get<GoldType[]>("/gold-types")
+        .then((r) => setGoldTypes((r.data as unknown as GoldType[]) || []))
+        .catch(() => {});
+    }
+    if (allMembers.length === 0) {
+      api.get<QuoteMemberOption[]>("/members?limit=200")
+        .then((r) => setAllMembers((r.data as unknown as QuoteMemberOption[]) || []))
+        .catch(() => {});
+    }
+    try {
+      const res = await api.get<QuotationData>(`/quotations/${q.id}`);
+      setSelectedQuotation(res.data as unknown as QuotationData);
+    } finally {
+      setQuoteLoadingFull(false);
+    }
+  };
+
+  const handleQuoteChanged = async (updated: QuotationData) => {
+    setSelectedQuotation(updated);
+    await fetchQuotations(member?.user?.id);
+  };
+
+  const handleQuoteDeleted = async () => {
+    quoteDisc.onClose();
+    setSelectedQuotation(null);
+    await fetchQuotations(member?.user?.id);
   };
 
   // Apply filters client-side + compute overview totals.
@@ -462,62 +506,61 @@ export const MemberDetail = () => {
 
           {tab === "quote" ? (
             <div className="flex flex-col md:flex-1 md:min-h-0 gap-2">
-                {/* Search + filter dropdown */}
-                <div className="flex flex-row gap-2">
-                  <Input
-                    size="sm"
-                    placeholder="ค้นหาเลขที่ / ชื่อลูกค้า"
-                    value={qSearch}
-                    onValueChange={setQSearch}
-                    classNames={{ inputWrapper: inputStyle, base: "flex-1" }}
-                  />
-                  <Popover placement="bottom-end">
-                    <PopoverTrigger>
-                      <Button
+                {/* Search + filter toggle */}
+                <div className="flex flex-col gap-2">
+                  <div className="flex flex-row gap-2">
+                    <Input
+                      size="sm"
+                      placeholder="ค้นหาเลขที่ / ชื่อลูกค้า"
+                      value={qSearch}
+                      onValueChange={setQSearch}
+                      classNames={{ inputWrapper: inputStyle, base: "flex-1" }}
+                    />
+                    <Button
+                      size="sm"
+                      variant="flat"
+                      startContent={<Filter size={15} />}
+                      className={`shrink-0 border-1 border-black/10 ${filterCount > 0 ? "bg-yellow-200/60" : "bg-black/5"}`}
+                      onPress={() => setIsFilterOpen((v) => !v)}
+                    >
+                      ตัวกรอง{filterCount > 0 ? ` (${filterCount})` : ""}
+                    </Button>
+                  </div>
+                  {isFilterOpen && (
+                    <div className="flex flex-col gap-2 border-1 border-black/10 bg-white/30 backdrop-blur-sm rounded-xl p-3">
+                      <Select
                         size="sm"
-                        variant="flat"
-                        startContent={<Filter size={15} />}
-                        className={`shrink-0 border-1 border-black/10 ${filterCount > 0 ? "bg-yellow-200/60" : "bg-black/5"}`}
+                        label="สถานะ"
+                        selectedKeys={[qStatus]}
+                        onChange={(e) => setQStatus(e.target.value || "all")}
+                        classNames={{ trigger: inputStyle }}
                       >
-                        ตัวกรอง{filterCount > 0 ? ` (${filterCount})` : ""}
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-64 p-3">
-                      <div className="flex flex-col gap-2 w-full">
-                        <Select
-                          size="sm"
-                          label="สถานะ"
-                          selectedKeys={[qStatus]}
-                          onChange={(e) => setQStatus(e.target.value || "all")}
-                          classNames={{ trigger: inputStyle }}
-                        >
-                          <SelectItem key="all">ทุกสถานะ</SelectItem>
-                          <SelectItem key="0">รอการอนุมัติ</SelectItem>
-                          <SelectItem key="1">อนุมัติแล้ว</SelectItem>
-                          <SelectItem key="2">ยกเลิก</SelectItem>
-                        </Select>
-                        <DateRangePicker
-                          size="sm"
-                          label="ช่วงวันที่"
-                          labelPlacement="outside"
-                          value={qRange}
-                          onChange={setQRange}
-                          classNames={{ inputWrapper: inputStyle }}
-                        />
-                        {filterCount > 0 && (
-                          <div className="flex items-center justify-between gap-2">
-                            <span className="text-[11px] text-black/40">กำลังกรอง: {rangeLabel}</span>
-                            <Button
-                              size="sm" variant="light" color="danger"
-                              onPress={() => { setQStatus("all"); setQRange(null); }}
-                            >
-                              ล้างตัวกรอง
-                            </Button>
-                          </div>
-                        )}
-                      </div>
-                    </PopoverContent>
-                  </Popover>
+                        <SelectItem key="all">ทุกสถานะ</SelectItem>
+                        <SelectItem key="0">รอการอนุมัติ</SelectItem>
+                        <SelectItem key="1">อนุมัติแล้ว</SelectItem>
+                        <SelectItem key="2">ยกเลิก</SelectItem>
+                      </Select>
+                      <DateRangePicker
+                        size="sm"
+                        label="ช่วงวันที่"
+                        labelPlacement="outside"
+                        value={qRange}
+                        onChange={setQRange}
+                        classNames={{ inputWrapper: inputStyle }}
+                      />
+                      {filterCount > 0 && (
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-[11px] text-black/40">กำลังกรอง: {rangeLabel}</span>
+                          <Button
+                            size="sm" variant="light" color="danger"
+                            onPress={() => { setQStatus("all"); setQRange(null); }}
+                          >
+                            ล้างตัวกรอง
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
 
               {/* Table */}
@@ -537,7 +580,7 @@ export const MemberDetail = () => {
                   </TableHeader>
                   <TableBody emptyContent={isTodayOnly ? "ไม่มีรายการในวันนี้ กดปุ่ม ตัวกรอง เพื่อดูวันอื่น" : "ไม่พบใบเสนอราคา"}>
                     {filteredQuotations.map((q) => (
-                      <TableRow key={q.id} className="hover:bg-white/50 cursor-pointer">
+                      <TableRow key={q.id} className="hover:bg-white/50 cursor-pointer" onClick={() => handleQuoteRowClick(q)}>
                         <TableCell>{q.code}</TableCell>
                         <TableCell>
                           {q.signer_name ? (
@@ -773,6 +816,59 @@ export const MemberDetail = () => {
                   ยืนยันรีเซ็ตเครดิต
                 </Button>
               </ModalFooter>
+            </>
+          )}
+        </ModalContent>
+      </Modal>
+
+      {/* Quotation Preview Modal */}
+      <Modal
+        isOpen={quoteDisc.isOpen}
+        onOpenChange={quoteDisc.onOpenChange}
+        size="3xl"
+        scrollBehavior="inside"
+        backdrop="blur"
+      >
+        <ModalContent>
+          {() => (
+            <>
+              <ModalHeader className="flex items-center gap-x-3 pr-10">
+                <span className="font-bold text-lg bg-gradient-to-l from-black/90 to-yellow-600 bg-clip-text text-transparent flex-1 truncate">
+                  {selectedQuotation?.code ?? "ใบเสนอราคา"}
+                </span>
+                {selectedQuotation && member?.user?.id && (
+                  <Button
+                    size="sm"
+                    variant="flat"
+                    startContent={<Settings size={14} />}
+                    className="shrink-0 border-1 border-black/10 bg-black/5"
+                    onPress={() => {
+                      quoteDisc.onClose();
+                      router.push(`/quote-list/${member.user!.id}`);
+                    }}
+                  >
+                    ตั้งค่า
+                  </Button>
+                )}
+              </ModalHeader>
+              <ModalBody className="pb-6">
+                {quoteLoadingFull ? (
+                  <div className="flex items-center justify-center py-12">
+                    <Spinner size="lg" color="warning" />
+                  </div>
+                ) : (
+                  <QuotationDetailPanel
+                    quotation={selectedQuotation}
+                    members={allMembers}
+                    goldTypes={goldTypes}
+                    canUpdate={hasPermission("quotations.update")}
+                    isMaster={isMaster}
+                    canDelete={hasPermission("quotations.delete")}
+                    onChanged={handleQuoteChanged}
+                    onDeleted={handleQuoteDeleted}
+                  />
+                )}
+              </ModalBody>
             </>
           )}
         </ModalContent>

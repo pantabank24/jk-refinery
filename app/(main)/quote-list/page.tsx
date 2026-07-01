@@ -74,8 +74,8 @@ export default function QuoteList() {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<string>("all");
   const [search, setSearch] = useState("");
-  const [dateFrom, setDateFrom] = useState("");
-  const [dateTo, setDateTo] = useState("");
+  const [dateFrom, setDateFrom] = useState(moment().format("YYYY-MM-DD"));
+  const [dateTo, setDateTo] = useState(moment().format("YYYY-MM-DD"));
   const [members, setMembers] = useState<MemberOption[]>([]);
   // Gold types are needed to recompute per-gram/total on edit, and to map an
   // item's type_id to its metal category (gold/silver/platinum/palladium).
