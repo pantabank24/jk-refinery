@@ -8,7 +8,7 @@ import { TermsForm } from "./_component/termsForm";
 import { api } from "@/lib/api";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/contexts/auth-context";
-import { ShieldOff, X, Save, AlertCircle, Receipt, Trash2, Camera, Image as ImageIcon } from "lucide-react";
+import { ShieldOff, X, Save, AlertCircle, Receipt, Trash2, Camera, Image as ImageIcon, UserCheck, PenLine } from "lucide-react";
 import {
   Modal,
   ModalContent,
@@ -27,6 +27,8 @@ import { SignaturePad } from "@/components/signature-pad";
 import { WebcamCaptureModal } from "@/components/webcam-capture-modal";
 import { Truck } from "lucide-react";
 import { ConfirmDeleteModal } from "@/components/confirmDeleteModal";
+
+const API_BASE = process.env.NEXT_PUBLIC_API_URL?.replace("/api/v1", "") || "http://localhost:8080";
 
 // Reusable typed image-upload block — a single compact row of thumbnails
 // with an inline "+" tile to add more, instead of a separate dropzone box.
@@ -127,6 +129,14 @@ export default function QuotationPage() {
   const searchParams = useSearchParams();
   const billId = searchParams.get("billId");
   const [billCustomer, setBillCustomer] = useState("");
+  // The customer's registered profile (suggested for the signer fields) + their
+  // most recent signature (offered for reuse), loaded in bill mode.
+  const [customerProfile, setCustomerProfile] = useState<{ name: string; phone: string; store_name: string; address: string; tax_id: string } | null>(null);
+  const [prevSignatureUrl, setPrevSignatureUrl] = useState<string | null>(null);
+  const [usingPrevSig, setUsingPrevSig] = useState(false);
+  // Which registered field to use as the signer name when applying the
+  // suggestion — the person's name (default) or the company/store name.
+  const [nameSource, setNameSource] = useState<"person" | "company">("person");
   const [billBalance, setBillBalance] = useState<number | null>(null);
   const [billWeight, setBillWeight] = useState(0);
   const [billAvgPrice, setBillAvgPrice] = useState(0);
@@ -147,7 +157,7 @@ export default function QuotationPage() {
   const [deletingBill, setDeletingBill] = useState(false);
 
   type BillItemLite = { type_id: string; type_name: string; price: number; percent: number; plus: number; weight: number; per_gram: number; total: number };
-  type BillLite = { id: number; total_amount: number; processed_weight: number; processed_amount: number; items?: BillItemLite[]; creator?: { id: number; name: string } };
+  type BillLite = { id: number; total_amount: number; processed_weight: number; processed_amount: number; items?: BillItemLite[]; creator?: { id: number; name: string; phone?: string; store_name?: string; address?: string; tax_id?: string } };
 
   useEffect(() => {
     if (!billId) return;
@@ -158,6 +168,29 @@ export default function QuotationPage() {
         if (clicked?.creator?.name) {
           setBillCustomer(clicked.creator.name);
           setSignerName(clicked.creator.name);
+        }
+        if (clicked?.creator) {
+          setCustomerProfile({
+            name: clicked.creator.name || "",
+            phone: clicked.creator.phone || "",
+            store_name: clicked.creator.store_name || "",
+            address: clicked.creator.address || "",
+            tax_id: clicked.creator.tax_id || "",
+          });
+          if (clicked.creator.phone) setSignerPhone(clicked.creator.phone);
+        }
+        // Auto-load the customer's most recent signature (they can still redraw).
+        if (clicked?.creator?.id) {
+          api.get<{ image_url: string }>(`/quotations/latest-signature?created_by=${clicked.creator.id}`)
+            .then((r) => {
+              const u = (r.data as unknown as { image_url: string })?.image_url;
+              if (u) {
+                setPrevSignatureUrl(u);
+                setSignatureDataUrl(`${API_BASE}${u}`);
+                setUsingPrevSig(true);
+              }
+            })
+            .catch(() => {});
         }
         // Combine ALL of this customer's pending (รอออกบิล) bills' submitted items
         // as reference (their gold was melted; the master re-assesses from scratch).
@@ -710,6 +743,57 @@ export default function QuotationPage() {
                 {/* Signature input — ผู้ขาย/เจ้าของสินทรัพย์ */}
                 <div className="flex flex-col gap-y-2 mt-4">
                   <label className="block text-sm font-bold text-black/70">เซ็นชื่อ ผู้ขาย / เจ้าของสินทรัพย์</label>
+
+                  {/* Suggestion: fill signer fields from the customer's registered profile */}
+                  {customerProfile && (customerProfile.name || customerProfile.phone) && (
+                    <div className="flex flex-col gap-2 border-1 border-[#c09c42]/30 bg-[#c09c42]/5 rounded-2xl p-3">
+                      <div className="flex items-center gap-x-1.5 text-xs font-bold text-[#c09c42]">
+                        <UserCheck size={14} /> ข้อมูลลูกค้าที่ลงทะเบียนไว้
+                      </div>
+                      <div className="text-xs text-black/60 leading-relaxed">
+                        {customerProfile.name || "-"}
+                        {customerProfile.phone ? ` · ${customerProfile.phone}` : ""}
+                        {customerProfile.address ? <div className="text-black/40">{customerProfile.address}</div> : null}
+                        {customerProfile.tax_id ? <div className="text-black/40">เลขภาษี: {customerProfile.tax_id}</div> : null}
+                      </div>
+
+                      {/* Choose which name to put as the signer (default: person) */}
+                      <div className="flex flex-col gap-1">
+                        <span className="text-[11px] font-bold text-black/50">ใช้ชื่อผู้เซ็นเป็น</span>
+                        <div className="flex gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => setNameSource("person")}
+                            className={`text-xs font-bold px-3 py-1 rounded-full border-1 transition-colors ${nameSource === "person" ? "bg-[#c09c42] text-white border-[#c09c42]" : "bg-white/60 text-black/60 border-black/10"}`}
+                          >
+                            ชื่อลูกค้า
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setNameSource("company")}
+                            disabled={!customerProfile.store_name}
+                            className={`text-xs font-bold px-3 py-1 rounded-full border-1 transition-colors disabled:opacity-40 ${nameSource === "company" ? "bg-[#c09c42] text-white border-[#c09c42]" : "bg-white/60 text-black/60 border-black/10"}`}
+                          >
+                            ชื่อบริษัท{customerProfile.store_name ? ` (${customerProfile.store_name})` : ""}
+                          </button>
+                        </div>
+                      </div>
+
+                      <Button
+                        size="sm"
+                        variant="flat"
+                        className="self-start border-1 border-[#c09c42]/30 bg-white/60 font-bold text-[#c09c42]"
+                        onPress={() => {
+                          if (!customerProfile) return;
+                          setSignerName(nameSource === "company" && customerProfile.store_name ? customerProfile.store_name : customerProfile.name);
+                          setSignerPhone(customerProfile.phone);
+                        }}
+                      >
+                        ใช้ข้อมูลที่ลงทะเบียนไว้
+                      </Button>
+                    </div>
+                  )}
+
                   <Input
                     size="sm"
                     type="date"
@@ -734,7 +818,41 @@ export default function QuotationPage() {
                       classNames={{ inputWrapper: "bg-gradient-to-br from-black/10 to-transparent border-1 border-black/10 rounded-2xl" }}
                     />
                   </div>
-                  <SignaturePad onChange={setSignatureDataUrl} />
+
+                  {usingPrevSig && signatureDataUrl ? (
+                    // Reusing the customer's previous signature — show it with an option to draw a new one.
+                    <div className="flex flex-col gap-y-2">
+                      <div className="relative rounded-2xl border-2 border-[#c09c42]/40 bg-white overflow-hidden flex items-center justify-center" style={{ height: 180 }}>
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={signatureDataUrl} alt="ลายเซ็นเดิม" className="max-h-full max-w-full object-contain" />
+                        <span className="absolute top-2 left-2 text-[10px] font-bold text-[#c09c42] bg-white/80 rounded-full px-2 py-0.5 border-1 border-[#c09c42]/30">
+                          ใช้ลายเซ็นเดิม
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => { setUsingPrevSig(false); setSignatureDataUrl(null); }}
+                        className="self-end flex items-center gap-x-1.5 text-xs font-bold text-[#c09c42] hover:text-yellow-700"
+                      >
+                        <PenLine size={14} /> เซ็นใหม่
+                      </button>
+                    </div>
+                  ) : (
+                    <>
+                      {prevSignatureUrl && (
+                        <Button
+                          size="sm"
+                          variant="flat"
+                          className="self-start border-1 border-[#c09c42]/30 bg-[#c09c42]/5 font-bold text-[#c09c42]"
+                          startContent={<PenLine size={14} />}
+                          onPress={() => { setSignatureDataUrl(`${API_BASE}${prevSignatureUrl}`); setUsingPrevSig(true); }}
+                        >
+                          ใช้ลายเซ็นเดิม
+                        </Button>
+                      )}
+                      <SignaturePad onChange={setSignatureDataUrl} />
+                    </>
+                  )}
                 </div>
 
                 {saveError && (
@@ -787,6 +905,8 @@ export default function QuotationPage() {
                   store={headerStore}
                   customerName={signerName}
                   customerPhone={signerPhone}
+                  customerAddress={customerProfile?.address}
+                  customerTaxId={customerProfile?.tax_id}
                   date={quotationDate}
                   beforeImages={beforeImages}
                   afterImages={afterImages}
@@ -871,6 +991,8 @@ export default function QuotationPage() {
                   documentNo={savedQuotation?.code}
                   customerName={signerName}
                   customerPhone={signerPhone}
+                  customerAddress={customerProfile?.address}
+                  customerTaxId={customerProfile?.tax_id}
                   date={quotationDate}
                   beforeImages={beforeImages}
                   afterImages={afterImages}

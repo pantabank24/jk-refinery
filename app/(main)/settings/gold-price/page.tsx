@@ -237,7 +237,7 @@ export default function GoldPricePage() {
                     {history.map((row) => (
                       <tr key={row.id} className="border-t border-black/5 hover:bg-black/5">
                         <td className="px-4 py-2 text-black/60">
-                          {row.gold_date} {row.gold_time}
+                          {row.gold_date} {row.gold_time} {row.gold_round}
                         </td>
                         <td className="px-4 py-2 text-right font-bold">{row.bar_buy.toLocaleString()}</td>
                         <td className="px-4 py-2 text-right font-bold">{row.bar_sell.toLocaleString()}</td>

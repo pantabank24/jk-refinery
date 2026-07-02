@@ -72,6 +72,8 @@ interface Props {
   documentNo?: string; // เลขที่เอกสาร (quotation.code) — แสดงในหน้าใบรับซื้อทองเก่าทางการ
   customerName?: string;
   customerPhone?: string;
+  customerAddress?: string; // ที่อยู่ลูกค้า (ผู้ขาย)
+  customerTaxId?: string; // เลขประจำตัวผู้เสียภาษีของลูกค้า
   date?: string | Date; // วันที่บนเอกสาร (default: วันนี้)
   previewImages?: string[];
   beforeImages?: string[]; // รูปก่อนหลอม
@@ -89,6 +91,8 @@ export const PreviewQuote = ({
   documentNo,
   customerName,
   customerPhone,
+  customerAddress,
+  customerTaxId,
   date,
   previewImages,
   beforeImages,
@@ -467,6 +471,8 @@ export const PreviewQuote = ({
                     ชื่อลูกค้า: {customerName ?? ""}
                   </span>
                   <span>เบอร์โทร: {customerPhone ?? ""}</span>
+                  {customerAddress && <span>ที่อยู่: {customerAddress}</span>}
+                  {customerTaxId && <span>เลขประจำตัวผู้เสียภาษี: {customerTaxId}</span>}
                 </div>
                 <span className="font-bold">วันที่: {thaiDate(date)}</span>
               </div>
@@ -892,14 +898,14 @@ export const PreviewQuote = ({
                 <div>ชื่อลูกค้า : {customerName ?? ""}</div>
                 <div className="flex items-center">
                   <span className="shrink-0">ที่อยู่ :</span>
-                  <span className="flex-1 border-b border-dotted border-gray-400 ml-1">
-                    &nbsp;
+                  <span className="flex-1 border-b border-dotted border-gray-400 ml-1 px-1">
+                    {customerAddress || " "}
                   </span>
                 </div>
                 <div className="flex items-center">
                   <span className="shrink-0">เลขประจำตัวผู้เสียภาษี :</span>
-                  <span className="flex-1 border-b border-dotted border-gray-400 ml-1">
-                    &nbsp;
+                  <span className="flex-1 border-b border-dotted border-gray-400 ml-1 px-1">
+                    {customerTaxId || " "}
                   </span>
                 </div>
               </div>

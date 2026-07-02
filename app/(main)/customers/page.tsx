@@ -2,22 +2,24 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { Avatar } from "@heroui/avatar";
-import { Pencil, Trash2, ShieldOff, Plus } from "lucide-react";
+import { Pencil, Trash2, ShieldOff, Plus, Eye } from "lucide-react";
 import { CmpInput } from "@/components/cmpInput";
 import { api } from "@/lib/api";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/auth-context";
 import { Spinner } from "@heroui/spinner";
 import { Button } from "@heroui/button";
-import { Input } from "@heroui/input";
-import { Switch } from "@heroui/switch";
 import { Modal, ModalContent, ModalHeader, ModalBody, ModalFooter, useDisclosure } from "@heroui/modal";
+
+const API_BASE = process.env.NEXT_PUBLIC_API_URL?.replace("/api/v1", "") || "http://localhost:8080";
 
 interface Customer {
   id: number;
   name: string;
   email: string;
   phone: string;
+  address?: string;
+  avatar?: string;
   is_active: boolean;
   store_name?: string | null;
   store?: { id: number; name: string } | null;
@@ -35,20 +37,7 @@ export default function CustomersPage() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
 
-  const formDisc = useDisclosure();
   const deleteDisc = useDisclosure();
-  const [editing, setEditing] = useState<Customer | null>(null);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState("");
-
-  // form fields
-  const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [phone, setPhone] = useState("");
-  const [storeName, setStoreName] = useState("");
-  const [isActive, setIsActive] = useState(true);
-
   const [target, setTarget] = useState<Customer | null>(null);
   const [deleting, setDeleting] = useState(false);
 
@@ -71,50 +60,6 @@ export default function CustomersPage() {
   }, [authLoading, canRead, router]);
 
   useEffect(() => { if (canRead) fetchCustomers(); }, [fetchCustomers, canRead]);
-
-  const openCreate = () => {
-    setEditing(null);
-    setName(""); setEmail(""); setPassword(""); setPhone("");
-    setStoreName(""); setIsActive(true); setError("");
-    formDisc.onOpen();
-  };
-
-  const openEdit = (c: Customer) => {
-    setEditing(c);
-    setName(c.name); setEmail(c.email); setPassword(""); setPhone(c.phone || "");
-    setStoreName(c.store_name || c.store?.name || "");
-    setIsActive(c.is_active); setError("");
-    formDisc.onOpen();
-  };
-
-  const handleSave = async () => {
-    if (!name || !email) return setError("กรุณากรอกชื่อและอีเมล");
-    if (!editing && !password) return setError("กรุณากำหนดรหัสผ่าน");
-    setError("");
-    setSaving(true);
-    try {
-      if (editing) {
-        await api.put(`/customers/${editing.id}`, {
-          name, email,
-          ...(password ? { password } : {}),
-          phone,
-          store_name: storeName || undefined,
-          is_active: isActive,
-        });
-      } else {
-        await api.post("/customers", {
-          name, email, password, phone,
-          store_name: storeName || undefined,
-        });
-      }
-      formDisc.onClose();
-      fetchCustomers();
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "บันทึกไม่สำเร็จ");
-    } finally {
-      setSaving(false);
-    }
-  };
 
   const askDelete = (c: Customer) => { setTarget(c); deleteDisc.onOpen(); };
 
@@ -149,7 +94,7 @@ export default function CustomersPage() {
           <Button
             className="bg-gradient-to-r from-[#c09c42] to-yellow-600 text-white font-bold"
             startContent={<Plus size={16} />}
-            onPress={openCreate}
+            onPress={() => router.push("/customers/add")}
           >
             เพิ่มลูกค้า
           </Button>
@@ -171,9 +116,13 @@ export default function CustomersPage() {
         ) : (
           <div className="flex flex-col gap-y-2 pb-4">
             {customers.map((c) => (
-              <div key={c.id} className="flex flex-row items-center justify-between border-1 border-black/10 bg-black/5 backdrop-blur-xl rounded-2xl p-3">
+              <div
+                key={c.id}
+                className="flex flex-row items-center justify-between border-1 border-black/10 bg-black/5 backdrop-blur-xl rounded-2xl p-3 cursor-pointer hover:bg-black/10 transition-colors"
+                onClick={() => router.push(`/customers/read?id=${c.id}`)}
+              >
                 <div className="flex flex-row items-center gap-x-3">
-                  <Avatar size="sm" name={c.name} />
+                  <Avatar size="sm" name={c.name} src={c.avatar ? `${API_BASE}${c.avatar}` : undefined} />
                   <div className="flex flex-col">
                     <span className="text-sm font-bold text-black/70">{c.name}
                       {!c.is_active && <span className="ml-2 text-[10px] text-red-500">(ปิดใช้งาน)</span>}
@@ -186,9 +135,12 @@ export default function CustomersPage() {
                     )}
                   </div>
                 </div>
-                <div className="flex flex-row items-center gap-x-1">
+                <div className="flex flex-row items-center gap-x-1" onClick={(e) => e.stopPropagation()}>
+                  <Button isIconOnly size="sm" variant="light" className="text-black/50" onPress={() => router.push(`/customers/read?id=${c.id}`)}>
+                    <Eye size={15} />
+                  </Button>
                   {canUpdate && (
-                    <Button isIconOnly size="sm" variant="light" className="text-[#c09c42]" onPress={() => openEdit(c)}>
+                    <Button isIconOnly size="sm" variant="light" className="text-[#c09c42]" onPress={() => router.push(`/customers/edit?id=${c.id}`)}>
                       <Pencil size={15} />
                     </Button>
                   )}
@@ -203,49 +155,6 @@ export default function CustomersPage() {
           </div>
         )}
       </div>
-
-      {/* CREATE / EDIT MODAL */}
-      <Modal isOpen={formDisc.isOpen} onClose={formDisc.onClose} size="lg" scrollBehavior="inside">
-        <ModalContent>
-          <ModalHeader>
-            <span className="font-bold bg-gradient-to-l from-black/90 to-yellow-600 bg-clip-text text-transparent">
-              {editing ? "แก้ไขลูกค้า" : "เพิ่มลูกค้า"}
-            </span>
-          </ModalHeader>
-          <ModalBody>
-            <div className="flex flex-col gap-y-3">
-              <Input label="ชื่อ" value={name} onChange={(e) => setName(e.target.value)} isRequired />
-              <Input label="อีเมล" type="email" value={email} onChange={(e) => setEmail(e.target.value)} isRequired />
-              <Input
-                label={editing ? "รหัสผ่าน (เว้นว่างถ้าไม่เปลี่ยน)" : "รหัสผ่าน"}
-                type="password" value={password} onChange={(e) => setPassword(e.target.value)}
-                isRequired={!editing}
-              />
-              <Input label="เบอร์โทร" value={phone} onChange={(e) => setPhone(e.target.value)} />
-              <Input label="ร้านค้า" value={storeName} onChange={(e) => setStoreName(e.target.value)} placeholder="ชื่อร้านค้า" />
-              {editing && (
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-black/60">เปิดใช้งาน</span>
-                  <Switch isSelected={isActive} onValueChange={setIsActive} color="warning" />
-                </div>
-              )}
-              {error && (
-                <div className="text-red-500 text-sm bg-red-50 border border-red-200 rounded-xl px-4 py-2">{error}</div>
-              )}
-            </div>
-          </ModalBody>
-          <ModalFooter>
-            <Button variant="light" onPress={formDisc.onClose} isDisabled={saving}>ยกเลิก</Button>
-            <Button
-              className="bg-gradient-to-r from-[#c09c42] to-yellow-600 text-white font-bold"
-              onPress={handleSave}
-              isLoading={saving}
-            >
-              บันทึก
-            </Button>
-          </ModalFooter>
-        </ModalContent>
-      </Modal>
 
       {/* DELETE CONFIRM */}
       <Modal isOpen={deleteDisc.isOpen} onClose={deleteDisc.onClose} size="sm">

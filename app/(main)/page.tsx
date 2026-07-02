@@ -56,6 +56,7 @@ interface GoldPriceLite {
   change_today: number;
   gold_date: string;
   gold_time: string;
+  gold_round: string;
 }
 
 interface RecentItem {
@@ -292,7 +293,8 @@ export default function Home() {
                 </div>
               </div>
               <span className="text-[10px] text-black/40">
-                อัปเดต {goldPrice.gold_date} {goldPrice.gold_time}
+                อัปเดต {goldPrice.gold_date} {goldPrice.gold_time}{" "}
+                {goldPrice.gold_round}
               </span>
             </div>
           )}
