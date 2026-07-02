@@ -28,9 +28,13 @@ interface Props {
   onChanged: (updated: QuotationData) => void;
   onDeleted: () => void;
   emptyHint?: string;
+  // When true, the panel fills its parent's height and only the quote document
+  // (PreviewQuote) scrolls — the header info and action bar stay fixed. Used
+  // inside the modal so the receipt scrolls internally instead of the whole body.
+  fillHeight?: boolean;
 }
 
-export function QuotationDetailPanel({ quotation, members, goldTypes, canUpdate, isMaster, canDelete, onChanged, onDeleted, emptyHint }: Props) {
+export function QuotationDetailPanel({ quotation, members, goldTypes, canUpdate, isMaster, canDelete, onChanged, onDeleted, emptyHint, fillHeight }: Props) {
   // ── Approve ──
   const approveDisc = useDisclosure();
   const [approving, setApproving] = useState(false);
@@ -213,10 +217,14 @@ export function QuotationDetailPanel({ quotation, members, goldTypes, canUpdate,
       ? { ...quotation.store, branch: quotation.branch?.name }
       : undefined;
   const storeHeaderName = quotation.store_name || quotation.store?.name;
+  const hasActions =
+    canDelete ||
+    (canUpdate && quotation.status === 0) ||
+    (isMaster && quotation.status !== 0);
 
   return (
-    <div className="flex flex-col gap-y-3">
-      <div className="flex flex-col gap-0.5">
+    <div className={`flex flex-col gap-y-3 ${fillHeight ? "h-full min-h-0" : ""}`}>
+      <div className="flex flex-col gap-0.5 shrink-0">
         <div className="flex items-center justify-between">
           <span className="font-bold bg-gradient-to-l from-black/90 to-yellow-600 bg-clip-text text-transparent">
             {quotation.code}
@@ -234,7 +242,7 @@ export function QuotationDetailPanel({ quotation, members, goldTypes, canUpdate,
       </div>
 
       {quotation.status === 2 && quotation.reject_reason && (
-        <div className="flex items-start gap-x-2 bg-red-50 border-1 border-red-200 rounded-2xl p-3">
+        <div className="flex items-start gap-x-2 bg-red-50 border-1 border-red-200 rounded-2xl p-3 shrink-0">
           <XCircle size={14} className="text-red-500 mt-0.5 shrink-0" />
           <div className="flex flex-col">
             <span className="text-xs font-bold text-red-600">เหตุผลที่ยกเลิก</span>
@@ -243,6 +251,7 @@ export function QuotationDetailPanel({ quotation, members, goldTypes, canUpdate,
         </div>
       )}
 
+      <div className={fillHeight ? "flex-1 min-h-0 overflow-y-auto scrollbar-hide" : "contents"}>
       <PreviewQuote
         items={(quotation.items ?? []).map((item): QuotationProps => ({
           typeId: String(item.id),
@@ -266,8 +275,10 @@ export function QuotationDetailPanel({ quotation, members, goldTypes, canUpdate,
         signatureImage={imgUrls(quotation.images, "signature")[0] ?? null}
         signerName={quotation.signer_name}
       />
+      </div>
 
-      <div className="flex flex-wrap gap-2 justify-end pt-1">
+      {hasActions && (
+      <div className={`shrink-0 flex flex-wrap gap-2 justify-end pt-2 ${fillHeight ? "border-t border-black/10" : "pt-1"}`}>
         {canUpdate && quotation.status === 0 && (
           <>
             <Button variant="flat" startContent={<Pencil size={14} />} onPress={openEdit}>
@@ -304,6 +315,7 @@ export function QuotationDetailPanel({ quotation, members, goldTypes, canUpdate,
           </Button>
         )}
       </div>
+      )}
 
       <ConfirmDeleteModal
         isOpen={deleteDisc.isOpen}

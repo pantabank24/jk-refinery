@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState, useCallback } from "react";
 import { Avatar } from "@heroui/avatar";
-import { Download, Users, List as ListIcon } from "lucide-react";
+import { Download, Users, List as ListIcon, Pencil, Calendar } from "lucide-react";
 import moment from "moment";
 import { CmpInput } from "@/components/cmpInput";
 import { api } from "@/lib/api";
@@ -76,6 +76,7 @@ export default function QuoteList() {
   const [search, setSearch] = useState("");
   const [dateFrom, setDateFrom] = useState(moment().format("YYYY-MM-DD"));
   const [dateTo, setDateTo] = useState(moment().format("YYYY-MM-DD"));
+  const [editingDate, setEditingDate] = useState(false);
   const [members, setMembers] = useState<MemberOption[]>([]);
   // Gold types are needed to recompute per-gram/total on edit, and to map an
   // item's type_id to its metal category (gold/silver/platinum/palladium).
@@ -187,13 +188,13 @@ export default function QuoteList() {
   if (!authLoading && !canRead) return null;
 
   return (
-    <div className="flex flex-col h-full gap-y-3">
+    <div className="flex flex-col h-full gap-y-3 overflow-y-auto scrollbar-hide">
       {/* Header */}
-      <div className="flex flex-row items-center justify-between shrink-0 pt-5 px-1">
-        <span className="font-bold text-2xl bg-gradient-to-l from-black/90 to-yellow-600 bg-clip-text text-transparent">
+      <div className="flex flex-row items-center justify-between shrink-0 pt-5 px-1 gap-x-2">
+        <span className="font-bold text-2xl bg-gradient-to-l from-black/90 to-yellow-600 bg-clip-text text-transparent truncate min-w-0">
           รายการใบเสนอราคา
         </span>
-        <div className="flex border-1 border-black/10 rounded-full p-0.5 bg-black/5">
+        <div className="flex border-1 border-black/10 rounded-full p-0.5 bg-black/5 shrink-0">
           <button
             onClick={() => setView("employee")}
             className={`flex items-center gap-x-1.5 px-3 py-1.5 rounded-full text-xs font-bold transition-all ${view === "employee" ? "bg-gradient-to-r from-[#c09c42] to-yellow-600 text-white" : "text-black/50"}`}
@@ -211,21 +212,37 @@ export default function QuoteList() {
 
       {/* Filter bar */}
       <div className="flex flex-col md:flex-row items-stretch md:items-center gap-2 shrink-0">
-        <div className="flex-1">
+        <div className="flex-1 [&_[data-slot=input-wrapper]]:h-12 [&_[data-slot=input-wrapper]]:min-h-12">
           <CmpInput placeholder="ค้นหาเลขที่" value={search}
             onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSearch(e.target.value)} />
         </div>
-        <div className="flex items-center gap-x-2">
-          <Input type="date" label="จากวันที่" labelPlacement="inside" value={dateFrom}
-            onValueChange={setDateFrom}
-            classNames={{ inputWrapper: "bg-gradient-to-br from-black/10 to-transparent border-1 border-black/10 rounded-2xl" }} />
-          <Input type="date" label="ถึงวันที่" labelPlacement="inside" value={dateTo}
-            onValueChange={setDateTo}
-            classNames={{ inputWrapper: "bg-gradient-to-br from-black/10 to-transparent border-1 border-black/10 rounded-2xl" }} />
-          {(dateFrom || dateTo) && (
-            <Button size="sm" variant="light" onPress={() => { setDateFrom(""); setDateTo(""); }}>ล้างวันที่</Button>
-          )}
-        </div>
+        {editingDate ? (
+          <div className="flex items-center gap-x-2">
+            <Input type="date" label="จากวันที่" labelPlacement="inside" value={dateFrom}
+              onValueChange={setDateFrom}
+              classNames={{ inputWrapper: "bg-gradient-to-br from-black/10 to-transparent border-1 border-black/10 rounded-2xl" }} />
+            <Input type="date" label="ถึงวันที่" labelPlacement="inside" value={dateTo}
+              onValueChange={setDateTo}
+              classNames={{ inputWrapper: "bg-gradient-to-br from-black/10 to-transparent border-1 border-black/10 rounded-2xl" }} />
+            {(dateFrom || dateTo) && (
+              <Button size="sm" variant="light" onPress={() => { setDateFrom(""); setDateTo(""); }}>ล้างวันที่</Button>
+            )}
+            <Button size="sm" color="warning" variant="flat" onPress={() => setEditingDate(false)}>เสร็จ</Button>
+          </div>
+        ) : (
+          <div className="flex items-center gap-x-2 bg-gradient-to-br from-black/10 to-transparent border-1 border-black/10 rounded-2xl px-3 py-2">
+            <Calendar size={15} className="text-[#c09c42] shrink-0" />
+            <span className="text-sm font-bold text-black/70 whitespace-nowrap">
+              {dateFrom || dateTo
+                ? `${dateFrom ? moment(dateFrom).format("DD/MM/YY") : "…"} - ${dateTo ? moment(dateTo).format("DD/MM/YY") : "…"}`
+                : "ทุกวันที่"}
+            </span>
+            <Button isIconOnly size="sm" variant="light" className="text-[#c09c42]"
+              onPress={() => setEditingDate(true)}>
+              <Pencil size={13} />
+            </Button>
+          </div>
+        )}
       </div>
 
       {/* Overview */}
@@ -248,35 +265,74 @@ export default function QuoteList() {
       </div>
 
       {/* Content */}
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex flex-col flex-1">
         {loading ? (
           <div className="flex items-center justify-center py-10"><Spinner size="lg" color="warning" /></div>
         ) : filtered.length === 0 ? (
           <div className="flex items-center justify-center py-10 text-black/40 text-sm">ยังไม่มีใบเสนอราคา</div>
         ) : view === "employee" ? (
-          <Table
-            isHeaderSticky
-            radius="sm"
-            removeWrapper
-            classNames={{
-              base: "flex flex-col flex-1 min-h-0 overflow-y-scroll scrollbar-hide border-1 border-black/10 bg-black/5 backdrop-blur-xl rounded-2xl p-2",
-            }}
-          >
-            <TableHeader columns={EMPLOYEE_COLUMNS}>
-              {(col) => <TableColumn key={col.key}>{col.label}</TableColumn>}
-            </TableHeader>
-            <TableBody items={employeeGroups} emptyContent="ไม่พบข้อมูล">
-              {(g) => (
-                <TableRow
+          <>
+            {/* Desktop: table */}
+            <Table
+              isHeaderSticky
+              radius="sm"
+              removeWrapper
+              classNames={{
+                base: "hidden md:flex flex-col border-1 border-black/10 bg-black/5 backdrop-blur-xl rounded-2xl p-2",
+              }}
+            >
+              <TableHeader columns={EMPLOYEE_COLUMNS}>
+                {(col) => <TableColumn key={col.key}>{col.label}</TableColumn>}
+              </TableHeader>
+              <TableBody items={employeeGroups} emptyContent="ไม่พบข้อมูล">
+                {(g) => (
+                  <TableRow
+                    key={g.id}
+                    className={g.id !== "none" ? "hover:bg-white rounded-2xl cursor-pointer" : "opacity-60"}
+                    onClick={() => { if (g.id !== "none") router.push(`/quote-list/${g.id}`); }}
+                  >
+                    {(columnKey) => <TableCell>{renderEmployeeCell(g, columnKey as EmployeeColKey)}</TableCell>}
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
+
+            {/* Mobile: card list */}
+            <div className="flex md:hidden flex-col gap-y-2 pb-4">
+              {employeeGroups.map((g) => (
+                <div
                   key={g.id}
-                  className={g.id !== "none" ? "hover:bg-white rounded-2xl cursor-pointer" : "opacity-60"}
                   onClick={() => { if (g.id !== "none") router.push(`/quote-list/${g.id}`); }}
+                  className={`flex flex-col border-1 border-black/10 bg-black/5 backdrop-blur-xl rounded-2xl p-3 gap-y-2 ${g.id !== "none" ? "cursor-pointer hover:shadow-md transition-all" : "opacity-60"}`}
                 >
-                  {(columnKey) => <TableCell>{renderEmployeeCell(g, columnKey as EmployeeColKey)}</TableCell>}
-                </TableRow>
-              )}
-            </TableBody>
-          </Table>
+                  <div className="flex flex-row items-center justify-between gap-x-2">
+                    <div className="flex items-center gap-x-2 min-w-0">
+                      <Avatar name={g.name} size="sm" />
+                      <div className="flex flex-col min-w-0">
+                        <span className="font-bold text-sm text-black/80 truncate">{g.name}</span>
+                        <span className="text-[10px] text-black/40">
+                          {g.count} ใบ · {g.totals.weight.toLocaleString(undefined, { maximumFractionDigits: 2 })} ก.
+                        </span>
+                      </div>
+                    </div>
+                    <span className="font-bold text-sm text-yellow-700 shrink-0">
+                      {g.totals.amount.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                    </span>
+                  </div>
+
+                  <div className="flex flex-wrap gap-1">
+                    {(["gold", "silver", "platinum", "palladium"] as const).map((mk) =>
+                      g.totals.byMetal[mk] > 0 ? (
+                        <span key={mk} className="text-[10px] px-2 py-0.5 rounded-full bg-black/5 border-1 border-black/10 text-black/60">
+                          {METAL_LABEL[mk]} {g.totals.byMetal[mk].toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                        </span>
+                      ) : null
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </>
         ) : (
           <div className="flex flex-col gap-y-2 pb-4">
             {filtered.map((item) => (

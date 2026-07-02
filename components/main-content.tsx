@@ -10,7 +10,7 @@ export function MainContent({ children }: { children: React.ReactNode }) {
 
   return (
     <AuthGuard>
-      <div className="relative flex flex-col h-screen bg-gradient-to-tl from-[#c09c42]/40 via-transparent to-transparent">
+      <div className="relative flex flex-col min-h-screen md:h-screen">
         <Navbar onMenuClick={() => setSidebarOpen(true)} />
         <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
         <main className="flex flex-col h-full w-full px-5 lg:pl-80 pt-20 pb-5">

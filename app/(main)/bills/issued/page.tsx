@@ -8,6 +8,7 @@ import { useAuth } from "@/contexts/auth-context";
 import { Spinner } from "@heroui/spinner";
 import { Modal, ModalContent, ModalHeader, ModalBody, ModalFooter, useDisclosure } from "@heroui/modal";
 import { Button } from "@heroui/button";
+import { Tabs, Tab } from "@heroui/tabs";
 import { ShieldOff } from "lucide-react";
 import { PreviewQuote } from "../../quotation/_component/previewQuote";
 import { QuotationProps } from "../../quotation/_component/quotation";
@@ -54,12 +55,13 @@ interface QuoGroup {
   created_at: string;
 }
 
-// Only completed bills are shown here (สำเร็จ).
-const STATUS_LABEL: Record<number, string> = { 12: "สำเร็จ" };
+// Completed (สำเร็จ) and cleared (เคลียร์แล้ว) bills are shown here.
+const STATUS_LABEL: Record<number, string> = { 12: "สำเร็จ", 14: "เคลียร์แล้ว" };
 const STATUS_COLOR: Record<number, string> = {
   12: "bg-green-500/20 text-green-700 border-green-500/30",
+  14: "bg-purple-500/20 text-purple-700 border-purple-500/30",
 };
-const ISSUED_STATUSES = [12];
+const ISSUED_STATUSES = [12, 14];
 
 export default function IssuedBillsPage() {
   const router = useRouter();
@@ -67,15 +69,18 @@ export default function IssuedBillsPage() {
 
   const [bills, setBills] = useState<BillData[]>([]);
   const [loading, setLoading] = useState(true);
+  // "completed" → สำเร็จ (12), "cleared" → เคลียร์แล้ว (14).
+  const [activeTab, setActiveTab] = useState<string>("completed");
 
   const detailDisc = useDisclosure();
   const [detailB, setDetailB] = useState<BillData | null>(null);
 
   // Combine bills that were issued together (same quotation) into one entry,
-  // shown as the issued ใบเสนอราคา.
+  // shown as the issued ใบเสนอราคา — limited to the active tab's status.
   const groups: QuoGroup[] = useMemo(() => {
+    const tabStatus = activeTab === "cleared" ? 14 : 12;
     const map = new Map<string, BillData[]>();
-    for (const b of bills) {
+    for (const b of bills.filter((b) => b.status === tabStatus)) {
       const key = b.issued_quotation_id ? `q${b.issued_quotation_id}` : `b${b.id}`;
       const arr = map.get(key) ?? [];
       arr.push(b);
@@ -92,7 +97,7 @@ export default function IssuedBillsPage() {
         created_at: rep.created_at,
       };
     });
-  }, [bills]);
+  }, [bills, activeTab]);
 
   const fetchBills = useCallback(async () => {
     setLoading(true);
@@ -142,11 +147,26 @@ export default function IssuedBillsPage() {
         </span>
       </div>
 
+      <div className="shrink-0">
+        <Tabs
+          selectedKey={activeTab}
+          onSelectionChange={(k) => setActiveTab(String(k))}
+          color="warning"
+          variant="underlined"
+          classNames={{ tabList: "gap-4" }}
+        >
+          <Tab key="completed" title="สำเร็จแล้ว" />
+          <Tab key="cleared" title="เคลียร์บิลแล้ว" />
+        </Tabs>
+      </div>
+
       <div className="flex-1 overflow-y-auto">
         {loading ? (
           <div className="flex items-center justify-center py-10"><Spinner size="lg" color="warning" /></div>
         ) : groups.length === 0 ? (
-          <div className="flex items-center justify-center py-10 text-black/40 text-sm">ยังไม่มีบิลที่สำเร็จ</div>
+          <div className="flex items-center justify-center py-10 text-black/40 text-sm">
+            {activeTab === "cleared" ? "ยังไม่มีบิลที่เคลียร์แล้ว" : "ยังไม่มีบิลที่สำเร็จ"}
+          </div>
         ) : (
           <div className="flex flex-col gap-y-2 pb-4">
             {groups.map((g) => (
@@ -160,8 +180,8 @@ export default function IssuedBillsPage() {
                     ใบเสนอราคา {g.code}
                     {g.count > 1 && <span className="ml-1 text-[10px] font-bold text-blue-600">รวม {g.count} บิล</span>}
                   </span>
-                  <span className="text-xs font-bold px-2 py-0.5 rounded-full border-1 bg-green-500/20 text-green-700 border-green-500/30">
-                    สำเร็จ
+                  <span className={`text-xs font-bold px-2 py-0.5 rounded-full border-1 ${STATUS_COLOR[g.rep.status]}`}>
+                    {STATUS_LABEL[g.rep.status]}
                   </span>
                 </div>
                 <div className="flex flex-row items-center justify-between">

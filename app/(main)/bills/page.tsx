@@ -154,10 +154,10 @@ export default function BillsList() {
   // together (sharing one issued quotation) combined into a single entry.
   const billGroups: BillGroup[] = useMemo(() => {
     if (isCustomer) {
-      // Customer "รายการขาย" shows only not-yet-completed sells; completed bills
-      // live in "บิลทั้งหมด".
+      // Customer "รายการขาย" shows only in-progress sells; completed (สำเร็จ)
+      // and cleared (เคลียร์แล้ว) bills live in "บิลทั้งหมด".
       return bills
-        .filter((b) => b.status !== 12)
+        .filter((b) => b.status !== 12 && b.status !== 14)
         .map((b) => ({
           key: `b${b.id}`, rep: b, billIds: [b.id], status: b.status,
           total: b.issued_quotation?.total_amount ?? b.total_amount,
@@ -338,6 +338,7 @@ export default function BillsList() {
       await api.post("/bills/clear", {});
       clearDisc.onClose();
       await fetchBills();
+      await refreshUnfinishedBills();
     } catch { /* ignore */ } finally {
       setClearing(false);
     }
@@ -437,7 +438,10 @@ export default function BillsList() {
             onSelectionChange={(k) => setActiveTab(String(k))}
             color="warning"
             variant="underlined"
-            classNames={{ tabList: "gap-4" }}
+            classNames={{
+              base: "w-full",
+              tabList: "gap-4 w-full overflow-x-auto flex-nowrap scrollbar-hide",
+            }}
           >
             <Tab key="all" title="ทั้งหมด" />
             <Tab key="pending_issue" title="รอออกบิล" />
