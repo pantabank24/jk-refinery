@@ -91,6 +91,9 @@ export const Calculate = ({ onAdd, onOpenList, quotationCount = 0, lockMeltType,
   const { status: salesStatus } = useSalesStatus();
   const realtimeActive = salesStatus?.price_mode === "realtime" && metal === "gold";
   const { data: rt, dir: rtDir } = useRealtimeGold(!!realtimeActive);
+  // The forced (blended-avg) price only applies to melted GOLD. Silver / platinum
+  // / palladium are a different product, so their price stays editable.
+  const priceForced = forcedPrice !== undefined && metal === "gold";
 
   // Effective gold feed: real-time overrides the association price when active.
   const effGold: GoldPrice | null =
@@ -162,8 +165,8 @@ export const Calculate = ({ onAdd, onOpenList, quotationCount = 0, lockMeltType,
     if (!typeId || goldTypes.length === 0) return;
     const gt = goldTypes.find((t) => String(t.id) === typeId);
     if (!gt) return;
-    if (forcedPrice !== undefined) {
-      setPrice(forcedPrice);
+    if (priceForced) {
+      setPrice(forcedPrice ?? 0);
     } else {
       const p = resolvePrice(gt);
       setPrice(p ?? 0);
@@ -172,12 +175,12 @@ export const Calculate = ({ onAdd, onOpenList, quotationCount = 0, lockMeltType,
     setPlus(gt.default_plus);
     setPlusType(gt.plus_type ?? 0);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [typeId, goldTypes, goldPrice, silverPrice, forcedPrice]);
+  }, [typeId, goldTypes, goldPrice, silverPrice, forcedPrice, metal]);
 
   // Real-time tick: live-update ONLY the base price (leave percent/plus/weight
   // untouched so the user's inputs survive each refresh).
   useEffect(() => {
-    if (!realtimeActive || !rt || forcedPrice !== undefined) return;
+    if (!realtimeActive || !rt || priceForced) return;
     const gt = goldTypes.find((t) => String(t.id) === typeId);
     if (!gt) return;
     const p = resolvePrice(gt);
@@ -340,8 +343,8 @@ export const Calculate = ({ onAdd, onOpenList, quotationCount = 0, lockMeltType,
           <DecimalInput
             label={isManualPrice ? `ราคา${metalLabel} (ต่อกรัม)` : "ราคา"}
             value={price}
-            onChange={(n) => { if (forcedPrice === undefined) setPrice(n); }}
-            isReadOnly={forcedPrice !== undefined}
+            onChange={(n) => { if (!priceForced) setPrice(n); }}
+            isReadOnly={priceForced}
           />
           {/* Type selector hidden when locked to melt type or when metal has only one type */}
           {!lockMeltType && metalTypes.length > 1 && (
