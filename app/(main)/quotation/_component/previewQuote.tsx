@@ -65,6 +65,10 @@ function shortThaiDate(d?: string | Date): string {
 
 interface Props {
   items: QuotationProps[];
+  // Page 1 (detailed quote) itemises these instead of `items` when provided —
+  // e.g. a bill whose issued quotation consolidated the customer's items into one.
+  // Page 2 (official receipt) always uses `items`.
+  page1Items?: QuotationProps[];
   onPrint?: () => void;
   hidePrint?: boolean; // ซ่อนปุ่มพิมพ์ (เช่น ฝั่งลูกค้า)
   store?: StoreHeader; // หัวใบเสร็จ จากข้อมูลร้าน
@@ -84,6 +88,7 @@ interface Props {
 
 export const PreviewQuote = ({
   items,
+  page1Items,
   onPrint,
   hidePrint,
   store,
@@ -204,21 +209,24 @@ export const PreviewQuote = ({
     }
   };
 
-  const calculateTotalWeight = () => {
-    return items.reduce((sum, item) => sum + (item.weight || 0), 0);
+  // Page 1 uses page1Items (the customer's original itemisation) when given.
+  const p1 = page1Items ?? items;
+
+  const calculateTotalWeight = (arr: QuotationProps[] = items) => {
+    return arr.reduce((sum, item) => sum + (item.weight || 0), 0);
   };
 
-  const calculateGrandTotal = () => {
-    return items.reduce((sum, item) => sum + (item.total || 0), 0);
+  const calculateGrandTotal = (arr: QuotationProps[] = items) => {
+    return arr.reduce((sum, item) => sum + (item.total || 0), 0);
   };
 
   // Groups items by gold type for the compact summary table next to the totals box.
-  const groupByType = () => {
+  const groupByType = (arr: QuotationProps[] = items) => {
     const map = new Map<
       string,
       { typeName: string; weight: number; total: number }
     >();
-    items.forEach((item) => {
+    arr.forEach((item) => {
       const existing = map.get(item.typeName);
       if (existing) {
         existing.weight += item.weight || 0;
@@ -526,7 +534,7 @@ export const PreviewQuote = ({
                     </tr>
                   </thead>
                   <tbody>
-                    {items.map((item, index) => (
+                    {p1.map((item, index) => (
                       <tr key={index + 1} className="hover:bg-gray-50">
                         {showSeq && (
                           <td className="border border-gray-400 px-2 text-center text-[8px]">
@@ -574,7 +582,7 @@ export const PreviewQuote = ({
                       </tr>
                     ))}
                     {/* Pad with blank rows so the table always shows at least 5 lines */}
-                    {Array.from({ length: Math.max(0, 5 - items.length) }).map(
+                    {Array.from({ length: Math.max(0, 5 - p1.length) }).map(
                       (_, i) => (
                         <tr key={`empty-${i}`}>
                           {showSeq && (

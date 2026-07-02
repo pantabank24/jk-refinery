@@ -147,6 +147,9 @@ export default function QuotationPage() {
   // Partial delivery tracking: accumulated processed weight/amount across all customer's bills.
   const [processedWeight, setProcessedWeight] = useState(0);
   const [processedAmount, setProcessedAmount] = useState(0);
+  // Items from this session's partial-deliver rounds, kept so page 1 can list each
+  // one individually (the API only persists aggregate weight/amount per round).
+  const [priorRoundItems, setPriorRoundItems] = useState<QuotationProps[]>([]);
   // "รอส่งเพิ่ม / บันทึกเลย" choice modal — shown when master clicks the save button in bill mode.
   const [showDeliveryChoice, setShowDeliveryChoice] = useState(false);
   const [partialSaving, setPartialSaving] = useState(false);
@@ -291,6 +294,7 @@ export default function QuotationPage() {
       }
       setProcessedWeight((p) => p + totalW);
       setProcessedAmount((p) => p + totalA);
+      setPriorRoundItems((p) => [...p, ...quotation]);
       setQuotation([]);
       setShowDeliveryChoice(false);
     } catch {
@@ -339,6 +343,33 @@ export default function QuotationPage() {
       perGram: totalW > 0 ? totalT / totalW : first.perGram,
       total: totalT,
     }];
+  })();
+
+  // Page 1 of the preview lists each saved quote item individually (not the
+  // consolidated single line used for the total / page 2). When earlier partial
+  // deliveries exist, prepend them as one "ยกมาจากรอบก่อน" line so the itemised
+  // page still reflects everything sold so far.
+  const page1Items: QuotationProps[] = (() => {
+    if (billIds.length === 0) return quotation;
+    // Any processed amount we DON'T have itemised (e.g. delivered in a previous
+    // session, before reload) is shown as one carried-over line so nothing is lost.
+    const itemisedW = priorRoundItems.reduce((s, i) => s + (i.weight || 0), 0);
+    const itemisedA = priorRoundItems.reduce((s, i) => s + i.total, 0);
+    const carryW = processedWeight - itemisedW;
+    const carryA = processedAmount - itemisedA;
+    const carry: QuotationProps[] = carryW > 0.0001
+      ? [{
+          typeId: "prev",
+          typeName: "ยกมาจากรอบก่อน",
+          price: carryW > 0 ? Math.round((carryA / carryW) * 100) / 100 : 0,
+          plus: 0,
+          percent: 0,
+          weight: carryW,
+          perGram: carryW > 0 ? carryA / carryW : 0,
+          total: carryA,
+        }]
+      : [];
+    return [...carry, ...priorRoundItems, ...quotation];
   })();
 
   const totalAmount = previewItems.reduce((sum, item) => sum + item.total, 0);
@@ -902,6 +933,7 @@ export default function QuotationPage() {
                 <PreviewQuote
                   hidePrint
                   items={previewItems}
+                  page1Items={page1Items}
                   store={headerStore}
                   customerName={signerName}
                   customerPhone={signerPhone}
@@ -986,6 +1018,7 @@ export default function QuotationPage() {
               <ModalBody className="px-2">
                 <PreviewQuote
                   items={previewItems}
+                  page1Items={page1Items}
                   onPrint={() => window.print()}
                   store={headerStore}
                   documentNo={savedQuotation?.code}
