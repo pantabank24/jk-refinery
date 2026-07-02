@@ -231,6 +231,17 @@ export default function QuotationPage() {
         setReferenceItems(reference); // reference only — quote stays empty
         setProcessedWeight(totalProcessedW);
         setProcessedAmount(totalProcessedA);
+        // Rebuild the itemised prior rounds from delivery logs so page 1 can list
+        // each item even after a reload (items are persisted per delivery round).
+        const priorItems: QuotationProps[] = [];
+        for (const bid of ids) {
+          try {
+            const lr = await api.get(`/bills/${bid}/delivery-logs`);
+            const logs = (lr.data as unknown as { items?: QuotationProps[] }[]) || [];
+            for (const lg of logs) for (const it of lg.items ?? []) priorItems.push(it);
+          } catch { /* ignore */ }
+        }
+        setPriorRoundItems(priorItems);
       } catch { /* ignore */ }
     })();
   }, [billId]);
@@ -289,8 +300,12 @@ export default function QuotationPage() {
     const totalW = quotation.reduce((s, i) => s + (i.weight || 0), 0);
     const totalA = quotation.reduce((s, i) => s + i.total, 0);
     try {
-      for (const bid of billIds) {
-        await api.post(`/bills/${bid}/partial-deliver`, { weight: totalW, amount: totalA });
+      // Send the itemised lines only to the first bill (groups share one quote) so
+      // reading them back later doesn't duplicate across the group's bills.
+      for (let idx = 0; idx < billIds.length; idx++) {
+        await api.post(`/bills/${billIds[idx]}/partial-deliver`, {
+          weight: totalW, amount: totalA, items: idx === 0 ? quotation : [],
+        });
       }
       setProcessedWeight((p) => p + totalW);
       setProcessedAmount((p) => p + totalA);
@@ -443,6 +458,18 @@ export default function QuotationPage() {
       });
       const saved = res.data as unknown as { id: number; code: string };
       const quotationId = saved.id;
+
+      // Persist the final batch's individual items (log-only → not added to
+      // processed) so page 1 lists every item after reload and when reprinted later.
+      if (billIds.length > 0 && quotation.length > 0) {
+        const w = quotation.reduce((s, i) => s + (i.weight || 0), 0);
+        const a = quotation.reduce((s, i) => s + i.total, 0);
+        try {
+          await api.post(`/bills/${billIds[0]}/partial-deliver`, {
+            weight: w, amount: a, items: quotation, log_only: true,
+          });
+        } catch { /* non-fatal */ }
+      }
 
       // Upload images grouped by type
       const uploadGroup = async (files: File[], type: string) => {

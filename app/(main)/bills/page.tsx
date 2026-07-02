@@ -125,6 +125,9 @@ export default function BillsList() {
   const [billBalanceHistory, setBillBalanceHistory] = useState<{ id: number; amount: number; description: string; created_at: string }[]>([]);
   // Per-session delivery logs for the open bill.
   const [deliveryLogs, setDeliveryLogs] = useState<{ id: number; weight: number; amount: number; note: string; created_at: string }[]>([]);
+  // Itemised lines for the preview's page 1 (from delivery logs) so a reprinted
+  // bill lists every item across all delivery rounds, not just the consolidated one.
+  const [billPage1Items, setBillPage1Items] = useState<QuotationProps[]>([]);
 
   const issueDisc = useDisclosure();
   const [issuing, setIssuing] = useState(false);
@@ -224,10 +227,11 @@ export default function BillsList() {
 
   useEffect(() => { if (canRead) fetchBills(); }, [fetchBills, canRead]);
 
-  const openDetail = async (b: BillData) => {
+  const openDetail = async (b: BillData, groupIds?: number[]) => {
     setBillBalance(null);
     setBillBalanceHistory([]);
     setDeliveryLogs([]);
+    setBillPage1Items([]);
     try {
       const res = await api.get<BillData>(`/bills/${b.id}`);
       setDetailB(res.data as unknown as BillData);
@@ -245,9 +249,21 @@ export default function BillsList() {
           })
           .catch(() => {});
       }
-      api.get(`/bills/${b.id}/delivery-logs`)
-        .then((res) => setDeliveryLogs((res.data as unknown as { id: number; weight: number; amount: number; note: string; created_at: string }[]) ?? []))
-        .catch(() => {});
+      const logIds = groupIds && groupIds.length ? groupIds : [b.id];
+      type LogRow = { id: number; weight: number; amount: number; note: string; created_at: string; items?: QuotationProps[] };
+      Promise.all(
+        logIds.map((lid) =>
+          api.get(`/bills/${lid}/delivery-logs`)
+            .then((res) => ({ lid, logs: (res.data as unknown as LogRow[]) ?? [] }))
+            .catch(() => ({ lid, logs: [] as LogRow[] })),
+        ),
+      ).then((results) => {
+        // Display the rep bill's rounds; itemise page 1 from whichever bill carries items.
+        setDeliveryLogs(results.find((r) => r.lid === b.id)?.logs ?? results[0]?.logs ?? []);
+        const items: QuotationProps[] = [];
+        for (const r of results) for (const lg of r.logs) for (const it of lg.items ?? []) items.push(it);
+        setBillPage1Items(items);
+      });
     }
     detailDisc.onOpen();
   };
@@ -260,7 +276,7 @@ export default function BillsList() {
       return;
     }
     setGroupBillIds(g.billIds);
-    openDetail(g.rep);
+    openDetail(g.rep, g.billIds);
   };
 
   const afterAction = async () => {
@@ -706,6 +722,7 @@ export default function BillsList() {
               const preview = (
                 <PreviewQuote
                   hidePrint={isCustomer}
+                  page1Items={billPage1Items.length ? billPage1Items : undefined}
                   items={(src.items ?? []).map((item): QuotationProps => ({
                     typeId: String(item.id),
                     typeName: item.type_name,
