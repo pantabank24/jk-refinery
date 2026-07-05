@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback, useMemo } from "react";
 import { Avatar } from "@heroui/avatar";
-import { CheckCircle, XCircle, FileUp, AlertCircle, Trash2, Store } from "lucide-react";
+import { CheckCircle, XCircle, FileUp, AlertCircle, Trash2, Store, Pencil } from "lucide-react";
 import { ConfirmDeleteModal } from "@/components/confirmDeleteModal";
 import moment from "moment";
 import { CmpInput } from "@/components/cmpInput";
@@ -145,6 +145,9 @@ export default function BillsList() {
 
   const clearDisc = useDisclosure();
   const [clearing, setClearing] = useState(false);
+
+  const revertDisc = useDisclosure();
+  const [reverting, setReverting] = useState(false);
 
   const statusFilter: Record<string, number | undefined> = {
     all: undefined, pending_issue: 10, pending_review: 11, completed: 12, cancelled: 13, cleared: 14,
@@ -342,6 +345,33 @@ export default function BillsList() {
     } catch { /* ignore */ } finally {
       setClearing(false);
     }
+  };
+
+  // Reopen the quotation page to fix the quote the master issued. Nothing is
+  // deleted here — the bill stays "รอตรวจบิล" and the old quote stays in the list.
+  // The previously-issued items + the bill group are stashed so the quotation page
+  // can pre-fill them; the old issuance is reversed only when the master saves the
+  // corrected quote (see doSave there). Abandoning the edit changes nothing.
+  const handleRevert = () => {
+    if (!detailB) return;
+    setReverting(true);
+    const src = detailB.issued_quotation?.items ?? detailB.items ?? [];
+    const editItems: QuotationProps[] = src.map((it) => ({
+      typeId: it.type_id,
+      typeName: it.type_name,
+      price: it.price,
+      plus: it.plus,
+      percent: it.percent,
+      weight: it.weight,
+      perGram: it.per_gram,
+      total: it.total,
+    }));
+    const ids = groupBillIds.length ? groupBillIds : [detailB.id];
+    sessionStorage.setItem("editBillItems", JSON.stringify(editItems));
+    sessionStorage.setItem("editBillIds", JSON.stringify(ids));
+    revertDisc.onClose();
+    detailDisc.onClose();
+    router.push(`/quotation?billId=${detailB.id}&editIssued=1`);
   };
 
   const handleDeleteBill = async () => {
@@ -738,6 +768,7 @@ export default function BillsList() {
               const preview = (
                 <PreviewQuote
                   hidePrint={isCustomer}
+                  documentNo={detailB.code}
                   page1Items={billPage1Items.length ? billPage1Items : undefined}
                   items={(src.items ?? []).map((item): QuotationProps => ({
                     typeId: String(item.id),
@@ -821,6 +852,12 @@ export default function BillsList() {
             {canApprove && (detailB?.status === 10 || detailB?.status === 11) && (
               <Button color="danger" variant="flat" startContent={<XCircle size={14} />} onPress={openCancel}>
                 ยกเลิก
+              </Button>
+            )}
+            {/* Storefront pulls an issued bill back to fix the quote */}
+            {canApprove && detailB?.status === 11 && (
+              <Button color="warning" variant="flat" startContent={<Pencil size={14} />} onPress={revertDisc.onOpen}>
+                แก้ไขบิล
               </Button>
             )}
             {/* Storefront approve: รอตรวจบิล → สำเร็จ */}
@@ -935,6 +972,31 @@ export default function BillsList() {
             <Button variant="light" onPress={cancelDisc.onClose} isDisabled={cancelling}>ปิด</Button>
             <Button color="danger" onPress={handleCancel} isLoading={cancelling}>
               ยืนยันยกเลิก
+            </Button>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
+
+      {/* REVERT CONFIRM */}
+      <Modal isOpen={revertDisc.isOpen} onClose={revertDisc.onClose} size="sm">
+        <ModalContent>
+          <ModalHeader><span className="font-bold text-yellow-700">แก้ไขบิลที่ออกไปแล้ว</span></ModalHeader>
+          <ModalBody>
+            <p className="text-sm text-black/70">
+              จะเปิดหน้าออกใบเสนอราคาของบิล <span className="font-bold">{detailB?.code}</span> พร้อมรายการเดิมให้แก้ไข
+              ใบเสนอราคาเดิมยังอยู่จนกว่าจะกด <span className="font-bold text-yellow-700">บันทึก</span> ใบใหม่
+              เมื่อบันทึกแล้วระบบจะแทนที่ใบเดิมและคำนวณยอดใหม่ให้อัตโนมัติ
+            </p>
+          </ModalBody>
+          <ModalFooter>
+            <Button variant="light" onPress={revertDisc.onClose} isDisabled={reverting}>ยกเลิก</Button>
+            <Button
+              className="bg-gradient-to-r from-[#c09c42] to-yellow-600 text-white font-bold"
+              startContent={<Pencil size={14} />}
+              onPress={handleRevert}
+              isLoading={reverting}
+            >
+              แก้ไขใบเสนอราคา
             </Button>
           </ModalFooter>
         </ModalContent>

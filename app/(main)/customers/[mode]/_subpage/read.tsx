@@ -6,11 +6,13 @@ import { Button } from "@heroui/button";
 import { Spinner } from "@heroui/spinner";
 import { Tabs, Tab } from "@heroui/tabs";
 import { Modal, ModalContent, ModalHeader, ModalBody, ModalFooter, useDisclosure } from "@heroui/modal";
-import { ArrowLeft, Pencil, ShieldOff, Upload, FolderOpen, Trash2 } from "lucide-react";
+import { ArrowLeft, Pencil, ShieldOff, Upload, FolderOpen, Trash2, Printer } from "lucide-react";
 import { api } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
 import { CustomerCard } from "../_components/customerCard";
 import { DocumentList, DOC_ACCEPT, type CustomerDocument } from "../_components/documentList";
+import { PreviewQuote, PreviewQuoteHandle } from "../../../quotation/_component/previewQuote";
+import { QuotationProps } from "../../../quotation/_component/quotation";
 
 interface Customer {
   id: number;
@@ -32,6 +34,37 @@ interface Bill {
   total_amount: number;
   gold_round?: string;
   created_at: string;
+}
+
+interface BillItem {
+  id: number;
+  type_name: string;
+  price: number;
+  percent: number;
+  plus: number;
+  weight: number;
+  per_gram: number;
+  total: number;
+}
+
+interface IssuedQuotation {
+  id: number;
+  code: string;
+  total_amount: number;
+  items?: BillItem[];
+  images?: { id: number; image_url: string; type?: string }[];
+  signer_name?: string;
+}
+
+interface BillDetail {
+  id: number;
+  code: string;
+  status: number;
+  total_amount: number;
+  created_at: string;
+  items?: BillItem[];
+  images?: { id: number; image_url: string; type?: string }[];
+  issued_quotation?: IssuedQuotation | null;
 }
 
 const STATUS_LABEL: Record<number, string> = { 10: "รอออกบิล", 11: "รอตรวจบิล", 12: "สำเร็จ", 13: "ยกเลิก", 14: "เคลียร์แล้ว" };
@@ -66,6 +99,46 @@ export const CustomerDetail = () => {
   const deleteDisc = useDisclosure();
   const [docTarget, setDocTarget] = useState<CustomerDocument | null>(null);
   const [deleting, setDeleting] = useState(false);
+
+  // Bill preview modal — mirrors the customer "บิลทั้งหมด" (issued) page.
+  const detailDisc = useDisclosure();
+  const [detailB, setDetailB] = useState<BillDetail | null>(null);
+  const [billPage1Items, setBillPage1Items] = useState<QuotationProps[]>([]);
+  const previewRef = useRef<PreviewQuoteHandle>(null);
+
+  const toQuoItems = (items: BillItem[] | undefined): QuotationProps[] =>
+    (items ?? []).map((item) => ({
+      typeId: String(item.id),
+      typeName: item.type_name,
+      price: item.price,
+      plus: item.plus,
+      percent: item.percent,
+      weight: item.weight,
+      perGram: item.per_gram,
+      total: item.total,
+    }));
+
+  const openBill = async (b: Bill) => {
+    setDetailB(null);
+    setBillPage1Items([]);
+    detailDisc.onOpen();
+    try {
+      const res = await api.get<BillDetail>(`/bills/${b.id}`);
+      setDetailB(res.data as unknown as BillDetail);
+    } catch {
+      setDetailB(null);
+    }
+    // Itemise page 1 from the delivery logs so the rows sum to the issued total.
+    type LogRow = { id: number; items?: QuotationProps[] };
+    api.get(`/bills/${b.id}/delivery-logs`)
+      .then((r) => (r.data as unknown as LogRow[]) ?? [])
+      .catch(() => [] as LogRow[])
+      .then((logs) => {
+        const items: QuotationProps[] = [];
+        for (const lg of logs) for (const it of lg.items ?? []) items.push(it);
+        setBillPage1Items(items);
+      });
+  };
 
   const fetchDocs = useCallback(async () => {
     if (!customerId) return;
@@ -230,7 +303,11 @@ export const CustomerDetail = () => {
                     </thead>
                     <tbody>
                       {bills.map((b) => (
-                        <tr key={b.id} className="border-t border-black/5 hover:bg-white/40">
+                        <tr
+                          key={b.id}
+                          onClick={() => openBill(b)}
+                          className="border-t border-black/5 hover:bg-white/40 cursor-pointer"
+                        >
                           <td className="px-4 py-2.5 font-bold text-black/70">{b.code}</td>
                           <td className="px-4 py-2.5 text-black/60">{fmtDate(b.created_at)}</td>
                           <td className="px-4 py-2.5 text-black/60">{b.gold_round || "-"}</td>
@@ -285,6 +362,74 @@ export const CustomerDetail = () => {
           )}
         </div>
       </div>
+
+      {/* Bill preview modal */}
+      <Modal isOpen={detailDisc.isOpen} onClose={detailDisc.onClose} size="3xl" scrollBehavior="inside">
+        <ModalContent>
+          <ModalHeader className="flex flex-col gap-0.5">
+            <div className="flex items-center justify-between">
+              <span className="font-bold bg-gradient-to-l from-black/90 to-yellow-600 bg-clip-text text-transparent">
+                ใบเสนอราคา {detailB?.issued_quotation?.code ?? detailB?.code}
+              </span>
+              <span className={`text-xs font-bold px-2 py-0.5 rounded-full border-1 ${STATUS_COLOR[detailB?.status ?? 12] || ""}`}>
+                {STATUS_LABEL[detailB?.status ?? 12] || detailB?.status}
+              </span>
+            </div>
+          </ModalHeader>
+          <ModalBody className="px-2">
+            {!detailB ? (
+              <div className="flex items-center justify-center py-10"><Spinner size="lg" color="warning" /></div>
+            ) : (() => {
+              const src = detailB.issued_quotation ?? detailB;
+              const base = (process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080/api/v1").replace(/\/api\/v1$/, "");
+              const urlsOf = (type: string) =>
+                (src.images ?? []).filter((im) => (im.type || "") === type).map((im) => `${base}${im.image_url}`);
+              return (
+                <div className="flex flex-col gap-3">
+                  {/* Card: รายการที่ส่งเข้ามา */}
+                  <div className="flex flex-col gap-y-2 border-1 border-black/10 bg-black/5 rounded-2xl p-3">
+                    <span className="text-sm font-bold text-black/60">รายการที่ส่งเข้ามา</span>
+                    <div className="border-1 border-black/10 bg-white/60 rounded-xl overflow-hidden">
+                      {(detailB.items ?? []).map((it, i) => (
+                        <div key={it.id} className="flex items-center justify-between px-3 py-2 border-b last:border-b-0 border-black/5 text-sm">
+                          <span className="text-black/70">{i + 1}. {it.type_name}</span>
+                          <span className="text-black/50">น้ำหนัก {it.weight}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  {/* ใบเสนอราคาที่ออกจริง */}
+                  <div className="min-w-0">
+                    <PreviewQuote
+                      ref={previewRef}
+                      hidePrint
+                      documentNo={detailB.issued_quotation?.code ?? detailB.code}
+                      page1Items={billPage1Items.length ? billPage1Items : undefined}
+                      items={toQuoItems(src.items)}
+                      onPrint={() => window.print()}
+                      beforeImages={urlsOf("before_melt")}
+                      afterImages={urlsOf("after_melt")}
+                      previewImages={urlsOf("")}
+                      signatureImage={urlsOf("signature")[0] ?? null}
+                      signerName={detailB.issued_quotation?.signer_name}
+                    />
+                  </div>
+                </div>
+              );
+            })()}
+          </ModalBody>
+          <ModalFooter>
+            <Button variant="light" onPress={detailDisc.onClose}>ปิด</Button>
+            <Button
+              className="bg-gradient-to-r from-[#c09c42] to-yellow-600 text-white font-bold"
+              startContent={<Printer size={14} />}
+              onPress={() => previewRef.current?.print()}
+            >
+              พิมพ์
+            </Button>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
 
       {/* Delete document confirm */}
       <Modal isOpen={deleteDisc.isOpen} onClose={deleteDisc.onClose} size="sm">

@@ -45,8 +45,16 @@ export const TermsForm = ({ signatureImage, signerName, onPrint }: Props) => {
     clone.classList.add("terms-print-clone");
     clone.style.display = "none";
     document.body.appendChild(clone);
+    // Remove the clone only after printing finishes. On mobile window.print() is
+    // non-blocking and returns immediately, so removing synchronously would delete
+    // the content before the browser snapshots it → blank page.
+    const cleanup = () => {
+      if (clone.parentNode) clone.parentNode.removeChild(clone);
+      window.removeEventListener("afterprint", cleanup);
+    };
+    window.addEventListener("afterprint", cleanup);
     window.print();
-    document.body.removeChild(clone);
+    setTimeout(cleanup, 3000); // fallback: some mobile browsers never fire afterprint
   };
 
   return (

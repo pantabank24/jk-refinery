@@ -128,6 +128,9 @@ export default function QuotationPage() {
   // pre-fill the sold items and the customer's name as the signer.
   const searchParams = useSearchParams();
   const billId = searchParams.get("billId");
+  // editIssued=1: reopened from "แก้ไขบิล" to fix an already-issued quote. The bill
+  // stays "รอตรวจบิล"; the old issuance is reversed at save time (see doSave), not now.
+  const editIssued = searchParams.get("editIssued") === "1";
   const [billCustomer, setBillCustomer] = useState("");
   // The customer's registered profile (suggested for the signer fields) + their
   // most recent signature (offered for reuse), loaded in bill mode.
@@ -194,12 +197,8 @@ export default function QuotationPage() {
             })
             .catch(() => {});
         }
-        // Combine ALL of this customer's pending (รอออกบิล) bills' submitted items
-        // as reference (their gold was melted; the master re-assesses from scratch).
-        let bills: BillLite[] = [];
+        // Customer's debt/credit balance (shown for reference in both modes).
         if (clicked?.creator?.id) {
-          const listRes = await api.get(`/bills?created_by=${clicked.creator.id}&status=10&limit=100`);
-          bills = (listRes.data as unknown as { data: BillLite[] }).data || [];
           api.get(`/bills/balance?user_id=${clicked.creator.id}`)
             .then((res) => {
               const d = res.data as unknown as { balance: number; avg_price: number };
@@ -207,6 +206,40 @@ export default function QuotationPage() {
               setBillAvgPrice(d.avg_price ?? 0);
             })
             .catch(() => {});
+        }
+
+        // Edit mode: fixing an already-issued quote. Use the stashed bill group and
+        // the previously-issued items (pre-filled into the calculator), and do NOT
+        // merge the customer's other pending bills. processed_* start at 0 because
+        // the current issuance is reversed at save time before re-issuing.
+        if (editIssued) {
+          const stashedIds = sessionStorage.getItem("editBillIds");
+          const gids = stashedIds ? (JSON.parse(stashedIds) as number[]) : [clicked?.id ?? Number(billId)];
+          setBillIds(gids);
+          setReferenceItems((clicked?.items ?? []).map((i) => ({
+            typeId: i.type_id, typeName: i.type_name, price: i.price, plus: i.plus,
+            percent: i.percent, weight: i.weight, perGram: i.per_gram, total: i.total,
+          })));
+          setProcessedWeight(0);
+          setProcessedAmount(0);
+          const stashedItems = sessionStorage.getItem("editBillItems");
+          if (stashedItems) {
+            try {
+              const items = JSON.parse(stashedItems) as QuotationProps[];
+              if (Array.isArray(items) && items.length > 0) setQuotation(items);
+            } catch { /* ignore */ }
+          }
+          sessionStorage.removeItem("editBillItems");
+          sessionStorage.removeItem("editBillIds");
+          return;
+        }
+
+        // Combine ALL of this customer's pending (รอออกบิล) bills' submitted items
+        // as reference (their gold was melted; the master re-assesses from scratch).
+        let bills: BillLite[] = [];
+        if (clicked?.creator?.id) {
+          const listRes = await api.get(`/bills?created_by=${clicked.creator.id}&status=10&limit=100`);
+          bills = (listRes.data as unknown as { data: BillLite[] }).data || [];
         }
         if (bills.length === 0 && clicked) bills = [clicked];
 
@@ -242,7 +275,7 @@ export default function QuotationPage() {
         setPriorRoundItems(priorItems);
       } catch { /* ignore */ }
     })();
-  }, [billId]);
+  }, [billId, editIssued]);
 
   if (!hasPermission("quotations.create")) {
     return (
@@ -434,6 +467,14 @@ export default function QuotationPage() {
     setSaving(true);
     setSaveError("");
     try {
+      // Editing an issued quote: reverse the old issuance now (delete the old quote,
+      // its balance entry and delivery logs, and return the bill(s) to รอออกบิล) so
+      // the re-issue below replaces it instead of double-counting. Deferred to here
+      // so that abandoning the edit leaves the original issuance untouched.
+      if (editIssued && billId) {
+        await api.post(`/bills/${billId}/revert`, {});
+      }
+
       // previewItems already contains the correctly-combined single item in bill
       // mode (processedAmount + current batch), so reuse it directly.
       const saveItems = previewItems.map((item) => ({

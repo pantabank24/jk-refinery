@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback, useMemo } from "react";
+import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import moment from "moment";
 import { api } from "@/lib/api";
 import { useRouter } from "next/navigation";
@@ -9,8 +9,8 @@ import { Spinner } from "@heroui/spinner";
 import { Modal, ModalContent, ModalHeader, ModalBody, ModalFooter, useDisclosure } from "@heroui/modal";
 import { Button } from "@heroui/button";
 import { Tabs, Tab } from "@heroui/tabs";
-import { ShieldOff } from "lucide-react";
-import { PreviewQuote } from "../../quotation/_component/previewQuote";
+import { ShieldOff, Printer } from "lucide-react";
+import { PreviewQuote, PreviewQuoteHandle } from "../../quotation/_component/previewQuote";
 import { QuotationProps } from "../../quotation/_component/quotation";
 
 interface BillItem {
@@ -49,6 +49,7 @@ interface BillData {
 interface QuoGroup {
   key: string;
   rep: BillData;
+  billIds: number[];
   code: string;
   total: number;
   count: number;
@@ -74,6 +75,23 @@ export default function IssuedBillsPage() {
 
   const detailDisc = useDisclosure();
   const [detailB, setDetailB] = useState<BillData | null>(null);
+  const previewRef = useRef<PreviewQuoteHandle>(null);
+  // Itemised original items across all bills in the open group — feeds the
+  // preview's page 1 so it breaks the customer's items down line-by-line instead
+  // of the consolidated issued-quotation lines (page 2 keeps the consolidation).
+  const [billPage1Items, setBillPage1Items] = useState<QuotationProps[]>([]);
+
+  const toQuoItems = (items: BillItem[] | undefined): QuotationProps[] =>
+    (items ?? []).map((item) => ({
+      typeId: String(item.id),
+      typeName: item.type_name,
+      price: item.price,
+      plus: item.plus,
+      percent: item.percent,
+      weight: item.weight,
+      perGram: item.per_gram,
+      total: item.total,
+    }));
 
   // Combine bills that were issued together (same quotation) into one entry,
   // shown as the issued ใบเสนอราคา — limited to the active tab's status.
@@ -91,6 +109,7 @@ export default function IssuedBillsPage() {
       return {
         key: rep.issued_quotation_id ? `q${rep.issued_quotation_id}` : `b${rep.id}`,
         rep,
+        billIds: list.map((x) => x.id),
         code: rep.issued_quotation?.code ?? rep.code,
         total: rep.issued_quotation?.total_amount ?? list.reduce((s, x) => s + x.total_amount, 0),
         count: list.length,
@@ -120,13 +139,28 @@ export default function IssuedBillsPage() {
     if (isCustomer) fetchBills();
   }, [fetchBills, isCustomer]);
 
-  const openDetail = async (b: BillData) => {
+  const openDetail = async (g: QuoGroup) => {
+    setBillPage1Items([]);
     try {
-      const res = await api.get<BillData>(`/bills/${b.id}`);
+      const res = await api.get<BillData>(`/bills/${g.rep.id}`);
       setDetailB(res.data as unknown as BillData);
     } catch {
-      setDetailB(b);
+      setDetailB(g.rep);
     }
+    // Itemise page 1 from the delivery logs (same as the staff bills page) so every
+    // item across all delivery rounds is listed and the rows sum to the issued total.
+    type LogRow = { id: number; weight: number; amount: number; note: string; created_at: string; items?: QuotationProps[] };
+    Promise.all(
+      g.billIds.map((lid) =>
+        api.get(`/bills/${lid}/delivery-logs`)
+          .then((r) => (r.data as unknown as LogRow[]) ?? [])
+          .catch(() => [] as LogRow[]),
+      ),
+    ).then((results) => {
+      const items: QuotationProps[] = [];
+      for (const logs of results) for (const lg of logs) for (const it of lg.items ?? []) items.push(it);
+      setBillPage1Items(items);
+    });
     detailDisc.onOpen();
   };
 
@@ -172,7 +206,7 @@ export default function IssuedBillsPage() {
             {groups.map((g) => (
               <div
                 key={g.key}
-                onClick={() => openDetail(g.rep)}
+                onClick={() => openDetail(g)}
                 className="flex flex-col border-1 border-black/10 bg-black/5 backdrop-blur-xl rounded-2xl p-3 cursor-pointer hover:shadow-md transition-all gap-y-2"
               >
                 <div className="flex flex-row items-center justify-between">
@@ -230,17 +264,11 @@ export default function IssuedBillsPage() {
                   {/* ใบเสนอราคาที่ออกจริง */}
                   <div className="min-w-0">
                     <PreviewQuote
+                      ref={previewRef}
                       hidePrint
-                      items={(src.items ?? []).map((item): QuotationProps => ({
-                        typeId: String(item.id),
-                        typeName: item.type_name,
-                        price: item.price,
-                        plus: item.plus,
-                        percent: item.percent,
-                        weight: item.weight,
-                        perGram: item.per_gram,
-                        total: item.total,
-                      }))}
+                      documentNo={detailB.issued_quotation?.code ?? detailB.code}
+                      page1Items={billPage1Items.length ? billPage1Items : undefined}
+                      items={toQuoItems(src.items)}
                       onPrint={() => window.print()}
                       beforeImages={urlsOf("before_melt")}
                       afterImages={urlsOf("after_melt")}
@@ -255,6 +283,13 @@ export default function IssuedBillsPage() {
           </ModalBody>
           <ModalFooter>
             <Button variant="light" onPress={detailDisc.onClose}>ปิด</Button>
+            <Button
+              className="bg-gradient-to-r from-[#c09c42] to-yellow-600 text-white font-bold"
+              startContent={<Printer size={14} />}
+              onPress={() => previewRef.current?.print()}
+            >
+              พิมพ์
+            </Button>
           </ModalFooter>
         </ModalContent>
       </Modal>
