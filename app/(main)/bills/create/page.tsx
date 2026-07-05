@@ -6,7 +6,7 @@ import { QuotationProps } from "../../quotation/_component/quotation";
 import { api } from "@/lib/api";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/auth-context";
-import { ShieldOff, Store } from "lucide-react";
+import { Clock, ShieldOff, Store } from "lucide-react";
 import { Spinner } from "@heroui/spinner";
 import {
   Modal,
@@ -21,8 +21,10 @@ import { SalesStatusBanner } from "@/components/sales-status-banner";
 
 export default function CreateBillPage() {
   const { permissions, refreshUnfinishedBills } = useAuth();
-  const { status: salesStatus } = useSalesStatus();
-  const salesClosed = !!salesStatus?.enabled && !salesStatus.is_open;
+  const { status: salesStatus, loading: salesLoading } = useSalesStatus();
+  // Closed for any reason: master switch off, schedule closed, or past the
+  // realtime cutoff. (Previously the master-off case slipped through as open.)
+  const salesClosed = !!salesStatus && !salesStatus.is_open;
   const [billsOpen, setBillsOpen] = useState<boolean | null>(null);
   useEffect(() => {
     api.get<{ open: boolean }>("/configs/bills-status")
@@ -46,7 +48,7 @@ export default function CreateBillPage() {
     );
   }
 
-  if (billsOpen === null) {
+  if (billsOpen === null || salesLoading) {
     return (
       <div className="flex items-center justify-center h-full">
         <Spinner size="lg" color="warning" />
@@ -64,8 +66,22 @@ export default function CreateBillPage() {
     );
   }
 
+  if (salesClosed) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full gap-y-3 text-black/60">
+        <Clock size={40} className="text-amber-500/70" />
+        <span className="font-bold text-lg">ขณะนี้ร้านปิดทำการ</span>
+        <span className="text-sm text-black/40 text-center">
+          {salesStatus?.enabled
+            ? `เวลาทำการ ${salesStatus.open_time} - ${salesStatus.close_time} น.${salesStatus.realtime_after_hours && salesStatus.realtime_until ? ` (เรียลไทม์ถึง ${salesStatus.realtime_until} น.)` : ""} — ยังไม่สามารถขายได้ในขณะนี้`
+            : "ร้านปิดการขายชั่วคราว กรุณาติดต่อเจ้าหน้าที่"}
+        </span>
+      </div>
+    );
+  }
+
   const handleAdd = (item: QuotationProps) => {
-    setSaveError(salesClosed ? "ขณะนี้ปิดทำการ ไม่สามารถขายได้" : "");
+    setSaveError("");
     setPendingItem(item);
     setShowConfirm(true);
   };
@@ -103,7 +119,7 @@ export default function CreateBillPage() {
 
   return (
     <div className="h-full flex flex-col gap-y-3">
-      {salesClosed && <SalesStatusBanner status={salesStatus} />}
+      <SalesStatusBanner status={salesStatus} />
       <div className="flex flex-row justify-start flex-1 min-h-0">
         <BillCalculate onAdd={handleAdd} />
       </div>
@@ -146,7 +162,6 @@ export default function CreateBillPage() {
                   className="bg-gradient-to-r from-[#c09c42] to-yellow-600 text-white font-bold"
                   onPress={doSave}
                   isLoading={saving}
-                  isDisabled={salesClosed}
                 >
                   ยืนยันการขาย
                 </Button>

@@ -109,7 +109,7 @@ export default function UsersPage() {
   return (
     <div className="flex flex-col h-full gap-y-3">
       {/* header */}
-      <div className="flex flex-row items-center justify-between shrink-0 pt-5">
+      <div className="flex flex-row items-center justify-between shrink-0">
         <div className="flex font-bold text-2xl bg-gradient-to-l from-black/90 to-yellow-600 bg-clip-text text-transparent pl-2">
           จัดการพนักงาน
         </div>
@@ -224,7 +224,7 @@ export default function UsersPage() {
             radius="sm"
             removeWrapper
             classNames={{
-              base: "flex flex-col flex-1 overflow-y-scroll scrollbar-hide border-1 border-black/10 bg-black/5 backdrop-blur-xl rounded-2xl p-2",
+              base: "hidden md:flex flex-col flex-1 overflow-y-scroll scrollbar-hide border-1 border-black/10 bg-black/5 backdrop-blur-xl rounded-2xl p-2",
             }}
           >
             <TableHeader>
@@ -275,6 +275,37 @@ export default function UsersPage() {
               ))}
             </TableBody>
           </Table>
+
+          {/* Mobile: card list */}
+          <div className="flex md:hidden flex-col gap-y-2 flex-1 min-h-0 overflow-y-auto scrollbar-hide pb-2">
+            {users.map((u) => (
+              <div
+                key={u.id}
+                onClick={() => router.push(`/users/${u.id}/edit`)}
+                className="flex flex-col border-1 border-black/10 bg-black/5 backdrop-blur-xl rounded-2xl p-3 gap-y-2 cursor-pointer hover:shadow-md transition-all"
+              >
+                <div className="flex items-center justify-between gap-x-2">
+                  <UserAvatar
+                    avatarProps={{ radius: "lg", src: u.avatar ? `${API_BASE}${u.avatar}` : undefined, name: u.name }}
+                    name={u.name}
+                    description={u.phone}
+                  />
+                  <Chip size="sm" variant="dot" color={u.is_active ? "success" : "danger"}>
+                    {u.is_active ? "ใช้งาน" : "ระงับ"}
+                  </Chip>
+                </div>
+                <div className="flex items-center justify-between gap-x-2 text-xs">
+                  <span className="text-black/50 truncate min-w-0">{u.email}</span>
+                  <Chip size="sm" color="warning" variant="flat" className="shrink-0">
+                    {u.role?.display_name || u.role?.name || "-"}
+                  </Chip>
+                </div>
+                <span className="text-[10px] text-black/40 truncate">
+                  {u.store?.name || "-"}{u.branch?.name ? ` / ${u.branch.name}` : ""}
+                </span>
+              </div>
+            ))}
+          </div>
 
           {total > 20 && (
             <div className="flex justify-center gap-2 shrink-0 pb-2">

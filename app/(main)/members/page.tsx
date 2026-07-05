@@ -177,7 +177,7 @@ export default function Members() {
   return (
     <div className="flex flex-col h-full gap-y-3">
       {/* header */}
-      <div className="flex flex-row items-center justify-between shrink-0 pt-5">
+      <div className="flex flex-row items-center justify-between shrink-0">
         <div className="flex font-bold text-2xl bg-gradient-to-l from-black/90 to-yellow-600 bg-clip-text text-transparent pl-2">
           สมาชิก
         </div>
@@ -274,7 +274,7 @@ export default function Members() {
             radius="sm"
             removeWrapper
             classNames={{
-              base: "flex flex-col flex-1 min-h-0 overflow-y-scroll scrollbar-hide border-1 border-black/10 bg-black/5 backdrop-blur-xl rounded-2xl p-2",
+              base: "hidden md:flex flex-col flex-1 min-h-0 overflow-y-scroll scrollbar-hide border-1 border-black/10 bg-black/5 backdrop-blur-xl rounded-2xl p-2",
             }}
           >
             <TableHeader columns={columns}>
@@ -294,6 +294,48 @@ export default function Members() {
               )}
             </TableBody>
           </Table>
+
+          {/* Mobile: card list */}
+          <div className="flex md:hidden flex-col gap-y-2 flex-1 min-h-0 overflow-y-auto scrollbar-hide pb-2">
+            {members.length === 0 ? (
+              <div className="flex items-center justify-center py-10 text-black/40 text-sm">ไม่พบข้อมูล</div>
+            ) : members.map((m) => (
+              <div
+                key={m.id}
+                onClick={() => router.push(`/members/read?id=${m.id}`)}
+                className="flex flex-col border-1 border-black/10 bg-black/5 backdrop-blur-xl rounded-2xl p-3 gap-y-2 cursor-pointer hover:shadow-md transition-all"
+              >
+                <div className="flex items-center justify-between gap-x-2">
+                  <User
+                    avatarProps={{ radius: "lg", src: m.image ? `${API_BASE}${m.image}` : undefined, name: m.fname }}
+                    name={`${m.fname} ${m.lname}`}
+                    description={m.code}
+                  />
+                  <Chip color={statusColorMap[String(m.status)] || "default"} size="sm" variant="dot">
+                    {statusTextMap[String(m.status)] || String(m.status)}
+                  </Chip>
+                </div>
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-black/50">โทร {m.phone || "-"}</span>
+                  <span className="font-bold text-[#c09c42]">
+                    {m.credits.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </span>
+                </div>
+                {(m.user?.role || showStoreBranch) && (
+                  <div className="flex items-center justify-between gap-x-2">
+                    {m.user?.role ? (
+                      <Chip size="sm" variant="flat">{m.user.role.display_name || m.user.role.name}</Chip>
+                    ) : <span />}
+                    {showStoreBranch && (
+                      <span className="text-[10px] text-black/40 truncate">
+                        {m.store?.name || "-"}{m.branch?.name ? ` / ${m.branch.name}` : ""}
+                      </span>
+                    )}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
 
           {totalPages > 1 && (
             <div className="flex justify-center gap-2 shrink-0 pb-2">

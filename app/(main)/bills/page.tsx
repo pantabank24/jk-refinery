@@ -359,10 +359,44 @@ export default function BillsList() {
 
   if (!authLoading && !canRead) return null;
 
+  // Tabs + ปุ่มเคลียร์บิล — render 2 จุด (มือถือ = ตรึงใต้ filter / desktop = หลัง Overview)
+  const tabsRow = (
+    <div className="flex items-center">
+      <div className="flex-1 min-w-0">
+        <Tabs
+          selectedKey={activeTab}
+          onSelectionChange={(k) => setActiveTab(String(k))}
+          color="warning"
+          variant="underlined"
+          classNames={{
+            base: "w-full",
+            tabList: "gap-4 w-full overflow-x-auto flex-nowrap scrollbar-hide",
+          }}
+        >
+          <Tab key="all" title="ทั้งหมด" />
+          <Tab key="pending_issue" title="รอออกบิล" />
+          <Tab key="pending_review" title="รอตรวจบิล" />
+          {!isCustomer ? <Tab key="completed" title="สำเร็จ" /> : null}
+          {!isCustomer ? <Tab key="cleared" title="เคลียร์แล้ว" /> : null}
+          <Tab key="cancelled" title="ยกเลิก" />
+        </Tabs>
+      </div>
+      {canApprove && (
+        <Button
+          size="sm"
+          className="shrink-0 bg-purple-600 text-white font-bold text-xs ml-2"
+          onPress={clearDisc.onOpen}
+        >
+          เคลียร์บิล
+        </Button>
+      )}
+    </div>
+  );
+
   return (
     <div className="flex flex-col h-full gap-y-3">
       {/* Header */}
-      <div className="flex flex-row items-center justify-between shrink-0 pt-5 px-1">
+      <div className="flex flex-row items-center justify-between shrink-0 px-1">
         <span className="font-bold text-2xl bg-gradient-to-l from-black/90 to-yellow-600 bg-clip-text text-transparent">
           รายการขาย
         </span>
@@ -395,6 +429,12 @@ export default function BillsList() {
             onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSearch(e.target.value)} />
         </div>
       </div>
+
+      {/* Tabs (มือถือ) — ตรึงใต้ Filter */}
+      <div className="shrink-0 md:hidden">{tabsRow}</div>
+
+      {/* Scroll region — มือถือ: Overview→list เลื่อนพร้อมกัน / desktop: Overview,Tabs ตรึง ให้ content scroll เอง */}
+      <div className="flex-1 min-h-0 overflow-y-auto md:overflow-hidden scrollbar-hide flex flex-col gap-y-3">
 
       {/* Overview — reflects the currently filtered/listed bills */}
       <div className="grid grid-cols-2 gap-2 shrink-0">
@@ -430,40 +470,11 @@ export default function BillsList() {
         )}
       </div>
 
-      {/* Tabs + เคลียร์บิล */}
-      <div className="flex items-center shrink-0">
-        <div className="flex-1 min-w-0">
-          <Tabs
-            selectedKey={activeTab}
-            onSelectionChange={(k) => setActiveTab(String(k))}
-            color="warning"
-            variant="underlined"
-            classNames={{
-              base: "w-full",
-              tabList: "gap-4 w-full overflow-x-auto flex-nowrap scrollbar-hide",
-            }}
-          >
-            <Tab key="all" title="ทั้งหมด" />
-            <Tab key="pending_issue" title="รอออกบิล" />
-            <Tab key="pending_review" title="รอตรวจบิล" />
-            {!isCustomer ? <Tab key="completed" title="สำเร็จ" /> : null}
-            {!isCustomer ? <Tab key="cleared" title="เคลียร์แล้ว" /> : null}
-            <Tab key="cancelled" title="ยกเลิก" />
-          </Tabs>
-        </div>
-        {canApprove && (
-          <Button
-            size="sm"
-            className="shrink-0 bg-purple-600 text-white font-bold text-xs ml-2"
-            onPress={clearDisc.onOpen}
-          >
-            เคลียร์บิล
-          </Button>
-        )}
-      </div>
+      {/* Tabs (desktop) — อยู่หลัง Overview เหมือนเดิม */}
+      <div className="hidden md:block shrink-0">{tabsRow}</div>
 
-      {/* List */}
-      <div className="flex-1 overflow-y-auto">
+      {/* List — desktop: scroll ในตัวเอง (Overview ตรึง) / มือถือ: natural, เลื่อนไปกับ wrapper */}
+      <div className="flex flex-col md:flex-1 md:min-h-0 md:overflow-y-auto md:scrollbar-hide">
         {loading ? (
           <div className="flex items-center justify-center py-10"><Spinner size="lg" color="warning" /></div>
         ) : billGroups.length === 0 ? (
@@ -477,7 +488,7 @@ export default function BillsList() {
                 radius="sm"
                 removeWrapper
                 classNames={{
-                  base: "flex flex-col flex-1 min-h-0 overflow-y-scroll scrollbar-hide border-1 border-black/10 bg-black/5 backdrop-blur-xl rounded-2xl p-2",
+                  base: "flex flex-col border-1 border-black/10 bg-black/5 backdrop-blur-xl rounded-2xl p-2",
                 }}
               >
                 <TableHeader>
@@ -575,6 +586,7 @@ export default function BillsList() {
             </div>
           </>
         )}
+      </div>
       </div>
 
       {/* DETAIL MODAL */}

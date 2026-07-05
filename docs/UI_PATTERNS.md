@@ -14,13 +14,12 @@ body className: "min-h-screen text-foreground bg-background
   font-sans antialiased"
 ```
 
-**Shell ปลดล็อคความสูงบนมือถือ** — `components/main-content.tsx`
+**Shell = 100vh คงที่** — `components/main-content.tsx`
 ```
-"relative flex flex-col min-h-screen md:h-screen"
+"relative flex flex-col h-screen"
 ```
-- มือถือ = โตตามเนื้อหา → document scroll → พื้นหลังเต็มเสมอ
-- desktop = คง 100vh → internal scroll ยังทำงาน
-- **อย่าใส่ gradient ที่ shell นี้อีก** (ย้ายไป body แล้ว จะซ้อนกันสี tint เข้มไม่สม่ำเสมอ)
+- ทุกหน้าใช้ **internal scroll** (ตรึง header/filter, scroll เฉพาะเนื้อหา) → ไม่มี document scroll → พื้นหลังเต็มเสมอ
+- **อย่าใส่ gradient ที่ shell นี้** (อยู่ที่ body `bg-fixed` แล้ว จะซ้อนกันสี tint เข้มไม่สม่ำเสมอ)
 
 ---
 
@@ -32,15 +31,60 @@ body className: "min-h-screen text-foreground bg-background
 </div>
 ```
 - `truncate min-w-0` ที่ตัวอักษร, `shrink-0` ที่ของข้าง ๆ, `gap-x-2` ที่ container
+- **ระยะเว้น Title จากขอบบน (ใต้ navbar) = ชิดขอบ ไม่ใส่ pt เพิ่มที่ header**
+  - Pattern #2 มี `pt-20` = ชิด navbar พอดีอยู่แล้ว → header ใส่แค่ `px-1` ไม่ต้องมี `pt-*`
+  - หน้าที่ยังไม่ใช้ bleed pattern (root `h-full`) ก็ **อย่าใส่ `pt-5`** เพราะ `<main>` มี `pt-20` ให้ clearance ใต้ navbar อยู่แล้ว
 
-## 2. Container หน้า — bleed ใต้ NavBar + scroll ทั้งหน้า(มือถือ) / internal(desktop)
+## 2. Container หน้า
+
+### 2A. หน้าที่มี "ค้นหา / Filter" (ค่าเริ่มต้น — ใช้กับ list page ส่วนใหญ่)
+พฤติกรรมต่างกันตาม breakpoint:
+- **มือถือ:** ตรึง Header + ค้นหา + Filter / scroll ตั้งแต่ Overview → Overview เลื่อนไปพร้อม list
+- **Desktop:** ตรึง Header + ค้นหา + Filter + **Overview + Tabs** / ให้ content scroll ในตัวเอง (Overview ตรึง)
+
 ```jsx
-<div className="flex flex-col md:h-[calc(100%+5rem)] -mt-20 pt-20 gap-y-3 md:overflow-hidden scrollbar-hide">
+<div className="flex flex-col h-full gap-y-3">        {/* root ตรึง — ห้ามใส่ overflow */}
+  {/* Header */}   <div className="... shrink-0">...</div>
+  {/* Filter */}   <div className="... shrink-0">...</div>   {/* ค้นหา+filter ตรึง ใช้สะดวก */}
+
+  {/* Scroll region: มือถือ scroll รวม / desktop ไม่ scroll (ให้ content ทำเอง) */}
+  <div className="flex-1 min-h-0 overflow-y-auto md:overflow-hidden scrollbar-hide flex flex-col gap-y-3">
+    <Overview />
+    <Tabs />
+    {/* Content: มือถือ natural (เลื่อนไปกับ wrapper) / desktop fill+scroll ในตัวเอง */}
+    <div className="flex flex-col md:flex-1 md:min-h-0 md:overflow-y-auto md:scrollbar-hide">
+      ...list / table / split-pane...
+    </div>
+  </div>
+</div>
 ```
-- `-mt-20 pt-20` = เนื้อหาทะลุใต้ navbar (navbar สูง 80px = 5rem)
-- `md:h-[calc(100%+5rem)]` = desktop ชดเชยความสูงที่ถูก -mt-20 ดึงขึ้น (net-neutral)
-- `gap-y-3` = ระยะห่างระหว่าง section สม่ำเสมอ **จากที่เดียว** — อย่าใส่ `my-*`/`pt-*` เดี่ยว ๆ ในแต่ละ section (เป็นต้นเหตุ gap ไม่สม่ำเสมอ)
-- `scrollbar-hide` = ซ่อน scrollbar
+- กุญแจ 2 จุด: **wrapper** `overflow-y-auto md:overflow-hidden` + **content** `md:flex-1 md:min-h-0 md:overflow-y-auto`
+- **ทำไมไม่ bleed:** ค้นหา/Filter ต้องเห็นตลอด กดง่าย → ตรึงนอก scroll region
+- ถ้า content เป็น split-pane (master-detail #6) ก็ใช้ pattern เดียวกัน (pane เป็นตัว `md:flex-1 md:min-h-0` scroll เอง)
+- `gap-y-3` ทั้ง root และ wrapper = ระยะห่างสม่ำเสมอ **จากที่เดียว** (อย่าใส่ `my-*`/`pt-*` เดี่ยว ๆ)
+
+**ถ้ามี Tabs:** มือถือให้ Tabs ขึ้นไปตรึงใต้ Filter (เหนือ scroll region) / desktop อยู่หลัง Overview เหมือนเดิม
+เนื่องจากตำแหน่งอยู่คนละฝั่งขอบ scroll → render Tabs เป็นตัวแปรเดียว วาง 2 จุด (คุมด้วย state เดียว)
+```jsx
+const tabsEl = <Tabs selectedKey={activeTab} onSelectionChange={...}>...</Tabs>;
+
+{/* หลัง Filter (นอก scroll region) */}
+<div className="shrink-0 md:hidden">{tabsEl}</div>
+
+<div className="flex-1 min-h-0 overflow-y-auto md:overflow-hidden scrollbar-hide flex flex-col gap-y-3">
+  <Overview />
+  {/* หลัง Overview (ใน wrapper, desktop เท่านั้น) */}
+  <div className="hidden md:block shrink-0">{tabsEl}</div>
+  <Content ... />
+</div>
+```
+
+### 2B. หน้าที่ **ไม่มี** ค้นหา/Filter — bleed ใต้ navbar ได้
+```jsx
+<div className="flex flex-col h-[calc(100%+5rem)] -mt-20 pt-20 gap-y-3 overflow-y-auto scrollbar-hide">
+```
+- `-mt-20 pt-20` = เนื้อหา scroll ลอดขึ้นใต้ navbar (navbar สูง 80px = 5rem), `h-[calc(100%+5rem)]` ชดเชยความสูง
+- ใช้ **เฉพาะหน้าที่ไม่มี filter** เท่านั้น (bleed ทำให้ของบนสุดเลื่อนหายได้ ไม่เหมาะกับ filter)
 
 ## 3. Table → Card List บนมือถือ
 ```jsx
@@ -135,7 +179,7 @@ const selectItem = (id) => {
 
 ## เช็คลิสต์เวลาปรับหน้าใหม่
 - [ ] Header: `truncate min-w-0` + ของข้าง ๆ `shrink-0`
-- [ ] Container: pattern #2 (bleed + scroll + `gap-y-3` ที่เดียว)
+- [ ] Container: มีค้นหา/Filter ไหม → ใช้ #2A (ตรึง filter, scroll ตั้งแต่ Overview) / ไม่มี → #2B (bleed ได้)
 - [ ] มี Table ไหม → เพิ่ม card list มือถือ (#3)
 - [ ] Filter สูงเท่ากันไหม (#4)
 - [ ] มี master-detail ไหม → modal มือถือ (#6) + `fillHeight` ถ้าเนื้อหายาว (#7)

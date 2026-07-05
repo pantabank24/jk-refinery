@@ -138,7 +138,6 @@ export default function QuotationPage() {
   // suggestion — the person's name (default) or the company/store name.
   const [nameSource, setNameSource] = useState<"person" | "company">("person");
   const [billBalance, setBillBalance] = useState<number | null>(null);
-  const [billWeight, setBillWeight] = useState(0);
   const [billAvgPrice, setBillAvgPrice] = useState(0);
   const [billIds, setBillIds] = useState<number[]>([]);
   // The customer's submitted items — shown only for reference. The gold has been
@@ -203,9 +202,8 @@ export default function QuotationPage() {
           bills = (listRes.data as unknown as { data: BillLite[] }).data || [];
           api.get(`/bills/balance?user_id=${clicked.creator.id}`)
             .then((res) => {
-              const d = res.data as unknown as { balance: number; total_weight: number; avg_price: number };
+              const d = res.data as unknown as { balance: number; avg_price: number };
               setBillBalance(d.balance ?? 0);
-              setBillWeight(d.total_weight ?? 0);
               setBillAvgPrice(d.avg_price ?? 0);
             })
             .catch(() => {});
@@ -333,9 +331,12 @@ export default function QuotationPage() {
   // the customer was actually locked in at (total includes percent/plus adjustments).
   const refAvgPrice = refWeight > 0 ? refTotal / refWeight : 0;
   const hasBalance = billBalance !== null && billBalance !== 0;
-  const combinedWeight = billWeight + refWeight;
-  const blendedAvgPrice = hasBalance && combinedWeight > 0
-    ? (billAvgPrice * billWeight + refAvgPrice * refWeight) / combinedWeight
+  // Blend by baht amount: the previous cycle counts only its outstanding
+  // balance (ขาด/เกิน) — NOT its full weight — priced at that cycle's avg.
+  const outstanding = Math.abs(billBalance ?? 0);
+  const combinedAmount = outstanding + refTotal;
+  const blendedAvgPrice = hasBalance && combinedAmount > 0
+    ? (billAvgPrice * outstanding + refAvgPrice * refTotal) / combinedAmount
     : 0;
   const effectiveForcedPrice = billId
     ? (blendedAvgPrice > 0 ? blendedAvgPrice : refAvgPrice > 0 ? refAvgPrice : 0)
@@ -572,9 +573,9 @@ export default function QuotationPage() {
                     <div className="flex flex-col border-1 border-black/10 bg-black/5 rounded-xl p-1.5">
                       <span className="font-bold text-[10px] text-black/50 pl-1">ราคาเฉลี่ย (บาท)</span>
                       <span className="font-bold text-sm text-yellow-700 pl-1">
-                        {(hasBalance && billWeight > 0 && blendedAvgPrice > 0 ? blendedAvgPrice : refAvgPrice).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        {(hasBalance && billAvgPrice > 0 && blendedAvgPrice > 0 ? blendedAvgPrice : refAvgPrice).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                       </span>
-                      {hasBalance && billWeight > 0 && blendedAvgPrice > 0 && (
+                      {hasBalance && billAvgPrice > 0 && blendedAvgPrice > 0 && (
                         <span className="font-bold text-[10px] text-black/35 pl-1 mt-0.5">
                           บิลนี้ {refAvgPrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </span>

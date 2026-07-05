@@ -22,6 +22,7 @@ interface Schedule {
   open_time: string;
   close_time: string;
   realtime_after_hours: boolean;
+  realtime_until: string; // HH:MM realtime cutoff, "" = no limit
   note: string;
 }
 
@@ -52,7 +53,7 @@ const dayKey = (d: Date) => `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
 
 const blankWeekday = (): Schedule => ({
   id: 0, scope: "weekday", weekday: 1, start_at: null, end_at: null,
-  enabled: true, open_time: "09:30", close_time: "16:30", realtime_after_hours: false, note: "",
+  enabled: true, open_time: "09:30", close_time: "16:30", realtime_after_hours: false, realtime_until: "", note: "",
 });
 const blankRange = (day: Date): Schedule => {
   const start = new Date(day); start.setHours(0, 0, 0, 0);
@@ -60,7 +61,7 @@ const blankRange = (day: Date): Schedule => {
   return {
     id: 0, scope: "range", weekday: null,
     start_at: start.toISOString(), end_at: end.toISOString(),
-    enabled: false, open_time: "09:30", close_time: "16:30", realtime_after_hours: false, note: "",
+    enabled: false, open_time: "09:30", close_time: "16:30", realtime_after_hours: false, realtime_until: "", note: "",
   };
 };
 
@@ -102,7 +103,7 @@ export default function SalesPricePage() {
     setSaving(true); setSaved(false);
     try {
       await Promise.all(
-        ["sales_enabled", "sales_open_time", "sales_close_time", "sales_realtime_after_hours"]
+        ["sales_enabled", "sales_open_time", "sales_close_time", "sales_realtime_after_hours", "sales_realtime_until"]
           .map((k) => api.put("/configs", { key: k, value: cfg[k] ?? "" }))
       );
       setSaved(true); setTimeout(() => setSaved(false), 2000);
@@ -121,6 +122,7 @@ export default function SalesPricePage() {
       open_time: form.open_time,
       close_time: form.close_time,
       realtime_after_hours: form.realtime_after_hours,
+      realtime_until: form.realtime_after_hours ? form.realtime_until : "",
       note: form.note,
     });
     setForm(null);
@@ -216,6 +218,11 @@ export default function SalesPricePage() {
                 <Switch isDisabled={!canEdit} isSelected={defaultRealtime} color="primary"
                   onValueChange={(v) => setC("sales_realtime_after_hours", v ? "true" : "false")} />
               </div>
+              {defaultRealtime && (
+                <Input type="time" label="ขายเรียลไทม์ได้ถึงเวลา (ว่าง = ไม่จำกัด)" value={cfg["sales_realtime_until"] || ""} isDisabled={!canEdit}
+                  onValueChange={(v) => setC("sales_realtime_until", v)}
+                  classNames={{ inputWrapper: "bg-gradient-to-br from-black/10 to-transparent border-1 border-black/10 rounded-2xl" }} />
+              )}
             </div>
 
             {/* Weekday rules (recurring) */}
@@ -233,7 +240,9 @@ export default function SalesPricePage() {
                   <button key={r.id} onClick={() => canEdit && setForm(r)}
                     className={`flex items-center gap-x-2 px-3 py-2 rounded-2xl border-1 border-black/10 ${MODE_CELL[modeOf(r)]}`}>
                     <span className="font-bold text-sm">ทุกวัน{WEEKDAYS[r.weekday ?? 0]}</span>
-                    <span className="text-[11px] opacity-80">{r.enabled ? `${r.open_time}-${r.close_time}` : "ปิด"}</span>
+                    <span className="text-[11px] opacity-80">
+                      {r.enabled ? `${r.open_time}-${r.close_time}${r.realtime_after_hours && r.realtime_until ? ` · RT ถึง ${r.realtime_until}` : ""}` : "ปิด"}
+                    </span>
                   </button>
                 ))}
               </div>
@@ -313,7 +322,7 @@ export default function SalesPricePage() {
                           <span className="font-bold text-sm">
                             {toLocalInput(r.start_at).replace("T", " ")} → {toLocalInput(r.end_at).replace("T", " ")}
                           </span>
-                          <span className="text-xs text-black/50">{MODE_LABEL[modeOf(r)]}{r.enabled ? ` · ${r.open_time}-${r.close_time}` : ""}{r.note ? ` · ${r.note}` : ""}</span>
+                          <span className="text-xs text-black/50">{MODE_LABEL[modeOf(r)]}{r.enabled ? ` · ${r.open_time}-${r.close_time}` : ""}{r.enabled && r.realtime_after_hours && r.realtime_until ? ` · RT ถึง ${r.realtime_until}` : ""}{r.note ? ` · ${r.note}` : ""}</span>
                         </div>
                       </div>
                       {canEdit && (
@@ -381,6 +390,11 @@ export default function SalesPricePage() {
                   <Switch isSelected={form.realtime_after_hours} color="primary"
                     onValueChange={(v) => setForm({ ...form, realtime_after_hours: v })} />
                 </div>
+                {form.realtime_after_hours && (
+                  <Input type="time" label="ขายเรียลไทม์ได้ถึงเวลา (ว่าง = ไม่จำกัด)" value={form.realtime_until}
+                    onValueChange={(v) => setForm({ ...form, realtime_until: v })}
+                    classNames={{ inputWrapper: "bg-black/5 border-1 border-black/10 rounded-2xl" }} />
+                )}
               </>
             )}
 

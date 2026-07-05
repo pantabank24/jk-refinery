@@ -64,7 +64,7 @@ export default function NewsPage() {
           <span className="text-black/40 text-lg">ยังไม่มีข่าวสาร</span>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 overflow-y-auto pb-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 overflow-y-auto scrollbar-hide pb-4">
           {news.map((item) => (
             <div
               key={item.id}

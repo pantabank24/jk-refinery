@@ -141,7 +141,7 @@ export default function IssuedBillsPage() {
 
   return (
     <div className="flex flex-col h-full gap-y-3">
-      <div className="flex flex-row items-center justify-between shrink-0 pt-5 px-1">
+      <div className="flex flex-row items-center justify-between shrink-0 px-1">
         <span className="font-bold text-2xl bg-gradient-to-l from-black/90 to-yellow-600 bg-clip-text text-transparent">
           บิลทั้งหมด
         </span>
@@ -160,7 +160,7 @@ export default function IssuedBillsPage() {
         </Tabs>
       </div>
 
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 overflow-y-auto scrollbar-hide">
         {loading ? (
           <div className="flex items-center justify-center py-10"><Spinner size="lg" color="warning" /></div>
         ) : groups.length === 0 ? (

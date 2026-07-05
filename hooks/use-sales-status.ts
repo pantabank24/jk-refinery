@@ -12,6 +12,7 @@ export interface SalesStatus {
   open_time: string;
   close_time: string;
   realtime_after_hours: boolean;
+  realtime_until: string; // HH:MM realtime cutoff, "" = no limit
   rule_source: string; // date|weekday|default
   now: string;
 }

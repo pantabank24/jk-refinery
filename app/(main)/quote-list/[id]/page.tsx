@@ -194,8 +194,24 @@ export default function EmployeeQuoteListPage() {
 
   if (!authLoading && !canRead) return null;
 
+  // Tabs render 2 จุด (มือถือ = ตรึงใต้ filter / desktop = หลัง Overview) คุมด้วย activeTab ตัวเดียว
+  const tabsEl = (
+    <Tabs
+      selectedKey={activeTab}
+      onSelectionChange={(k) => setActiveTab(String(k))}
+      color="warning"
+      variant="underlined"
+      classNames={{ tabList: "gap-4" }}
+    >
+      <Tab key="all" title="ทั้งหมด" />
+      <Tab key="pending" title="รอตรวจสอบ" />
+      <Tab key="approved" title="สำเร็จ" />
+      <Tab key="rejected" title="ยกเลิก" />
+    </Tabs>
+  );
+
   return (
-    <div className="flex flex-col md:h-[calc(100%+5rem)] -mt-20 pt-20 gap-y-3 md:overflow-hidden scrollbar-hide">
+    <div className="flex flex-col h-full gap-y-3">
       {/* Header */}
       <div className="flex flex-row items-center gap-x-2 shrink-0 px-1">
         <Button
@@ -288,25 +304,18 @@ export default function EmployeeQuoteListPage() {
         )}
       </div>
 
+      {/* Tabs (มือถือ) — ตรึงใต้ Filter */}
+      <div className="shrink-0 md:hidden">{tabsEl}</div>
+
+      {/* Scroll region — Overview ลงไป (Header + ค้นหา + Filter ตรึงไว้ด้านบน) */}
+      <div className="flex-1 min-h-0 flex flex-col gap-y-3 overflow-y-auto md:overflow-hidden scrollbar-hide">
       <div className="shrink-0 flex flex-col gap-y-1">
         {/*<span className="text-xs font-bold text-[#c09c42] px-1">📊 {overviewLabel}</span>*/}
         <QuoteOverview totals={totals} />
       </div>
 
-      <div className="shrink-0">
-        <Tabs
-          selectedKey={activeTab}
-          onSelectionChange={(k) => setActiveTab(String(k))}
-          color="warning"
-          variant="underlined"
-          classNames={{ tabList: "gap-4" }}
-        >
-          <Tab key="all" title="ทั้งหมด" />
-          <Tab key="pending" title="รอตรวจสอบ" />
-          <Tab key="approved" title="สำเร็จ" />
-          <Tab key="rejected" title="ยกเลิก" />
-        </Tabs>
-      </div>
+      {/* Tabs (desktop) — อยู่หลัง Overview เหมือนเดิม */}
+      <div className="hidden md:block shrink-0">{tabsEl}</div>
 
       {loading ? (
         <div className="flex items-center justify-center py-10">
@@ -371,6 +380,7 @@ export default function EmployeeQuoteListPage() {
           </div>
         </div>
       )}
+      </div>
 
       {/* Mobile: preview in a full-screen modal (desktop uses the split pane) */}
       <Modal

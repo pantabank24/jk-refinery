@@ -345,6 +345,7 @@ export const Calculate = ({ onAdd, onOpenList, quotationCount = 0, lockMeltType,
             value={price}
             onChange={(n) => { if (!priceForced) setPrice(n); }}
             isReadOnly={priceForced}
+            maxDecimals={2}
           />
           {/* Type selector hidden when locked to melt type or when metal has only one type */}
           {!lockMeltType && metalTypes.length > 1 && (

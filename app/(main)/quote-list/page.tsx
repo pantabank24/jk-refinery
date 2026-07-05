@@ -187,10 +187,26 @@ export default function QuoteList() {
 
   if (!authLoading && !canRead) return null;
 
+  // Tabs render 2 จุด (มือถือ = ตรึงใต้ filter / desktop = หลัง Overview) คุมด้วย activeTab ตัวเดียว
+  const tabsEl = (
+    <Tabs
+      selectedKey={activeTab}
+      onSelectionChange={(k) => setActiveTab(String(k))}
+      color="warning"
+      variant="underlined"
+      classNames={{ tabList: "gap-4" }}
+    >
+      <Tab key="all" title="ทั้งหมด" />
+      <Tab key="pending" title="รอตรวจสอบ" />
+      <Tab key="approved" title="สำเร็จ" />
+      <Tab key="rejected" title="ยกเลิก" />
+    </Tabs>
+  );
+
   return (
-    <div className="flex flex-col h-full gap-y-3 overflow-y-auto scrollbar-hide">
+    <div className="flex flex-col h-full gap-y-3">
       {/* Header */}
-      <div className="flex flex-row items-center justify-between shrink-0 pt-5 px-1 gap-x-2">
+      <div className="flex flex-row items-center justify-between shrink-0 px-1 gap-x-2">
         <span className="font-bold text-2xl bg-gradient-to-l from-black/90 to-yellow-600 bg-clip-text text-transparent truncate min-w-0">
           รายการใบเสนอราคา
         </span>
@@ -245,27 +261,19 @@ export default function QuoteList() {
         )}
       </div>
 
+      {/* Tabs (มือถือ) — ตรึงใต้ Filter */}
+      <div className="shrink-0 md:hidden">{tabsEl}</div>
+
+      {/* Scroll region — มือถือ: Overview→list เลื่อนพร้อมกัน / desktop: Overview,Tabs ตรึง ให้ content scroll เอง */}
+      <div className="flex-1 min-h-0 overflow-y-auto md:overflow-hidden scrollbar-hide flex flex-col gap-y-3">
       {/* Overview */}
       <QuoteOverview totals={overviewTotals} />
 
-      {/* Tabs */}
-      <div className="shrink-0">
-        <Tabs
-          selectedKey={activeTab}
-          onSelectionChange={(k) => setActiveTab(String(k))}
-          color="warning"
-          variant="underlined"
-          classNames={{ tabList: "gap-4" }}
-        >
-          <Tab key="all" title="ทั้งหมด" />
-          <Tab key="pending" title="รอตรวจสอบ" />
-          <Tab key="approved" title="สำเร็จ" />
-          <Tab key="rejected" title="ยกเลิก" />
-        </Tabs>
-      </div>
+      {/* Tabs (desktop) — อยู่หลัง Overview เหมือนเดิม */}
+      <div className="hidden md:block shrink-0">{tabsEl}</div>
 
-      {/* Content */}
-      <div className="flex flex-col flex-1">
+      {/* Content — desktop: scroll ในตัวเอง (Overview ตรึง) / มือถือ: natural, เลื่อนไปกับ wrapper */}
+      <div className="flex flex-col md:flex-1 md:min-h-0 md:overflow-y-auto md:scrollbar-hide">
         {loading ? (
           <div className="flex items-center justify-center py-10"><Spinner size="lg" color="warning" /></div>
         ) : filtered.length === 0 ? (
@@ -380,6 +388,7 @@ export default function QuoteList() {
             ))}
           </div>
         )}
+      </div>
       </div>
 
       {/* Detail modal — list view only */}

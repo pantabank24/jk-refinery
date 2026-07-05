@@ -72,7 +72,7 @@ export default function StoresPage() {
           <span className="text-black/40 text-lg">ยังไม่มีร้านค้า</span>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 overflow-y-auto pb-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 overflow-y-auto scrollbar-hide pb-4">
           {stores.map((store) => (
             <div
               key={store.id}
