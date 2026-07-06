@@ -241,33 +241,34 @@ export default function BillsList() {
     } catch {
       setDetailB(b);
     }
-    // Fetch balance + delivery logs (staff/master view only).
-    if (!isCustomer) {
-      if (b.creator?.id) {
-        api.get(`/bills/balance?user_id=${b.creator.id}`)
-          .then((res) => {
-            const d = res.data as unknown as { balance: number; history: { id: number; amount: number; description: string; created_at: string }[] };
-            setBillBalance(d.balance ?? 0);
-            setBillBalanceHistory(d.history ?? []);
-          })
-          .catch(() => {});
-      }
-      const logIds = groupIds && groupIds.length ? groupIds : [b.id];
-      type LogRow = { id: number; weight: number; amount: number; note: string; created_at: string; items?: QuotationProps[] };
-      Promise.all(
-        logIds.map((lid) =>
-          api.get(`/bills/${lid}/delivery-logs`)
-            .then((res) => ({ lid, logs: (res.data as unknown as LogRow[]) ?? [] }))
-            .catch(() => ({ lid, logs: [] as LogRow[] })),
-        ),
-      ).then((results) => {
-        // Display the rep bill's rounds; itemise page 1 from whichever bill carries items.
-        setDeliveryLogs(results.find((r) => r.lid === b.id)?.logs ?? results[0]?.logs ?? []);
-        const items: QuotationProps[] = [];
-        for (const r of results) for (const lg of r.logs) for (const it of lg.items ?? []) items.push(it);
-        setBillPage1Items(items);
-      });
+    // Balance/history — staff/master view only.
+    if (!isCustomer && b.creator?.id) {
+      api.get(`/bills/balance?user_id=${b.creator.id}`)
+        .then((res) => {
+          const d = res.data as unknown as { balance: number; history: { id: number; amount: number; description: string; created_at: string }[] };
+          setBillBalance(d.balance ?? 0);
+          setBillBalanceHistory(d.history ?? []);
+        })
+        .catch(() => {});
     }
+    // Delivery logs → itemise the preview's page 1 for every viewer (incl. the
+    // customer's รอตรวจบิล review) so it breaks items down line-by-line instead of
+    // the consolidated issued-quotation lines. deliveryLogs display stays staff-only.
+    const logIds = groupIds && groupIds.length ? groupIds : [b.id];
+    type LogRow = { id: number; weight: number; amount: number; note: string; created_at: string; items?: QuotationProps[] };
+    Promise.all(
+      logIds.map((lid) =>
+        api.get(`/bills/${lid}/delivery-logs`)
+          .then((res) => ({ lid, logs: (res.data as unknown as LogRow[]) ?? [] }))
+          .catch(() => ({ lid, logs: [] as LogRow[] })),
+      ),
+    ).then((results) => {
+      // Display the rep bill's rounds; itemise page 1 from whichever bill carries items.
+      setDeliveryLogs(results.find((r) => r.lid === b.id)?.logs ?? results[0]?.logs ?? []);
+      const items: QuotationProps[] = [];
+      for (const r of results) for (const lg of r.logs) for (const it of lg.items ?? []) items.push(it);
+      setBillPage1Items(items);
+    });
     detailDisc.onOpen();
   };
 

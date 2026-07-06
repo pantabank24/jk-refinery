@@ -30,6 +30,10 @@ import { ConfirmDeleteModal } from "@/components/confirmDeleteModal";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL?.replace("/api/v1", "") || "http://localhost:8080";
 
+// A customer's submitted line shown in the reference card, tagged with the source
+// bill + item id so the master can delete it from the customer's actual bill.
+type ReferenceItem = QuotationProps & { billId: number; itemId: number };
+
 // Reusable typed image-upload block — a single compact row of thumbnails
 // with an inline "+" tile to add more, instead of a separate dropzone box.
 // The "+" tile offers a choice between picking a file or capturing from the webcam.
@@ -143,9 +147,12 @@ export default function QuotationPage() {
   const [billBalance, setBillBalance] = useState<number | null>(null);
   const [billAvgPrice, setBillAvgPrice] = useState(0);
   const [billIds, setBillIds] = useState<number[]>([]);
-  // The customer's submitted items — shown only for reference. The gold has been
-  // melted, so the master builds a fresh quote; these are NOT added to it.
-  const [referenceItems, setReferenceItems] = useState<QuotationProps[]>([]);
+  // The customer's submitted items — shown for reference (gold already melted, so
+  // the master builds a fresh quote). billId/itemId let the master delete one from
+  // the customer's actual bill.
+  const [referenceItems, setReferenceItems] = useState<ReferenceItem[]>([]);
+  const [removingRef, setRemovingRef] = useState<ReferenceItem | null>(null);
+  const [removingRefBusy, setRemovingRefBusy] = useState(false);
   // Partial delivery tracking: accumulated processed weight/amount across all customer's bills.
   const [processedWeight, setProcessedWeight] = useState(0);
   const [processedAmount, setProcessedAmount] = useState(0);
@@ -161,7 +168,7 @@ export default function QuotationPage() {
   const deleteBillDisc = useDisclosure();
   const [deletingBill, setDeletingBill] = useState(false);
 
-  type BillItemLite = { type_id: string; type_name: string; price: number; percent: number; plus: number; weight: number; per_gram: number; total: number };
+  type BillItemLite = { id: number; type_id: string; type_name: string; price: number; percent: number; plus: number; weight: number; per_gram: number; total: number };
   type BillLite = { id: number; total_amount: number; processed_weight: number; processed_amount: number; items?: BillItemLite[]; creator?: { id: number; name: string; phone?: string; store_name?: string; address?: string; tax_id?: string } };
 
   useEffect(() => {
@@ -219,6 +226,7 @@ export default function QuotationPage() {
           setReferenceItems((clicked?.items ?? []).map((i) => ({
             typeId: i.type_id, typeName: i.type_name, price: i.price, plus: i.plus,
             percent: i.percent, weight: i.weight, perGram: i.per_gram, total: i.total,
+            billId: clicked?.id ?? Number(billId), itemId: i.id,
           })));
           setProcessedWeight(0);
           setProcessedAmount(0);
@@ -244,7 +252,7 @@ export default function QuotationPage() {
         if (bills.length === 0 && clicked) bills = [clicked];
 
         const ids: number[] = [];
-        const reference: QuotationProps[] = [];
+        const reference: ReferenceItem[] = [];
         let totalProcessedW = 0;
         let totalProcessedA = 0;
         for (const b of bills) {
@@ -255,6 +263,7 @@ export default function QuotationPage() {
             reference.push({
               typeId: i.type_id, typeName: i.type_name, price: i.price, plus: i.plus,
               percent: i.percent, weight: i.weight, perGram: i.per_gram, total: i.total,
+              billId: b.id, itemId: i.id,
             });
           }
         }
@@ -292,6 +301,33 @@ export default function QuotationPage() {
 
   const handleRemoveItem = (index: number) => {
     setQuotation((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  // Master deletes one of the customer's submitted lines from their actual bill —
+  // immediately, in both normal and edit mode. The backend recomputes the bill total
+  // (and, for an already-issued bill, keeps its debt/credit ledger in sync); if the
+  // bill empties it is deleted. We mirror the removal locally so the reference totals
+  // + suggested price update at once.
+  const confirmRemoveReference = async () => {
+    const ref = removingRef;
+    if (!ref) return;
+    setRemovingRefBusy(true);
+    try {
+      const res = await api.delete<{ deleted: boolean }>(`/bills/${ref.billId}/items/${ref.itemId}`);
+      const deleted = (res.data as unknown as { deleted?: boolean })?.deleted ?? false;
+      setReferenceItems((prev) => prev.filter((r) => r.itemId !== ref.itemId));
+      setRemovingRef(null);
+      if (deleted) {
+        setBillIds((prev) => prev.filter((id) => id !== ref.billId));
+        // Editing a bill that just emptied out → nothing left to re-issue.
+        if (editIssued && Number(billId) === ref.billId) {
+          router.push("/bills");
+          return;
+        }
+      }
+    } catch { /* ignore */ } finally {
+      setRemovingRefBusy(false);
+    }
   };
 
   // Opens delivery choice ("รอส่งเพิ่ม" vs "บันทึกเลย") in bill mode, else goes
@@ -656,9 +692,19 @@ export default function QuotationPage() {
               })()}
               <div className="flex flex-col gap-y-1 overflow-y-auto scrollbar-hide">
                 {referenceItems.map((it, i) => (
-                  <div key={i} className="flex items-center justify-between gap-x-2 bg-black/5 border border-black/10 rounded-xl px-3 py-2 text-xs">
+                  <div key={it.itemId} className="flex items-center justify-between gap-x-2 bg-black/5 border border-black/10 rounded-xl px-3 py-2 text-xs">
                     <span className="text-black/70 font-bold truncate min-w-0">{i + 1}. {it.typeName}</span>
-                    <span className="text-black/50 shrink-0 whitespace-nowrap">น้ำหนัก {it.weight} · {it.total.toLocaleString()} บาท</span>
+                    <div className="flex items-center gap-x-2 shrink-0">
+                      <span className="text-black/50 whitespace-nowrap">น้ำหนัก {it.weight} · {it.total.toLocaleString()} บาท</span>
+                      <button
+                        type="button"
+                        title="ลบรายการนี้ออกจากบิลลูกค้า"
+                        onClick={() => setRemovingRef(it)}
+                        className="h-5 w-5 shrink-0 bg-gradient-to-br from-red-600/50 to-transparent border-1 border-black/10 rounded-full flex items-center justify-center"
+                      >
+                        <X size={13} className="text-red-600" />
+                      </button>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -1236,6 +1282,16 @@ export default function QuotationPage() {
         name={billCustomer ? `บิลของ ${billCustomer}` : undefined}
         related="รายการสินค้า ประวัติการส่ง และยอดหนี้/เครดิตของบิลนี้จะถูกลบออกจากการคำนวณ"
         loading={deletingBill}
+      />
+
+      {/* Delete one of the customer's submitted reference items from their bill */}
+      <ConfirmDeleteModal
+        isOpen={!!removingRef}
+        onClose={() => setRemovingRef(null)}
+        onConfirm={confirmRemoveReference}
+        name={removingRef ? `รายการ "${removingRef.typeName}" ที่ลูกค้าส่งมา` : undefined}
+        related="รายการนี้จะถูกลบออกจากบิลของลูกค้าจริง และยอดรวมบิล/ยอดขาด-เกินจะถูกคำนวณใหม่ (ถ้าไม่เหลือรายการ บิลจะถูกลบทั้งใบ)"
+        loading={removingRefBusy}
       />
     </div>
   );
