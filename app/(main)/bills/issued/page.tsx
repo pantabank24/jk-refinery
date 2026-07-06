@@ -12,6 +12,11 @@ import { Tabs, Tab } from "@heroui/tabs";
 import { ShieldOff, Printer } from "lucide-react";
 import { PreviewQuote, PreviewQuoteHandle } from "../../quotation/_component/previewQuote";
 import { QuotationProps } from "../../quotation/_component/quotation";
+import {
+  buildStoreHeader,
+  type QuotationStoreSnapshot,
+  type StoreHeaderSnapshot,
+} from "../../quotation/_component/storeHeader";
 
 interface BillItem {
   id: number;
@@ -24,7 +29,7 @@ interface BillItem {
   total: number;
 }
 
-interface IssuedQuotation {
+interface IssuedQuotation extends QuotationStoreSnapshot {
   id: number;
   code: string;
   total_amount: number;
@@ -43,6 +48,9 @@ interface BillData {
   items?: BillItem[];
   images?: { id: number; image_url: string; type?: string }[];
   issued_quotation?: IssuedQuotation | null;
+  // Full store relation (preloaded on /bills/:id) — feeds the receipt header.
+  store?: (StoreHeaderSnapshot & { id: number; name: string }) | null;
+  branch?: { id: number; name: string } | null;
 }
 
 // One row per issued quotation (bills issued together are shown combined).
@@ -270,6 +278,7 @@ export default function IssuedBillsPage() {
                       page1Items={billPage1Items.length ? billPage1Items : undefined}
                       items={toQuoItems(src.items)}
                       onPrint={() => window.print()}
+                      store={buildStoreHeader(detailB.issued_quotation, detailB.store, detailB.branch?.name)}
                       beforeImages={urlsOf("before_melt")}
                       afterImages={urlsOf("after_melt")}
                       previewImages={urlsOf("")}

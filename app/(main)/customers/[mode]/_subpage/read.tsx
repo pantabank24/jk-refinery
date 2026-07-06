@@ -13,6 +13,11 @@ import { CustomerCard } from "../_components/customerCard";
 import { DocumentList, DOC_ACCEPT, type CustomerDocument } from "../_components/documentList";
 import { PreviewQuote, PreviewQuoteHandle } from "../../../quotation/_component/previewQuote";
 import { QuotationProps } from "../../../quotation/_component/quotation";
+import {
+  buildStoreHeader,
+  type QuotationStoreSnapshot,
+  type StoreHeaderSnapshot,
+} from "../../../quotation/_component/storeHeader";
 
 interface Customer {
   id: number;
@@ -47,7 +52,7 @@ interface BillItem {
   total: number;
 }
 
-interface IssuedQuotation {
+interface IssuedQuotation extends QuotationStoreSnapshot {
   id: number;
   code: string;
   total_amount: number;
@@ -65,6 +70,9 @@ interface BillDetail {
   items?: BillItem[];
   images?: { id: number; image_url: string; type?: string }[];
   issued_quotation?: IssuedQuotation | null;
+  // Full store relation (preloaded on /bills/:id) — feeds the receipt header.
+  store?: (StoreHeaderSnapshot & { id: number; name: string }) | null;
+  branch?: { id: number; name: string } | null;
 }
 
 const STATUS_LABEL: Record<number, string> = { 10: "รอออกบิล", 11: "รอตรวจบิล", 12: "สำเร็จ", 13: "ยกเลิก", 14: "เคลียร์แล้ว" };
@@ -407,6 +415,7 @@ export const CustomerDetail = () => {
                       page1Items={billPage1Items.length ? billPage1Items : undefined}
                       items={toQuoItems(src.items)}
                       onPrint={() => window.print()}
+                      store={buildStoreHeader(detailB.issued_quotation, detailB.store, detailB.branch?.name)}
                       beforeImages={urlsOf("before_melt")}
                       afterImages={urlsOf("after_melt")}
                       previewImages={urlsOf("")}

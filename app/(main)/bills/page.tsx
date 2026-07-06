@@ -19,6 +19,11 @@ import { Tabs, Tab } from "@heroui/tabs";
 import { Table, TableHeader, TableColumn, TableBody, TableRow, TableCell } from "@heroui/table";
 import { PreviewQuote } from "../quotation/_component/previewQuote";
 import { QuotationProps } from "../quotation/_component/quotation";
+import {
+  buildStoreHeader,
+  type QuotationStoreSnapshot,
+  type StoreHeaderSnapshot,
+} from "../quotation/_component/storeHeader";
 
 interface BillItem {
   id: number;
@@ -30,6 +35,9 @@ interface BillItem {
   weight: number;
   per_gram: number;
   total: number;
+  // When this line item's price was locked (each item is priced/locked
+  // individually, so one bill can carry several different locked prices).
+  created_at?: string;
 }
 
 interface BillData {
@@ -39,20 +47,23 @@ interface BillData {
   note: string;
   reject_reason: string;
   total_amount: number;
-  store?: { id: number; name: string } | null;
+  // Full store relation (preloaded on the /bills/:id detail response) — carries
+  // the receipt-header fields, not just id/name.
+  store?: StoreHeaderSnapshot & { id: number; name: string } | null;
   branch?: { id: number; name: string } | null;
   creator?: { id: number; name: string; phone?: string } | null;
   issued_quotation_id?: number | null;
   items?: BillItem[];
   images?: { id: number; image_url: string; type?: string }[];
   // The master-issued quotation (once issued) — its items/photos/signature are the
-  // real bill shown to the customer.
-  issued_quotation?: {
+  // real bill shown to the customer. Also carries the store-header snapshot taken
+  // when it was issued.
+  issued_quotation?: ({
     total_amount?: number;
     items?: BillItem[];
     images?: { id: number; image_url: string; type?: string }[];
     signer_name?: string;
-  } | null;
+  } & QuotationStoreSnapshot) | null;
   created_at: string;
 }
 
@@ -733,6 +744,9 @@ export default function BillsList() {
                         <span>ราคา {it.price.toLocaleString()}</span>
                         <span className="font-bold text-yellow-700 ml-auto">{it.total.toLocaleString()} บาท</span>
                       </div>
+                      {it.created_at && (
+                        <span className="text-[10px] text-black/40">ล็อกราคา {moment(it.created_at).format("DD/MM/YY HH:mm")}</span>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -782,6 +796,7 @@ export default function BillsList() {
                     total: item.total,
                   }))}
                   onPrint={() => window.print()}
+                  store={buildStoreHeader(detailB.issued_quotation, detailB.store, detailB.branch?.name)}
                   beforeImages={urlsOf("before_melt")}
                   afterImages={urlsOf("after_melt")}
                   previewImages={urlsOf("")}
@@ -804,6 +819,9 @@ export default function BillsList() {
                             <span>ราคา {it.price.toLocaleString()}</span>
                             <span className="font-bold text-yellow-700 ml-auto">{it.total.toLocaleString()} บาท</span>
                           </div>
+                          {it.created_at && (
+                            <span className="text-[10px] text-black/40">ล็อกราคา {moment(it.created_at).format("DD/MM/YY HH:mm")}</span>
+                          )}
                         </div>
                       ))}
                     </div>

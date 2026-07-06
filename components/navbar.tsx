@@ -9,7 +9,9 @@ import {
   XCircle,
   ArrowUp,
   ArrowDown,
+  UserCog,
 } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/auth-context";
 import { Avatar } from "@heroui/avatar";
 import {
@@ -58,6 +60,7 @@ function NotificationIcon({ type }: { type: string }) {
 
 export const Navbar = ({ onMenuClick }: NavbarProps) => {
   const { user, logout } = useAuth();
+  const router = useRouter();
   const [unreadCount, setUnreadCount] = useState(0);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [notifOpen, setNotifOpen] = useState(false);
@@ -241,6 +244,13 @@ export const Navbar = ({ onMenuClick }: NavbarProps) => {
               </div>
             </DropdownTrigger>
             <DropdownMenu>
+              <DropdownItem
+                key="edit-profile"
+                startContent={<UserCog size={16} />}
+                onPress={() => router.push("/profile")}
+              >
+                แก้ไขโปรไฟล์
+              </DropdownItem>
               <DropdownItem
                 key="logout"
                 startContent={<LogOut size={16} />}
