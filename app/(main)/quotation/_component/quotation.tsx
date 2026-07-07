@@ -4,6 +4,8 @@ import { X, Save } from "lucide-react";
 export interface QuotationProps {
     typeId: string;
     typeName: string;
+    /** gold|silver|platinum|palladium — missing means gold (legacy items) */
+    metal?: string;
     price: number;
     plus: number;
     plus_type?: number; // 0=บาท, 1=%

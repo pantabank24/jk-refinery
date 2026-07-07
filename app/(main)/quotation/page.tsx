@@ -168,7 +168,7 @@ export default function QuotationPage() {
   const deleteBillDisc = useDisclosure();
   const [deletingBill, setDeletingBill] = useState(false);
 
-  type BillItemLite = { id: number; type_id: string; type_name: string; price: number; percent: number; plus: number; weight: number; per_gram: number; total: number };
+  type BillItemLite = { id: number; type_id: string; type_name: string; metal?: string; price: number; percent: number; plus: number; weight: number; per_gram: number; total: number };
   type BillLite = { id: number; total_amount: number; processed_weight: number; processed_amount: number; items?: BillItemLite[]; creator?: { id: number; name: string; phone?: string; store_name?: string; address?: string; tax_id?: string } };
 
   useEffect(() => {
@@ -261,7 +261,7 @@ export default function QuotationPage() {
           totalProcessedA += b.processed_amount || 0;
           for (const i of b.items ?? []) {
             reference.push({
-              typeId: i.type_id, typeName: i.type_name, price: i.price, plus: i.plus,
+              typeId: i.type_id, typeName: i.type_name, metal: i.metal || "gold", price: i.price, plus: i.plus,
               percent: i.percent, weight: i.weight, perGram: i.per_gram, total: i.total,
               billId: b.id, itemId: i.id,
             });
@@ -360,19 +360,34 @@ export default function QuotationPage() {
     }
   };
 
+  // Missing metal means gold — items created before the metal tag existed.
+  const isGoldItem = (i: QuotationProps) => (i.metal || "gold") === "gold";
+
   // "รอส่งเพิ่ม": record partial delivery for all bill IDs and stay on page.
+  // Only GOLD items add to the bill's processed weight/amount — the bill (and its
+  // debt/credit cycle) is gold-only. Other metals still ride along in the items
+  // JSON so page 1 can itemise them after a reload.
   const handlePartialDeliver = async () => {
     setPartialSaving(true);
     setPartialError("");
-    const totalW = quotation.reduce((s, i) => s + (i.weight || 0), 0);
-    const totalA = quotation.reduce((s, i) => s + i.total, 0);
+    const goldItems = quotation.filter(isGoldItem);
+    const totalW = goldItems.reduce((s, i) => s + (i.weight || 0), 0);
+    const totalA = goldItems.reduce((s, i) => s + i.total, 0);
     try {
-      // Send the itemised lines only to the first bill (groups share one quote) so
-      // reading them back later doesn't duplicate across the group's bills.
-      for (let idx = 0; idx < billIds.length; idx++) {
-        await api.post(`/bills/${billIds[idx]}/partial-deliver`, {
-          weight: totalW, amount: totalA, items: idx === 0 ? quotation : [],
+      if (totalW <= 0 && totalA <= 0) {
+        // Round has no gold — nothing to add to the bills' processed aggregates.
+        // Log the items once on the first bill so they survive a reload.
+        await api.post(`/bills/${billIds[0]}/partial-deliver`, {
+          weight: 0, amount: 0, items: quotation,
         });
+      } else {
+        // Send the itemised lines only to the first bill (groups share one quote) so
+        // reading them back later doesn't duplicate across the group's bills.
+        for (let idx = 0; idx < billIds.length; idx++) {
+          await api.post(`/bills/${billIds[idx]}/partial-deliver`, {
+            weight: totalW, amount: totalA, items: idx === 0 ? quotation : [],
+          });
+        }
       }
       setProcessedWeight((p) => p + totalW);
       setProcessedAmount((p) => p + totalA);
@@ -411,23 +426,61 @@ export default function QuotationPage() {
     ? (blendedAvgPrice > 0 ? blendedAvgPrice : refAvgPrice > 0 ? refAvgPrice : 0)
     : 0;
 
-  // In bill mode ("บันทึกเลย"), combine all partial deliveries + current batch
-  // into ONE item so the preview and the saved quotation both show the full amount.
+  // In bill mode ("บันทึกเลย"), consolidate per METAL: gold collapses into one
+  // line (all partial deliveries + current batch — identical to the old
+  // single-line behaviour when everything is gold), and each other metal gets
+  // its own consolidated line. Non-gold is paid in full on this quotation and
+  // never enters the bill's debt/credit cycle.
   const previewItems: QuotationProps[] = (() => {
     if (billIds.length === 0 || quotation.length === 0) return quotation;
-    const currentW = quotation.reduce((s, i) => s + (i.weight || 0), 0);
-    const currentT = quotation.reduce((s, i) => s + i.total, 0);
+
+    const lines: QuotationProps[] = [];
+
+    // Gold line: current gold items + accumulated processed weight/amount
+    // (the bill's aggregates are gold-only).
+    const goldItems = quotation.filter(isGoldItem);
+    const currentW = goldItems.reduce((s, i) => s + (i.weight || 0), 0);
+    const currentT = goldItems.reduce((s, i) => s + i.total, 0);
     const totalW = processedWeight + currentW;
     const totalT = processedAmount + currentT;
-    const avgPrice = totalW > 0 ? totalT / totalW : quotation[0].price;
-    const first = quotation[0];
-    return [{
-      ...first,
-      price: Math.round(avgPrice * 100) / 100,
-      weight: totalW,
-      perGram: totalW > 0 ? totalT / totalW : first.perGram,
-      total: totalT,
-    }];
+    // Template for the gold line: a current gold item, else a prior-round gold
+    // item (e.g. this session only adds silver on top of earlier gold rounds).
+    const goldTemplate = goldItems[0] ?? priorRoundItems.filter(isGoldItem)[0];
+    if (goldTemplate && (totalW > 0 || totalT > 0)) {
+      const avgPrice = totalW > 0 ? totalT / totalW : goldTemplate.price;
+      lines.push({
+        ...goldTemplate,
+        price: Math.round(avgPrice * 100) / 100,
+        weight: totalW,
+        perGram: totalW > 0 ? totalT / totalW : goldTemplate.perGram,
+        total: totalT,
+      });
+    }
+
+    // Other metals: one line per metal, combining prior partial rounds (kept in
+    // the delivery-log items, not in the bill aggregates) with the current batch.
+    const nonGold = [...priorRoundItems, ...quotation].filter((i) => !isGoldItem(i));
+    const byMetal = new Map<string, QuotationProps[]>();
+    for (const item of nonGold) {
+      const m = item.metal || "gold";
+      const group = byMetal.get(m);
+      if (group) group.push(item); else byMetal.set(m, [item]);
+    }
+    byMetal.forEach((group) => {
+      const w = group.reduce((s, i) => s + (i.weight || 0), 0);
+      const t = group.reduce((s, i) => s + i.total, 0);
+      const first = group[0];
+      const avg = w > 0 ? t / w : first.price;
+      lines.push({
+        ...first,
+        price: Math.round(avg * 100) / 100,
+        weight: w,
+        perGram: w > 0 ? t / w : first.perGram,
+        total: t,
+      });
+    });
+
+    return lines;
   })();
 
   // Page 1 of the preview lists each saved quote item individually (not the
@@ -438,8 +491,11 @@ export default function QuotationPage() {
     if (billIds.length === 0) return quotation;
     // Any processed amount we DON'T have itemised (e.g. delivered in a previous
     // session, before reload) is shown as one carried-over line so nothing is lost.
-    const itemisedW = priorRoundItems.reduce((s, i) => s + (i.weight || 0), 0);
-    const itemisedA = priorRoundItems.reduce((s, i) => s + i.total, 0);
+    // Compare against GOLD prior items only — the bill's processed aggregates are
+    // gold-only, so non-gold itemised lines must not eat into the carry.
+    const goldPrior = priorRoundItems.filter(isGoldItem);
+    const itemisedW = goldPrior.reduce((s, i) => s + (i.weight || 0), 0);
+    const itemisedA = goldPrior.reduce((s, i) => s + i.total, 0);
     const carryW = processedWeight - itemisedW;
     const carryA = processedAmount - itemisedA;
     const carry: QuotationProps[] = carryW > 0.0001
@@ -456,6 +512,12 @@ export default function QuotationPage() {
       : [];
     return [...carry, ...priorRoundItems, ...quotation];
   })();
+
+  // Non-gold items from earlier "รอส่งเพิ่ม" rounds — they never enter the bill's
+  // gold aggregates, so they're surfaced separately in the reference card.
+  const nonGoldPriorTotal = priorRoundItems
+    .filter((i) => !isGoldItem(i))
+    .reduce((s, i) => s + i.total, 0);
 
   const totalAmount = previewItems.reduce((sum, item) => sum + item.total, 0);
   const totalWeight = previewItems.reduce((sum, item) => sum + (item.weight || 0), 0);
@@ -516,6 +578,7 @@ export default function QuotationPage() {
       const saveItems = previewItems.map((item) => ({
         type_id: item.typeId,
         type_name: item.typeName,
+        metal: item.metal || "gold",
         plus: item.plus,
         plus_type: item.plus_type ?? 0,
         price: item.price,
@@ -539,9 +602,12 @@ export default function QuotationPage() {
 
       // Persist the final batch's individual items (log-only → not added to
       // processed) so page 1 lists every item after reload and when reprinted later.
+      // Weight/amount mirror the gold portion only, consistent with the bill's
+      // processed aggregates; the items JSON still carries every metal.
       if (billIds.length > 0 && quotation.length > 0) {
-        const w = quotation.reduce((s, i) => s + (i.weight || 0), 0);
-        const a = quotation.reduce((s, i) => s + i.total, 0);
+        const goldFinal = quotation.filter(isGoldItem);
+        const w = goldFinal.reduce((s, i) => s + (i.weight || 0), 0);
+        const a = goldFinal.reduce((s, i) => s + i.total, 0);
         try {
           await api.post(`/bills/${billIds[0]}/partial-deliver`, {
             weight: w, amount: a, items: quotation, log_only: true,
@@ -686,6 +752,17 @@ export default function QuotationPage() {
                           </span>
                         </div>
                       </>
+                    )}
+                    {/* Non-gold rounds live only in the delivery-log items (not in
+                        the bill's gold aggregates) — surface them so they don't
+                        look lost after a reload. */}
+                    {nonGoldPriorTotal > 0 && (
+                      <div className="flex flex-col border-1 border-purple-200 bg-purple-50 rounded-xl p-1.5">
+                        <span className="font-bold text-[10px] text-black/50 pl-1">โลหะอื่นรอบก่อน</span>
+                        <span className="font-bold text-sm text-purple-700 pl-1">
+                          {nonGoldPriorTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                        </span>
+                      </div>
                     )}
                   </div>
                 );

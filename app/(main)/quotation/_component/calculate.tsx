@@ -67,9 +67,12 @@ interface Props {
   onAdd: (item: QuotationProps) => void;
   onOpenList?: () => void;
   quotationCount?: number;
-  /** When true, locks to gold melt type and hides metal tabs + type dropdown */
+  /** When true, locks the GOLD tab to the melt type and hides its type dropdown.
+   *  Other metal tabs stay usable (price editable) — non-gold items are paid in
+   *  full on the quotation and never enter the bill debt/credit cycle. */
   lockMeltType?: boolean;
-  /** When set, overrides the auto-filled price with a fixed value (read-only) */
+  /** When set, overrides the auto-filled price with a fixed value (read-only).
+   *  Applies to melted GOLD only; other metals keep their own price source. */
   forcedPrice?: number;
 }
 
@@ -216,6 +219,7 @@ export const Calculate = ({ onAdd, onOpenList, quotationCount = 0, lockMeltType,
     onAdd({
       typeId,
       typeName: getTypeName(typeId),
+      metal: selectedGoldType?.metal || "gold",
       price,
       plus,
       plus_type: plusType,

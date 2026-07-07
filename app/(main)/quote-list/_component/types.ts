@@ -2,6 +2,8 @@ export interface QuotationItem {
   id: number;
   type_id: string;
   type_name: string;
+  /** gold|silver|platinum|palladium — missing means gold (legacy items) */
+  metal?: string;
   price: number;
   percent: number;
   plus: number;
