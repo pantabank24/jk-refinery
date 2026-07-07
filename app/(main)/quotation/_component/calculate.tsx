@@ -93,7 +93,8 @@ export const Calculate = ({ onAdd, onOpenList, quotationCount = 0, lockMeltType,
   // mode is on, gold prices stream live. Only applies to the gold tab.
   const { status: salesStatus } = useSalesStatus();
   const realtimeActive = salesStatus?.price_mode === "realtime" && metal === "gold";
-  const { data: rt, dir: rtDir } = useRealtimeGold(!!realtimeActive);
+  // อัปเดตทุก 10 วินาที — ตอนออกใบเสนอราคาไม่ต้องรัวเท่าหน้าดูราคาสด
+  const { data: rt, dir: rtDir } = useRealtimeGold(!!realtimeActive, 10000);
   // The forced (blended-avg) price only applies to melted GOLD. Silver / platinum
   // / palladium are a different product, so their price stays editable.
   const priceForced = forcedPrice !== undefined && metal === "gold";

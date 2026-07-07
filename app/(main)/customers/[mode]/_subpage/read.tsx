@@ -39,6 +39,13 @@ interface Bill {
   total_amount: number;
   gold_round?: string;
   created_at: string;
+  items?: BillItem[];
+}
+
+interface Balance {
+  balance: number;
+  total_weight: number;
+  avg_price: number;
 }
 
 interface BillItem {
@@ -87,17 +94,53 @@ const STATUS_COLOR: Record<number, string> = {
 const fmtDate = (s: string) =>
   new Date(s).toLocaleDateString("th-TH", { year: "numeric", month: "short", day: "numeric" });
 
-export const CustomerDetail = () => {
+const fmtMoney = (n: number) => n.toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const fmtGram = (n: number) => n.toLocaleString("th-TH", { maximumFractionDigits: 2 });
+
+// Categorise an item's type name into a metal bucket for the per-type totals.
+type Metal = "gold" | "silver" | "platinum" | "palladium";
+const METALS: { key: Metal; label: string }[] = [
+  { key: "gold", label: "ทอง" },
+  { key: "silver", label: "เงิน" },
+  { key: "platinum", label: "แพลทินัม" },
+  { key: "palladium", label: "แพลเลเดียม" },
+];
+function metalOf(typeName: string): Metal | null {
+  const n = typeName || "";
+  if (/แพลเลเดียม|palladium/i.test(n)) return "palladium";
+  if (/แพลตินัม|แพลทินัม|platinum/i.test(n)) return "platinum";
+  if (/เงิน|silver/i.test(n)) return "silver";
+  if (/ทอง|gold/i.test(n)) return "gold";
+  return null;
+}
+
+function StatCard({ title, value, unit, highlight, sub }: { title: string; value: string; unit?: string; highlight?: boolean; sub?: string }) {
+  return (
+    <div className={`flex flex-col border-1 border-black/10 rounded-xl p-2 ${highlight ? "bg-gradient-to-br from-yellow-200/60 to-transparent" : "bg-black/5"}`}>
+      <span className="text-[10px] font-bold text-black/50">{title}</span>
+      <div className="flex items-baseline gap-x-1">
+        <span className="font-bold text-sm bg-gradient-to-l from-black/90 to-yellow-600 bg-clip-text text-transparent break-all">{value}</span>
+        {unit && <span className="text-[10px] text-black/40">{unit}</span>}
+      </div>
+      {sub && <span className="text-[10px] font-bold text-yellow-700/70 break-all">{sub}</span>}
+    </div>
+  );
+}
+
+// selfMode = ลูกค้าดูโปรไฟล์ของตัวเอง: ดึงข้อมูลจาก endpoint ที่ backend scope ตัวเองอัตโนมัติ
+// (customers.read เป็นสิทธิ์ของพนักงาน ลูกค้าเข้าไม่ได้) และซ่อน tab เอกสาร/ปุ่มแก้ไข
+export const CustomerDetail = ({ selfMode = false }: { selfMode?: boolean } = {}) => {
   const router = useRouter();
   const searchParams = useSearchParams();
   const customerId = searchParams.get("id");
-  const { hasPermission, loading: authLoading } = useAuth();
-  const canRead = hasPermission("customers.read");
-  const canUpdate = hasPermission("customers.update");
+  const { hasPermission, loading: authLoading, user, isCustomer } = useAuth();
+  const canRead = selfMode ? isCustomer : hasPermission("customers.read");
+  const canUpdate = selfMode ? false : hasPermission("customers.update");
 
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [docs, setDocs] = useState<CustomerDocument[]>([]);
   const [bills, setBills] = useState<Bill[]>([]);
+  const [balance, setBalance] = useState<Balance | null>(null);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState("bills");
   const [uploading, setUploading] = useState(false);
@@ -155,32 +198,50 @@ export const CustomerDetail = () => {
   }, [customerId]);
 
   const fetchAll = useCallback(async () => {
-    if (!customerId) return;
     setLoading(true);
     try {
-      const [cRes, dRes, bRes] = await Promise.all([
+      if (selfMode) {
+        // ลูกค้าดูตัวเอง: /bills และ /bills/balance ถูก scope เป็นของลูกค้าที่ล็อกอินอยู่แล้ว
+        const [bRes, balRes] = await Promise.all([
+          api.get<Bill[]>(`/bills?limit=100`).catch(() => null),
+          api.get<Balance>(`/bills/balance`).catch(() => null),
+        ]);
+        setCustomer(
+          user
+            ? { id: user.id, name: user.name, email: user.email, phone: user.phone, avatar: user.avatar, is_active: true }
+            : null
+        );
+        setDocs([]);
+        setBills((bRes?.data as unknown as Bill[]) || []);
+        setBalance((balRes?.data as unknown as Balance) || null);
+        return;
+      }
+      if (!customerId) return;
+      const [cRes, dRes, bRes, balRes] = await Promise.all([
         api.get<Customer>(`/customers/${customerId}`),
         api.get<CustomerDocument[]>(`/customers/${customerId}/documents`),
         api.get<Bill[]>(`/bills?created_by=${customerId}&limit=100`).catch(() => null),
+        api.get<Balance>(`/bills/balance?user_id=${customerId}`).catch(() => null),
       ]);
       setCustomer((cRes.data as unknown as Customer) || null);
       setDocs((dRes.data as unknown as CustomerDocument[]) || []);
       setBills((bRes?.data as unknown as Bill[]) || []);
+      setBalance((balRes?.data as unknown as Balance) || null);
     } catch {
       setCustomer(null);
     } finally {
       setLoading(false);
     }
-  }, [customerId]);
+  }, [customerId, selfMode, user]);
 
   useEffect(() => {
     if (!authLoading && !canRead) router.replace("/");
   }, [authLoading, canRead, router]);
 
   useEffect(() => {
-    if (!customerId) { router.push("/customers"); return; }
+    if (!selfMode && !customerId) { router.push("/customers"); return; }
     if (canRead) fetchAll();
-  }, [canRead, customerId, fetchAll, router]);
+  }, [canRead, customerId, selfMode, fetchAll, router]);
 
   const handleAvatarUpload = async (file: File) => {
     if (!customerId) return;
@@ -233,11 +294,34 @@ export const CustomerDetail = () => {
   if (loading) {
     return <div className="flex items-center justify-center h-full"><Spinner size="lg" color="warning" /></div>;
   }
+  // ประวัติ: ทุกรายการทองที่ลูกค้าส่งเข้ามาตอนสร้างบิล รวมจากบิลทุกใบ (ใหม่สุดก่อน)
+  const historyRows = bills.flatMap((b) => (b.items ?? []).map((it) => ({ bill: b, it })));
+
+  // สรุปรายการที่ลูกค้าส่งเข้ามา รวมทุกบิล: ยอดรวม จำนวนบิล น้ำหนักรวม และแยกตามประเภทโลหะ
+  const overview = (() => {
+    const grams: Record<Metal, number> = { gold: 0, silver: 0, platinum: 0, palladium: 0 };
+    const amounts: Record<Metal, number> = { gold: 0, silver: 0, platinum: 0, palladium: 0 };
+    let total = 0;
+    let totalWeight = 0;
+    for (const b of bills) {
+      total += b.total_amount || 0;
+      for (const it of b.items ?? []) {
+        totalWeight += it.weight || 0;
+        const metal = metalOf(it.type_name);
+        if (metal) {
+          grams[metal] += it.weight || 0;
+          amounts[metal] += it.total || 0;
+        }
+      }
+    }
+    return { total, totalWeight, count: bills.length, grams, amounts };
+  })();
+
   if (!customer) {
     return (
       <div className="flex flex-col items-center justify-center h-full gap-y-3 text-black/40">
         <span className="font-bold text-sm">ไม่พบข้อมูลลูกค้า</span>
-        <Button variant="light" startContent={<ArrowLeft size={16} />} onPress={() => router.push("/customers")}>กลับ</Button>
+        <Button variant="light" startContent={<ArrowLeft size={16} />} onPress={() => router.push(selfMode ? "/" : "/customers")}>กลับ</Button>
       </div>
     );
   }
@@ -246,11 +330,13 @@ export const CustomerDetail = () => {
     <div className="flex flex-col w-full h-full">
       {/* Header */}
       <div className="flex flex-row items-center gap-x-3 shrink-0 py-5">
-        <Button isIconOnly variant="light" onPress={() => router.push("/customers")} className="text-[#c09c42]">
-          <ArrowLeft size={20} />
-        </Button>
+        {!selfMode && (
+          <Button isIconOnly variant="light" onPress={() => router.push("/customers")} className="text-[#c09c42]">
+            <ArrowLeft size={20} />
+          </Button>
+        )}
         <div className="font-bold text-2xl bg-gradient-to-l from-black/90 to-yellow-600 bg-clip-text text-transparent flex-1">
-          รายละเอียดลูกค้า
+          {selfMode ? "โปรไฟล์ของฉัน" : "รายละเอียดลูกค้า"}
         </div>
         {canUpdate && (
           <Button
@@ -279,6 +365,48 @@ export const CustomerDetail = () => {
             canEdit={canUpdate}
             onImageUpload={handleAvatarUpload}
           />
+
+          {/* ยอดค้าง/เกิน — มุมมองลูกค้า: บวก = เกิน (ร้านค้างลูกค้า), ลบ = ค้าง (ลูกค้าค้างร้าน) */}
+          {balance && (() => {
+            const bal = balance.balance;
+            const isExcess = bal > 0.005;
+            const isOwed = bal < -0.005;
+            return (
+              <div className={`flex flex-col border-1 rounded-xl p-3 gap-y-1 ${isExcess ? "bg-green-50 border-green-200" : isOwed ? "bg-red-50 border-red-200" : "bg-black/5 border-black/10"}`}>
+                <span className="text-[10px] font-bold text-black/50">ยอดค้าง/เกิน</span>
+                <div className="flex items-baseline gap-x-1">
+                  <span className={`font-bold text-lg tabular-nums ${isExcess ? "text-green-700" : isOwed ? "text-red-600" : "text-black/50"}`}>
+                    {bal > 0 ? "+" : ""}{bal.toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </span>
+                  <span className="text-[10px] text-black/40">บาท</span>
+                </div>
+                <span className={`text-[10px] font-bold ${isExcess ? "text-green-700/70" : isOwed ? "text-red-600/70" : "text-black/40"}`}>
+                  {isExcess ? "เกิน (ร้านค้างลูกค้า)" : isOwed ? "ค้าง (ลูกค้าค้างร้าน)" : "ตรงกัน"}
+                </span>
+              </div>
+            );
+          })()}
+
+          {/* Overview — สรุปรายการที่ลูกค้าส่งเข้ามา รวมทุกบิล */}
+          {bills.length > 0 && (
+            <div className="flex flex-col gap-2">
+              <span className="text-xs font-bold text-black/50 pl-1">สรุปรายการที่ส่งเข้ามา</span>
+              <StatCard title="ยอดรวม" value={fmtMoney(overview.total)} unit="บาท" highlight />
+              <div className="grid grid-cols-2 gap-2">
+                <StatCard title="จำนวนบิล" value={overview.count.toLocaleString("th-TH")} unit="บิล" />
+                <StatCard title="น้ำหนักรวม" value={fmtGram(overview.totalWeight)} unit="กรัม" />
+                {METALS.filter((m) => overview.grams[m.key] > 0).map((m) => (
+                  <StatCard
+                    key={m.key}
+                    title={m.label}
+                    value={fmtGram(overview.grams[m.key])}
+                    unit="กรัม"
+                    sub={`${fmtMoney(overview.amounts[m.key])} บาท`}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Right: tabs */}
@@ -290,7 +418,8 @@ export const CustomerDetail = () => {
             classNames={{ tabList: "bg-black/5 border-1 border-black/10" }}
           >
             <Tab key="bills" title={`บิลที่ออก (${bills.length})`} />
-            <Tab key="docs" title={`เอกสาร (${docs.length})`} />
+            <Tab key="history" title={`ประวัติ (${historyRows.length})`} />
+            {!selfMode ? <Tab key="docs" title={`เอกสาร (${docs.length})`} /> : null}
           </Tabs>
 
           {tab === "bills" ? (
@@ -304,7 +433,6 @@ export const CustomerDetail = () => {
                       <tr className="text-left text-black/40 text-xs">
                         <th className="px-4 py-2.5 font-bold">เลขที่บิล</th>
                         <th className="px-4 py-2.5 font-bold">วันที่</th>
-                        <th className="px-4 py-2.5 font-bold">รอบราคา</th>
                         <th className="px-4 py-2.5 font-bold text-center">สถานะ</th>
                         <th className="px-4 py-2.5 font-bold text-right">ยอดรวม (บาท)</th>
                       </tr>
@@ -318,7 +446,6 @@ export const CustomerDetail = () => {
                         >
                           <td className="px-4 py-2.5 font-bold text-black/70">{b.code}</td>
                           <td className="px-4 py-2.5 text-black/60">{fmtDate(b.created_at)}</td>
-                          <td className="px-4 py-2.5 text-black/60">{b.gold_round || "-"}</td>
                           <td className="px-4 py-2.5 text-center">
                             <span className={`text-xs font-bold px-2 py-0.5 rounded-full border-1 ${STATUS_COLOR[b.status] || ""}`}>
                               {STATUS_LABEL[b.status] || b.status}
@@ -326,6 +453,41 @@ export const CustomerDetail = () => {
                           </td>
                           <td className="px-4 py-2.5 text-right font-bold tabular-nums">
                             {b.total_amount.toLocaleString("th-TH", { minimumFractionDigits: 2 })}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          ) : tab === "history" ? (
+            <div className="flex flex-col md:flex-1 md:min-h-0 border-1 border-black/10 bg-white/20 backdrop-blur-xl rounded-xl shadow-xl overflow-hidden">
+              {historyRows.length === 0 ? (
+                <div className="flex items-center justify-center py-10 text-black/40 text-sm">ยังไม่มีรายการ</div>
+              ) : (
+                <div className="overflow-auto scrollbar-hide">
+                  <table className="w-full text-sm min-w-[560px]">
+                    <thead className="sticky top-0 bg-black/5 backdrop-blur-xl">
+                      <tr className="text-left text-black/40 text-xs">
+                        <th className="px-4 py-2.5 font-bold">เลขที่บิล</th>
+                        <th className="px-4 py-2.5 font-bold">วันที่</th>
+                        <th className="px-4 py-2.5 font-bold">รายการ</th>
+                        <th className="px-4 py-2.5 font-bold text-right">น้ำหนัก (กรัม)</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {historyRows.map(({ bill: b, it }) => (
+                        <tr
+                          key={`${b.id}-${it.id}`}
+                          onClick={() => openBill(b)}
+                          className="border-t border-black/5 hover:bg-white/40 cursor-pointer"
+                        >
+                          <td className="px-4 py-2.5 font-bold text-black/70">{b.code}</td>
+                          <td className="px-4 py-2.5 text-black/60">{fmtDate(b.created_at)}</td>
+                          <td className="px-4 py-2.5 text-black/70">{it.type_name}</td>
+                          <td className="px-4 py-2.5 text-right tabular-nums text-black/60">
+                            {it.weight.toLocaleString("th-TH", { minimumFractionDigits: 2 })}
                           </td>
                         </tr>
                       ))}

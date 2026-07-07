@@ -8,7 +8,7 @@ import { TermsForm } from "./_component/termsForm";
 import { api } from "@/lib/api";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/contexts/auth-context";
-import { ShieldOff, X, Save, AlertCircle, Receipt, Trash2, Camera, Image as ImageIcon, UserCheck, PenLine } from "lucide-react";
+import { ShieldOff, X, Save, AlertCircle, Receipt, Trash2, Camera, Image as ImageIcon, UserCheck, PenLine, Store } from "lucide-react";
 import {
   Modal,
   ModalContent,
@@ -21,6 +21,7 @@ import { Button } from "@heroui/button";
 import { Input } from "@heroui/input";
 import { Checkbox } from "@heroui/checkbox";
 import { useStore } from "@/contexts/store-context";
+import { StoreBranchSelector } from "@/components/store-branch-selector";
 import { useSalesStatus } from "@/hooks/use-sales-status";
 import { SalesStatusBanner } from "@/components/sales-status-banner";
 import { SignaturePad } from "@/components/signature-pad";
@@ -95,8 +96,11 @@ function ImageUploadGroup({
 }
 
 export default function QuotationPage() {
-  const { hasPermission, permissions, credits, refreshUser, user } = useAuth();
+  const { hasPermission, permissions, credits, refreshUser, user, isMaster, isOwner } = useAuth();
   const { selectedStore, selectedBranch } = useStore();
+  // Store/branch picker (receipt header) now lives inside the preview modal on this
+  // page instead of the global navbar — only master/owner can change it.
+  const canSelectStoreBranch = isMaster || isOwner;
   // Receipt header now comes from the branch (each branch prints its own):
   // employee → their assigned branch; owner/master → the branch they selected
   // (defaults to the store's main branch, see store-context).
@@ -1148,6 +1152,16 @@ export default function QuotationPage() {
                 </span>
               </ModalHeader>
               <ModalBody className="px-2">
+                {/* Receipt-header store/branch picker (master & owner) — placed here
+                    so the header preview below updates as it's changed. */}
+                {canSelectStoreBranch && (
+                  <div className="flex flex-col gap-1.5 border-1 border-black/10 bg-black/5 rounded-2xl p-3 mb-3">
+                    <div className="flex items-center gap-1.5 text-xs font-bold text-[#c09c42]">
+                      <Store size={14} /> หัวใบเสร็จ (ร้าน / สาขา)
+                    </div>
+                    <StoreBranchSelector />
+                  </div>
+                )}
                 {/* Typed image uploads — before/after side by side */}
                 <div className="grid grid-cols-2 gap-3 mb-3">
                   <ImageUploadGroup label="รูปก่อนหลอม (ไม่บังคับ)" files={beforeFiles} setFiles={setBeforeFiles} />

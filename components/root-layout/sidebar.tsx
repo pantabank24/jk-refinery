@@ -50,6 +50,7 @@ export const Sidebar = ({ isOpen = false, onClose }: SidebarProps) => {
     { id: 14, name: "ขาย", href: "/bills/create", icon: <FileText size={18} />, show: canCreateBill },
     { id: 15, name: "รายการขาย", href: "/bills", icon: <Receipt size={18} />, show: hasPermission("bills.read"), badge: unfinishedBills },
     { id: 17, name: "บิลทั้งหมด", href: "/bills/issued", icon: <FileCheck size={18} />, show: isCustomer },
+    { id: 21, name: "โปรไฟล์", href: "/account", icon: <UserCircle size={18} />, show: isCustomer },
     { id: 16, name: "ลูกค้า", href: "/customers", icon: <UserCircle size={18} />, show: hasPermission("customers.read") },
     { id: 4, name: "สมาชิก", href: "/members", icon: <Users size={18} />, show: hasPermission("members.read") },
     { id: 13, name: "จัดการเครดิต", href: "/credit-management", icon: <Wallet size={18} />, show: hasPermission("credits.read") },

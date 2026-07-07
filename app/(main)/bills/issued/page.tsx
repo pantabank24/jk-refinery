@@ -9,7 +9,10 @@ import { Spinner } from "@heroui/spinner";
 import { Modal, ModalContent, ModalHeader, ModalBody, ModalFooter, useDisclosure } from "@heroui/modal";
 import { Button } from "@heroui/button";
 import { Tabs, Tab } from "@heroui/tabs";
-import { ShieldOff, Printer } from "lucide-react";
+import { DateRangePicker } from "@heroui/react";
+import { CalendarDate, today, getLocalTimeZone } from "@internationalized/date";
+import type { RangeValue } from "@react-types/shared";
+import { ShieldOff, Printer, CalendarDays, Layers } from "lucide-react";
 import { PreviewQuote, PreviewQuoteHandle } from "../../quotation/_component/previewQuote";
 import { QuotationProps } from "../../quotation/_component/quotation";
 import {
@@ -80,6 +83,12 @@ export default function IssuedBillsPage() {
   const [loading, setLoading] = useState(true);
   // "completed" → สำเร็จ (12), "cleared" → เคลียร์แล้ว (14).
   const [activeTab, setActiveTab] = useState<string>("completed");
+  // ดูทั้งหมด vs กรองช่วงวันที่ (ค่าเริ่มต้น = วันนี้)
+  const [showAll, setShowAll] = useState(false);
+  const [range, setRange] = useState<RangeValue<CalendarDate> | null>(() => {
+    const t = today(getLocalTimeZone());
+    return { start: t, end: t };
+  });
 
   const detailDisc = useDisclosure();
   const [detailB, setDetailB] = useState<BillData | null>(null);
@@ -105,8 +114,20 @@ export default function IssuedBillsPage() {
   // shown as the issued ใบเสนอราคา — limited to the active tab's status.
   const groups: QuoGroup[] = useMemo(() => {
     const tabStatus = activeTab === "cleared" ? 14 : 12;
+    // กรองช่วงวันที่ (ข้ามเมื่อ "ดูทั้งหมด" หรือไม่ได้เลือกช่วง)
+    const useDate = !showAll && !!range;
+    const from = useDate ? new Date(`${range!.start.toString()}T00:00:00`) : null;
+    const to = useDate ? new Date(`${range!.end.toString()}T23:59:59`) : null;
     const map = new Map<string, BillData[]>();
-    for (const b of bills.filter((b) => b.status === tabStatus)) {
+    for (const b of bills.filter((b) => {
+      if (b.status !== tabStatus) return false;
+      if (from || to) {
+        const created = new Date(b.created_at);
+        if (from && created < from) return false;
+        if (to && created > to) return false;
+      }
+      return true;
+    })) {
       const key = b.issued_quotation_id ? `q${b.issued_quotation_id}` : `b${b.id}`;
       const arr = map.get(key) ?? [];
       arr.push(b);
@@ -124,7 +145,7 @@ export default function IssuedBillsPage() {
         created_at: rep.created_at,
       };
     });
-  }, [bills, activeTab]);
+  }, [bills, activeTab, showAll, range]);
 
   const fetchBills = useCallback(async () => {
     setLoading(true);
@@ -202,12 +223,49 @@ export default function IssuedBillsPage() {
         </Tabs>
       </div>
 
+      {/* ตัวกรอง: ดูทั้งหมด หรือ กรองช่วงวันที่ (เริ่มต้นวันนี้) */}
+      <div className="shrink-0 flex flex-wrap items-center gap-2 px-1">
+        <div className="flex rounded-2xl border-1 border-black/10 bg-black/5 p-0.5">
+          <Button
+            size="sm"
+            variant="light"
+            className={`rounded-xl font-bold ${!showAll ? "bg-gradient-to-r from-[#c09c42] to-yellow-600 text-white shadow-sm" : "text-black/50"}`}
+            startContent={<CalendarDays size={14} />}
+            onPress={() => setShowAll(false)}
+          >
+            ช่วงวันที่
+          </Button>
+          <Button
+            size="sm"
+            variant="light"
+            className={`rounded-xl font-bold ${showAll ? "bg-gradient-to-r from-[#c09c42] to-yellow-600 text-white shadow-sm" : "text-black/50"}`}
+            startContent={<Layers size={14} />}
+            onPress={() => setShowAll(true)}
+          >
+            ทั้งหมด
+          </Button>
+        </div>
+        {!showAll && (
+          <DateRangePicker
+            aria-label="ช่วงวันที่"
+            size="sm"
+            value={range}
+            onChange={setRange}
+            visibleMonths={1}
+            className="max-w-[17rem]"
+            classNames={{ inputWrapper: "bg-black/5 border-1 border-black/10 rounded-2xl" }}
+          />
+        )}
+      </div>
+
       <div className="flex-1 overflow-y-auto scrollbar-hide">
         {loading ? (
           <div className="flex items-center justify-center py-10"><Spinner size="lg" color="warning" /></div>
         ) : groups.length === 0 ? (
           <div className="flex items-center justify-center py-10 text-black/40 text-sm">
-            {activeTab === "cleared" ? "ยังไม่มีบิลที่เคลียร์แล้ว" : "ยังไม่มีบิลที่สำเร็จ"}
+            {!showAll && range
+              ? "ไม่พบบิลในช่วงวันที่ที่เลือก"
+              : activeTab === "cleared" ? "ยังไม่มีบิลที่เคลียร์แล้ว" : "ยังไม่มีบิลที่สำเร็จ"}
           </div>
         ) : (
           <div className="flex flex-col gap-y-2 pb-4">
