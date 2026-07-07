@@ -8,11 +8,11 @@ import moment from "moment";
 import { CmpInput } from "@/components/cmpInput";
 import { api } from "@/lib/api";
 import { useRouter } from "next/navigation";
-import { useStore } from "@/contexts/store-context";
 import { useAuth } from "@/contexts/auth-context";
 import { Spinner } from "@heroui/spinner";
 import { Button } from "@heroui/button";
 import { Modal, ModalContent, ModalHeader, ModalBody, ModalFooter, useDisclosure } from "@heroui/modal";
+import { Checkbox } from "@heroui/checkbox";
 import { Select, SelectItem } from "@heroui/select";
 import { Input } from "@heroui/input";
 import { Tabs, Tab } from "@heroui/tabs";
@@ -83,6 +83,32 @@ interface BillGroup {
 // otherwise fall back to what the customer originally submitted.
 const sumWeight = (items: BillItem[] | undefined) => (items ?? []).reduce((s, it) => s + (it.weight || 0), 0);
 
+// Combine bills issued together (sharing one issued quotation) into one group.
+// Used by the staff list and the เคลียร์บิล selection modal.
+const groupBills = (list: BillData[]): BillGroup[] => {
+  const map = new Map<string, BillData[]>();
+  for (const b of list) {
+    const key = b.issued_quotation_id ? `q${b.issued_quotation_id}` : `b${b.id}`;
+    const arr = map.get(key) ?? [];
+    arr.push(b);
+    map.set(key, arr);
+  }
+  return Array.from(map.values()).map((group) => ({
+    key: group[0].issued_quotation_id ? `q${group[0].issued_quotation_id}` : `b${group[0].id}`,
+    rep: group[0],
+    billIds: group.map((x) => x.id),
+    status: group[0].status,
+    // Bills issued together share one quotation — use its total/items as the real amount/weight.
+    total: group[0].issued_quotation?.total_amount
+      ?? group.reduce((s, x) => s + x.total_amount, 0),
+    rawTotal: group.reduce((s, x) => s + x.total_amount, 0),
+    weight: group[0].issued_quotation?.items
+      ? sumWeight(group[0].issued_quotation.items)
+      : group.reduce((s, x) => s + sumWeight(x.items), 0),
+    count: group.length,
+  }));
+};
+
 // Bill statuses are distinct from staff quotation statuses (0/1/2).
 const STATUS_LABEL: Record<number, string> = { 10: "รอออกบิล", 11: "รอตรวจบิล", 12: "สำเร็จ", 13: "ยกเลิก", 14: "เคลียร์แล้ว" };
 const STATUS_COLOR: Record<number, string> = {
@@ -104,7 +130,6 @@ const CANCEL_REASONS = [
 
 export default function BillsList() {
   const router = useRouter();
-  const { selectedStore, selectedBranch } = useStore();
   const { hasPermission, permissions, isCustomer, loading: authLoading, refreshUnfinishedBills } = useAuth();
   const canRead = hasPermission("bills.read");
   const canIssue = hasPermission("bills.issue");
@@ -133,7 +158,9 @@ export default function BillsList() {
 
   // Bill balance (debt/credit) for the customer whose bill is open.
   const [billBalance, setBillBalance] = useState<number | null>(null);
-  const [billBalanceHistory, setBillBalanceHistory] = useState<{ id: number; amount: number; description: string; created_at: string }[]>([]);
+  const [billBalanceHistory, setBillBalanceHistory] = useState<{ id: number; amount: number; description: string; settled_at?: string | null; created_at: string }[]>([]);
+  // ประวัติขาด/เกิน — collapsed shows only the first 3 rows.
+  const [balanceHistoryExpanded, setBalanceHistoryExpanded] = useState(false);
   // Per-session delivery logs for the open bill.
   const [deliveryLogs, setDeliveryLogs] = useState<{ id: number; weight: number; amount: number; note: string; created_at: string }[]>([]);
   // Itemised lines for the preview's page 1 (from delivery logs) so a reprinted
@@ -156,6 +183,11 @@ export default function BillsList() {
 
   const clearDisc = useDisclosure();
   const [clearing, setClearing] = useState(false);
+  // เคลียร์บิล selection: completed bills are fetched fresh when the modal opens
+  // (the list state only holds the active tab) and selected per issue-group.
+  const [clearGroups, setClearGroups] = useState<BillGroup[]>([]);
+  const [clearLoading, setClearLoading] = useState(false);
+  const [selectedClearKeys, setSelectedClearKeys] = useState<Set<string>>(new Set());
 
   const revertDisc = useDisclosure();
   const [reverting, setReverting] = useState(false);
@@ -180,27 +212,7 @@ export default function BillsList() {
           count: 1,
         }));
     }
-    const map = new Map<string, BillData[]>();
-    for (const b of bills) {
-      const key = b.issued_quotation_id ? `q${b.issued_quotation_id}` : `b${b.id}`;
-      const arr = map.get(key) ?? [];
-      arr.push(b);
-      map.set(key, arr);
-    }
-    return Array.from(map.values()).map((list) => ({
-      key: list[0].issued_quotation_id ? `q${list[0].issued_quotation_id}` : `b${list[0].id}`,
-      rep: list[0],
-      billIds: list.map((x) => x.id),
-      status: list[0].status,
-      // Bills issued together share one quotation — use its total/items as the real amount/weight.
-      total: list[0].issued_quotation?.total_amount
-        ?? list.reduce((s, x) => s + x.total_amount, 0),
-      rawTotal: list.reduce((s, x) => s + x.total_amount, 0),
-      weight: list[0].issued_quotation?.items
-        ? sumWeight(list[0].issued_quotation.items)
-        : list.reduce((s, x) => s + sumWeight(x.items), 0),
-      count: list.length,
-    }));
+    return groupBills(bills);
   }, [bills, isCustomer]);
 
   // Overview of the currently-listed bills (respects the active tab/search).
@@ -219,9 +231,9 @@ export default function BillsList() {
   const fetchBills = useCallback(async () => {
     setLoading(true);
     try {
+      // No store/branch filter here: customer bills carry no store_id/branch_id
+      // (customers aren't tied to a store), so filtering would hide them all.
       let url = "/bills?limit=50";
-      if (selectedStore) url += `&store_id=${selectedStore.id}`;
-      if (selectedBranch) url += `&branch_id=${selectedBranch.id}`;
       const s = statusFilter[activeTab];
       if (s !== undefined) url += `&status=${s}`;
       if (search) url += `&search=${encodeURIComponent(search)}`;
@@ -233,7 +245,7 @@ export default function BillsList() {
       setLoading(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedStore, selectedBranch, activeTab, search]);
+  }, [activeTab, search]);
 
   useEffect(() => {
     if (!authLoading && !canRead) router.replace("/");
@@ -244,6 +256,7 @@ export default function BillsList() {
   const openDetail = async (b: BillData, groupIds?: number[]) => {
     setBillBalance(null);
     setBillBalanceHistory([]);
+    setBalanceHistoryExpanded(false);
     setDeliveryLogs([]);
     setBillPage1Items([]);
     try {
@@ -256,7 +269,7 @@ export default function BillsList() {
     if (!isCustomer && b.creator?.id) {
       api.get(`/bills/balance?user_id=${b.creator.id}`)
         .then((res) => {
-          const d = res.data as unknown as { balance: number; history: { id: number; amount: number; description: string; created_at: string }[] };
+          const d = res.data as unknown as { balance: number; history: { id: number; amount: number; description: string; settled_at?: string | null; created_at: string }[] };
           setBillBalance(d.balance ?? 0);
           setBillBalanceHistory(d.history ?? []);
         })
@@ -347,10 +360,43 @@ export default function BillsList() {
     }
   };
 
+  // Fetch the completed (สำเร็จ) bills fresh so the modal is correct regardless
+  // of the active tab, then default to everything selected.
+  const openClearModal = async () => {
+    clearDisc.onOpen();
+    setClearLoading(true);
+    try {
+      // Same as fetchBills — no store/branch filter (customer bills carry neither).
+      const url = "/bills?limit=500&status=12";
+      const res = await api.get<BillData[]>(url);
+      const groups = groupBills((res.data as unknown as BillData[]) || []);
+      setClearGroups(groups);
+      setSelectedClearKeys(new Set(groups.map((g) => g.key)));
+    } catch {
+      setClearGroups([]);
+      setSelectedClearKeys(new Set());
+    } finally {
+      setClearLoading(false);
+    }
+  };
+
+  const toggleClearKey = (key: string) => {
+    setSelectedClearKeys((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
+
+  // Clearing settles each selected bill's debt/credit ledger entry (backend), so
+  // the customer's ยอดค้าง/เกิน and average restart from the remaining bills.
   const handleClearBills = async () => {
+    const billIds = clearGroups.filter((g) => selectedClearKeys.has(g.key)).flatMap((g) => g.billIds);
+    if (billIds.length === 0) return;
     setClearing(true);
     try {
-      await api.post("/bills/clear", {});
+      await api.post("/bills/clear", { bill_ids: billIds });
       clearDisc.onClose();
       await fetchBills();
       await refreshUnfinishedBills();
@@ -427,7 +473,7 @@ export default function BillsList() {
         <Button
           size="sm"
           className="shrink-0 bg-purple-600 text-white font-bold text-xs ml-2"
-          onPress={clearDisc.onOpen}
+          onPress={openClearModal}
         >
           เคลียร์บิล
         </Button>
@@ -694,11 +740,14 @@ export default function BillsList() {
                     <span className="font-bold text-black/70">{lockedTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })} บาท</span>
                   </div>
 
-                  {/* Net ขาด/เกิน — uses accumulated balance (includes this round) when loaded */}
+                  {/* Net ขาด/เกิน — uses accumulated balance (includes this round) when
+                      loaded. A cleared bill's ledger row is settled (excluded from the
+                      balance), so its "this bill vs prior" breakdown no longer applies. */}
                   {hasDiff && (() => {
+                    const isCleared = detailB?.status === 14;
                     const netBalance = billBalance !== null ? billBalance : diff;
                     const prevBalance = billBalance !== null ? billBalance - diff : 0;
-                    const showBreakdown = billBalance !== null && Math.abs(prevBalance) >= 0.01;
+                    const showBreakdown = billBalance !== null && Math.abs(prevBalance) >= 0.01 && !isCleared;
                     return (
                       <>
                         <div className={`flex items-center justify-between rounded-xl px-3 py-1.5 text-xs border-1 ${netBalance > 0 ? "bg-green-50 border-green-200" : netBalance < 0 ? "bg-red-50 border-red-200" : "bg-black/5 border-black/10"}`}>
@@ -718,6 +767,41 @@ export default function BillsList() {
                       </>
                     );
                   })()}
+
+                  {/* Debt/credit ledger history — settled rows (เคลียร์แล้ว) no
+                      longer count toward the balance but stay visible. */}
+                  {billBalanceHistory.length > 0 && (
+                    <div className="flex flex-col gap-y-1 pt-1">
+                      <span className="text-[10px] font-bold text-black/40">ประวัติขาด/เกิน</span>
+                      {(balanceHistoryExpanded ? billBalanceHistory : billBalanceHistory.slice(0, 3)).map((h) => (
+                        <div key={h.id} className="flex items-center justify-between gap-x-2 bg-white/60 border border-black/10 rounded-xl px-3 py-1.5 text-xs">
+                          <div className="flex items-center gap-x-2 min-w-0">
+                            <span className="text-black/50 shrink-0">{moment(h.created_at).format("DD/MM/YY")}</span>
+                            <span className="text-black/40 truncate">{h.description}</span>
+                          </div>
+                          <div className="flex items-center gap-x-2 shrink-0">
+                            {h.settled_at && (
+                              <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full border-1 ${STATUS_COLOR[14]}`}>
+                                เคลียร์แล้ว
+                              </span>
+                            )}
+                            <span className={`font-bold ${h.settled_at ? "text-black/30 line-through" : h.amount > 0 ? "text-green-700" : h.amount < 0 ? "text-red-600" : "text-black/40"}`}>
+                              {h.amount > 0 ? "+" : ""}{h.amount.toLocaleString(undefined, { minimumFractionDigits: 2 })} บาท
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                      {billBalanceHistory.length > 3 && (
+                        <button
+                          type="button"
+                          className="text-[10px] font-bold text-black/40 hover:text-black/60 py-0.5"
+                          onClick={() => setBalanceHistoryExpanded((v) => !v)}
+                        >
+                          {balanceHistoryExpanded ? "ย่อ" : `ดูเพิ่มเติม (${billBalanceHistory.length - 3} รายการ)`}
+                        </button>
+                      )}
+                    </div>
+                  )}
                 </div>
               );
             })()}
@@ -1021,25 +1105,100 @@ export default function BillsList() {
         </ModalContent>
       </Modal>
 
-      {/* CLEAR BILLS CONFIRM */}
-      <Modal isOpen={clearDisc.isOpen} onClose={clearDisc.onClose} size="sm">
+      {/* CLEAR BILLS — select which completed bills to settle */}
+      <Modal isOpen={clearDisc.isOpen} onClose={clearDisc.onClose} size="lg" scrollBehavior="inside">
         <ModalContent>
-          <ModalHeader>
-            <span className="font-bold text-purple-700">ยืนยันเคลียร์บิล</span>
+          <ModalHeader className="flex flex-col gap-0.5">
+            <span className="font-bold text-purple-700">เคลียร์บิล</span>
+            <span className="text-xs font-normal text-black/50">
+              บิลที่เลือกจะเปลี่ยนเป็น &quot;เคลียร์แล้ว&quot; และยอดค้าง/เกินกับค่าเฉลี่ยของบิลนั้นจะถูกปิด — ที่เหลือคิดจากบิลที่ยังไม่เคลียร์เท่านั้น
+            </span>
           </ModalHeader>
           <ModalBody>
-            <div className="flex flex-col gap-y-2">
-              <p className="text-sm text-black/70">
-                บิลทั้งหมดที่สถานะ <span className="font-bold text-green-700">สำเร็จ</span> จะถูกเปลี่ยนเป็น{" "}
-                <span className="font-bold text-purple-700">เคลียร์แล้ว</span>
-              </p>
-              {overview.pendingClearWeight > 0 && (
-                <div className="flex flex-col border-1 border-purple-200 bg-purple-50 rounded-xl p-2.5">
-                  <span className="text-xs text-black/50">น้ำหนักรวมที่จะเคลียร์</span>
-                  <span className="font-bold text-purple-700">{overview.pendingClearWeight.toLocaleString(undefined, { maximumFractionDigits: 2 })} บาท</span>
+            {clearLoading ? (
+              <div className="flex items-center justify-center py-8"><Spinner size="lg" color="secondary" /></div>
+            ) : clearGroups.length === 0 ? (
+              <div className="flex items-center justify-center py-8 text-black/40 text-sm">ไม่มีบิลสำเร็จที่รอเคลียร์</div>
+            ) : (() => {
+              // Group the selectable entries by customer for display.
+              const byCustomer = new Map<string, BillGroup[]>();
+              for (const g of clearGroups) {
+                const name = g.rep.creator?.name ?? "ไม่ระบุลูกค้า";
+                const arr = byCustomer.get(name) ?? [];
+                arr.push(g);
+                byCustomer.set(name, arr);
+              }
+              const selected = clearGroups.filter((g) => selectedClearKeys.has(g.key));
+              const selBills = selected.reduce((s, g) => s + g.count, 0);
+              const selWeight = selected.reduce((s, g) => s + g.weight, 0);
+              const selTotal = selected.reduce((s, g) => s + g.total, 0);
+              const allSelected = selectedClearKeys.size === clearGroups.length;
+              return (
+                <div className="flex flex-col gap-y-3">
+                  <Checkbox
+                    size="sm"
+                    color="secondary"
+                    isSelected={allSelected}
+                    isIndeterminate={!allSelected && selectedClearKeys.size > 0}
+                    onValueChange={(v) =>
+                      setSelectedClearKeys(v ? new Set(clearGroups.map((g) => g.key)) : new Set())
+                    }
+                  >
+                    <span className="text-sm font-bold text-black/70">เลือกทั้งหมด ({clearGroups.length} รายการ)</span>
+                  </Checkbox>
+
+                  <div className="flex flex-col gap-y-2">
+                    {Array.from(byCustomer.entries()).map(([name, groups]) => (
+                      <div key={name} className="flex flex-col border-1 border-black/10 bg-black/5 rounded-2xl p-2 gap-y-1.5">
+                        <div className="flex items-center gap-x-2 px-1">
+                          <Avatar size="sm" name={name} className="w-5 h-5 text-[10px]" />
+                          <span className="text-xs font-bold text-black/60">{name}</span>
+                        </div>
+                        {groups.map((g) => (
+                          <div key={g.key} className="flex items-center justify-between bg-white/70 border border-black/10 rounded-xl px-2.5 py-1.5">
+                            <Checkbox
+                              size="sm"
+                              color="secondary"
+                              isSelected={selectedClearKeys.has(g.key)}
+                              onValueChange={() => toggleClearKey(g.key)}
+                            >
+                              <span className="text-sm font-bold bg-gradient-to-l from-black/90 to-yellow-600 bg-clip-text text-transparent">
+                                {g.rep.code}
+                                {g.count > 1 && <span className="ml-1 text-[10px] font-bold text-blue-600">รวม {g.count} บิล</span>}
+                              </span>
+                            </Checkbox>
+                            <div className="flex flex-col items-end">
+                              <span className="text-sm font-bold text-yellow-700">
+                                {g.total.toLocaleString(undefined, { minimumFractionDigits: 2 })} บาท
+                              </span>
+                              <span className="text-[10px] text-black/40">
+                                {g.weight.toLocaleString(undefined, { maximumFractionDigits: 2 })} บาท · {moment(g.rep.created_at).format("DD/MM/YY")}
+                              </span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Selection summary */}
+                  <div className="grid grid-cols-3 gap-1.5 border-1 border-purple-200 bg-purple-50 rounded-xl p-2.5">
+                    <div className="flex flex-col">
+                      <span className="text-[10px] text-black/50">ที่เลือก</span>
+                      <span className="text-sm font-bold text-purple-700">{selected.length} รายการ ({selBills} บิล)</span>
+                    </div>
+                    <div className="flex flex-col">
+                      <span className="text-[10px] text-black/50">น้ำหนักรวม</span>
+                      <span className="text-sm font-bold text-purple-700">{selWeight.toLocaleString(undefined, { maximumFractionDigits: 2 })} บาท</span>
+                    </div>
+                    <div className="flex flex-col">
+                      <span className="text-[10px] text-black/50">ยอดรวม</span>
+                      <span className="text-sm font-bold text-purple-700">{selTotal.toLocaleString(undefined, { maximumFractionDigits: 0 })} บาท</span>
+                    </div>
+                  </div>
                 </div>
-              )}
-            </div>
+              );
+            })()}
           </ModalBody>
           <ModalFooter>
             <Button variant="light" onPress={clearDisc.onClose} isDisabled={clearing}>ยกเลิก</Button>
@@ -1047,6 +1206,7 @@ export default function BillsList() {
               className="bg-purple-600 text-white font-bold"
               onPress={handleClearBills}
               isLoading={clearing}
+              isDisabled={clearLoading || selectedClearKeys.size === 0}
             >
               ยืนยันเคลียร์บิล
             </Button>

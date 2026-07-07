@@ -228,21 +228,24 @@ export function QuotationDetailPanel({ quotation, members, goldTypes, canUpdate,
 
   // Prefer the store-header snapshot taken at creation time (stays accurate
   // even if the store's info changes later); fall back to the live `store`
-  // relation for quotations created before the snapshot existed.
-  const storeHeader = quotation.store_name
-    ? {
-        name: quotation.store_name,
-        branch: quotation.store_branch,
-        address: quotation.store_address,
-        phone: quotation.store_phone,
-        tax_id: quotation.store_tax_id,
-        tax_name: quotation.store_tax_name,
-        website: quotation.store_website,
-        logo: quotation.store_logo,
-      }
-    : quotation.store
-      ? { ...quotation.store, branch: quotation.branch?.name }
-      : undefined;
+  // relation for quotations created before the snapshot existed. A no_header
+  // document was issued headerless on purpose — no fallback.
+  const storeHeader = quotation.no_header
+    ? undefined
+    : quotation.store_name
+      ? {
+          name: quotation.store_name,
+          branch: quotation.store_branch,
+          address: quotation.store_address,
+          phone: quotation.store_phone,
+          tax_id: quotation.store_tax_id,
+          tax_name: quotation.store_tax_name,
+          website: quotation.store_website,
+          logo: quotation.store_logo,
+        }
+      : quotation.store
+        ? { ...quotation.store, branch: quotation.branch?.name }
+        : undefined;
   const storeHeaderName = quotation.store_name || quotation.store?.name;
   const hasActions =
     canDelete ||

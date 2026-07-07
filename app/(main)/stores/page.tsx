@@ -18,6 +18,7 @@ interface StoreData {
   address: string;
   phone: string;
   logo: string;
+  is_main: boolean;
   is_active: boolean;
   branches?: { id: number; code: string; name: string; is_active: boolean }[];
 }
@@ -93,9 +94,16 @@ export default function StoresPage() {
                     </div>
                   )}
                   <div className="flex flex-col">
-                    <span className="font-bold text-lg bg-gradient-to-l from-black/90 to-yellow-600 bg-clip-text text-transparent">
-                      {store.name}
-                    </span>
+                    <div className="flex items-center gap-x-2">
+                      <span className="font-bold text-lg bg-gradient-to-l from-black/90 to-yellow-600 bg-clip-text text-transparent">
+                        {store.name}
+                      </span>
+                      {store.is_main && (
+                        <Chip size="sm" variant="flat" color="warning" className="text-[10px]">
+                          ร้านหลัก
+                        </Chip>
+                      )}
+                    </div>
                     <span className="text-xs text-black/50">{store.code}</span>
                   </div>
                 </div>

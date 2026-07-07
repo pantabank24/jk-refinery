@@ -39,6 +39,8 @@ export interface QuotationData {
   store_tax_name?: string;
   store_website?: string;
   store_logo?: string;
+  // Intentionally issued without a header — do not fall back to `store` above.
+  no_header?: boolean;
   creator?: { id: number; name: string } | null;
   items?: QuotationItem[];
   images?: { id: number; image_url: string; type?: string }[];

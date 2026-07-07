@@ -30,6 +30,7 @@ export default function EditStorePage() {
   const [name, setName] = useState("");
   const [address, setAddress] = useState("");
   const [phone, setPhone] = useState("");
+  const [isMain, setIsMain] = useState(false);
   const [isActive, setIsActive] = useState(true);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -50,12 +51,13 @@ export default function EditStorePage() {
   };
 
   useEffect(() => {
-    api.get<{ name: string; address: string; phone: string; is_active: boolean }>(`/stores/${storeId}`).then((res) => {
-      const data = res.data as unknown as { name: string; address: string; phone: string; is_active: boolean };
+    api.get<{ name: string; address: string; phone: string; is_main: boolean; is_active: boolean }>(`/stores/${storeId}`).then((res) => {
+      const data = res.data as unknown as { name: string; address: string; phone: string; is_main: boolean; is_active: boolean };
       if (data) {
         setName(data.name);
         setAddress(data.address);
         setPhone(data.phone);
+        setIsMain(!!data.is_main);
         setIsActive(data.is_active);
       }
     });
@@ -66,7 +68,7 @@ export default function EditStorePage() {
     setError("");
     setLoading(true);
     try {
-      await api.put(`/stores/${storeId}`, { name, address, phone, is_active: isActive });
+      await api.put(`/stores/${storeId}`, { name, address, phone, is_main: isMain, is_active: isActive });
       router.push(`/stores/${storeId}`);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "แก้ไขร้านไม่สำเร็จ");
@@ -102,6 +104,9 @@ export default function EditStorePage() {
           <div className="text-xs text-black/50 bg-black/5 border-1 border-black/10 rounded-xl px-4 py-2">
             ข้อมูลหัวใบเสร็จ (โลโก้ ชื่อบนใบ ที่อยู่ ผู้เสียภาษี) ตั้งค่าแยกในแต่ละสาขาแล้ว
           </div>
+          <Switch isSelected={isMain} onValueChange={setIsMain}>
+            <span className="text-sm">ตั้งเป็นร้านหลัก</span>
+          </Switch>
           <Switch isSelected={isActive} onValueChange={setIsActive}>
             <span className="text-sm">{isActive ? "เปิดให้บริการ" : "ปิดให้บริการ"}</span>
           </Switch>

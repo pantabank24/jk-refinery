@@ -14,6 +14,7 @@ interface StoreOption {
   tax_name?: string;
   website?: string;
   logo?: string;
+  is_main?: boolean;
 }
 
 interface BranchOption {
@@ -59,11 +60,20 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       const storeList = (res.data as unknown as StoreOption[]) || [];
       setStores(storeList);
 
-      // Auto-select for non-master users
+      // Auto-select a default store, keeping any store already chosen (this
+      // runs again whenever `user` refreshes, e.g. after saving a quotation).
       if (!isMaster && user?.store_id) {
+        // Non-master: their own store.
         const userStore = storeList.find((s) => s.id === user.store_id);
         if (userStore) {
-          setSelectedStoreState(userStore);
+          setSelectedStoreState((prev) => prev ?? userStore);
+        }
+      } else if (isMaster) {
+        // Master: the main store (fallback: first), so the receipt-header
+        // picker starts with a real value. They can still switch.
+        const main = storeList.find((s) => s.is_main) ?? storeList[0];
+        if (main) {
+          setSelectedStoreState((prev) => prev ?? main);
         }
       }
     } catch {

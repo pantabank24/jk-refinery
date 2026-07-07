@@ -12,6 +12,8 @@ export interface QuotationStoreSnapshot {
   store_tax_name?: string;
   store_website?: string;
   store_logo?: string;
+  // Intentionally issued without a header — never fall back to the live store.
+  no_header?: boolean;
 }
 
 // The receipt-header fields carried by the full store relation preloaded on
@@ -29,11 +31,14 @@ export interface StoreHeaderSnapshot {
 // Builds the PreviewQuote `store` header, preferring the issued-quotation
 // snapshot and falling back to the live store relation. Returns undefined when
 // neither is available so PreviewQuote simply omits the header.
+// The live-store fallback exists only for legacy quotations that predate the
+// snapshot columns — a no_header document skips it (headerless on purpose).
 export function buildStoreHeader(
   snapshot?: QuotationStoreSnapshot | null,
   store?: (StoreHeaderSnapshot & { name?: string }) | null,
   branchName?: string,
 ): StoreHeader | undefined {
+  if (snapshot?.no_header) return undefined;
   if (snapshot?.store_name) {
     return {
       name: snapshot.store_name,

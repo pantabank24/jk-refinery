@@ -101,10 +101,14 @@ export default function QuotationPage() {
   // Store/branch picker (receipt header) now lives inside the preview modal on this
   // page instead of the global navbar — only master/owner can change it.
   const canSelectStoreBranch = isMaster || isOwner;
+  // Issue the document without a receipt header (master/owner opt-out) — the
+  // store/branch link is still saved for lists/reports; only the printed
+  // header is omitted.
+  const [noHeader, setNoHeader] = useState(false);
   // Receipt header now comes from the branch (each branch prints its own):
   // employee → their assigned branch; owner/master → the branch they selected
   // (defaults to the store's main branch, see store-context).
-  const headerStore = selectedBranch
+  const headerStore = selectedBranch && !noHeader
     ? {
         name: selectedBranch.header_name,
         branch: selectedBranch.name,
@@ -579,10 +583,10 @@ export default function QuotationPage() {
   // Actual save (after preview, and after the overdraw warning if shown)
   const doSave = async () => {
     // Master/owner have no fixed branch, so the receipt header comes from the
-    // branch they pick. Block saving without one — otherwise the header snapshot
-    // is captured empty and the customer's copy prints with no header.
-    if (!user?.branch_id && !selectedBranch) {
-      setSaveError("กรุณาเลือกร้าน/สาขาสำหรับหัวใบเสร็จก่อนบันทึก");
+    // branch they pick. Warn when there's none — unless they explicitly opted
+    // into a headerless document, which is a supported way to issue.
+    if (!noHeader && !user?.branch_id && !selectedBranch) {
+      setSaveError("กรุณาเลือกร้าน/สาขาสำหรับหัวใบเสร็จ หรือติ๊ก \"ออกใบโดยไม่มีหัวใบเสร็จ\"");
       return;
     }
     setSaving(true);
@@ -619,6 +623,8 @@ export default function QuotationPage() {
         // Which branch's receipt header to snapshot (master/owner choose; employees
         // are locked to their JWT branch on the server).
         branch_id: selectedBranch?.id,
+        // Skip the header snapshot server-side (store/branch link is still kept).
+        no_header: noHeader,
         bill_ids: billIds.length ? billIds : undefined, // links to the customer's bill(s)
         items: saveItems,
         created_at: quotationDate,
@@ -1159,7 +1165,10 @@ export default function QuotationPage() {
                     <div className="flex items-center gap-1.5 text-xs font-bold text-[#c09c42]">
                       <Store size={14} /> หัวใบเสร็จ (ร้าน / สาขา)
                     </div>
-                    <StoreBranchSelector />
+                    {!noHeader && <StoreBranchSelector />}
+                    <Checkbox size="sm" isSelected={noHeader} onValueChange={setNoHeader}>
+                      <span className="text-xs text-black/60">ออกใบโดยไม่มีหัวใบเสร็จ</span>
+                    </Checkbox>
                   </div>
                 )}
                 {/* Typed image uploads — before/after side by side */}
