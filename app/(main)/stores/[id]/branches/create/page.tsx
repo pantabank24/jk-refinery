@@ -4,17 +4,31 @@ import { useState } from "react";
 import { Input } from "@heroui/input";
 import { Button } from "@heroui/button";
 import { Textarea } from "@heroui/input";
+import { Switch } from "@heroui/switch";
 import { ArrowLeft, Save } from "lucide-react";
 import { useRouter, useParams } from "next/navigation";
 import { api } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
 import { ShieldOff } from "lucide-react";
+import { BranchLogoInput } from "../_component/branchLogoInput";
 
 export default function CreateBranchPage() {
   const router = useRouter();
   const params = useParams();
   const storeId = params.id as string;
   const { hasPermission } = useAuth();
+
+  const [name, setName] = useState("");
+  const [headerName, setHeaderName] = useState("");
+  const [website, setWebsite] = useState("");
+  const [taxName, setTaxName] = useState("");
+  const [taxId, setTaxId] = useState("");
+  const [address, setAddress] = useState("");
+  const [phone, setPhone] = useState("");
+  const [isMain, setIsMain] = useState(false);
+  const [logoFile, setLogoFile] = useState<File | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
 
   if (!hasPermission("branches.create")) {
     return (
@@ -24,11 +38,6 @@ export default function CreateBranchPage() {
       </div>
     );
   }
-  const [name, setName] = useState("");
-  const [address, setAddress] = useState("");
-  const [phone, setPhone] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -36,13 +45,33 @@ export default function CreateBranchPage() {
     setError("");
     setLoading(true);
     try {
-      await api.post(`/stores/${storeId}/branches`, { name, address, phone });
+      const res = await api.post<{ id: number }>(`/stores/${storeId}/branches`, {
+        name,
+        header_name: headerName,
+        website,
+        tax_name: taxName,
+        tax_id: taxId,
+        address,
+        phone,
+        is_main: isMain,
+      });
+      const created = res.data as unknown as { id: number } | undefined;
+      if (logoFile && created?.id) {
+        const fd = new FormData();
+        fd.append("logo", logoFile);
+        await api.upload(`/stores/${storeId}/branches/${created.id}/logo`, fd);
+      }
       router.push(`/stores/${storeId}`);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "สร้างสาขาไม่สำเร็จ");
     } finally {
       setLoading(false);
     }
+  };
+
+  const wrapCls = {
+    inputWrapper:
+      "bg-gradient-to-br from-black/10 to-transparent border-1 border-black/10 rounded-2xl",
   };
 
   return (
@@ -56,14 +85,25 @@ export default function CreateBranchPage() {
         </div>
       </div>
 
-      <div className="w-full max-w-xl border-1 border-black/10 bg-black/5 backdrop-blur-xl rounded-3xl p-6">
+      <div className="w-full max-w-xl border-1 border-black/10 bg-black/5 backdrop-blur-xl rounded-3xl p-6 overflow-y-auto">
         <form onSubmit={handleSubmit} className="flex flex-col gap-y-4">
-          <Input label="ชื่อสาขา" placeholder="กรอกชื่อสาขา" value={name} onValueChange={setName}
-            classNames={{ inputWrapper: "bg-gradient-to-br from-black/10 to-transparent border-1 border-black/10 rounded-2xl" }} isRequired />
-          <Textarea label="ที่อยู่สาขา" placeholder="กรอกที่อยู่" value={address} onValueChange={setAddress}
-            classNames={{ inputWrapper: "bg-gradient-to-br from-black/10 to-transparent border-1 border-black/10 rounded-2xl" }} />
-          <Input label="เบอร์โทร" placeholder="กรอกเบอร์โทร" value={phone} onValueChange={setPhone}
-            classNames={{ inputWrapper: "bg-gradient-to-br from-black/10 to-transparent border-1 border-black/10 rounded-2xl" }} />
+          <Input label="ชื่อสาขา" placeholder="เช่น สาขาลาดพร้าว" value={name} onValueChange={setName}
+            classNames={wrapCls} isRequired />
+
+          <div className="text-xs font-bold text-black/40 uppercase tracking-wide pt-2">หัวใบเสร็จของสาขานี้</div>
+          <BranchLogoInput file={logoFile} onFileChange={setLogoFile} />
+          <Input label="ชื่อร้าน (บนหัวใบเสร็จ)" placeholder="ชื่อที่แสดงตัวใหญ่บนใบเสร็จ" value={headerName} onValueChange={setHeaderName}
+            classNames={wrapCls} />
+          <Input label="รายละเอียดร้าน (บรรทัดใต้ชื่อร้าน)" placeholder="เช่น เว็บไซต์ / Line" value={website} onValueChange={setWebsite}
+            classNames={wrapCls} />
+          <Textarea label="ที่อยู่" value={address} onValueChange={setAddress} classNames={wrapCls} />
+          <Input label="เบอร์โทร" value={phone} onValueChange={setPhone} classNames={wrapCls} />
+          <Input label="ชื่อผู้เสียภาษี" value={taxName} onValueChange={setTaxName} classNames={wrapCls} />
+          <Input label="เลขประจำตัวผู้เสียภาษี" value={taxId} onValueChange={setTaxId} classNames={wrapCls} />
+
+          <Switch isSelected={isMain} onValueChange={setIsMain}>
+            <span className="text-sm">ตั้งเป็นสาขาหลัก</span>
+          </Switch>
 
           {error && <div className="text-red-500 text-sm bg-red-50 border border-red-200 rounded-xl px-4 py-2">{error}</div>}
 

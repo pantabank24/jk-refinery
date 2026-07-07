@@ -30,9 +30,6 @@ export default function EditStorePage() {
   const [name, setName] = useState("");
   const [address, setAddress] = useState("");
   const [phone, setPhone] = useState("");
-  const [taxId, setTaxId] = useState("");
-  const [taxName, setTaxName] = useState("");
-  const [website, setWebsite] = useState("");
   const [isActive, setIsActive] = useState(true);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -53,15 +50,12 @@ export default function EditStorePage() {
   };
 
   useEffect(() => {
-    api.get<{ name: string; address: string; phone: string; tax_id: string; tax_name: string; website: string; is_active: boolean }>(`/stores/${storeId}`).then((res) => {
-      const data = res.data as unknown as { name: string; address: string; phone: string; tax_id: string; tax_name: string; website: string; is_active: boolean };
+    api.get<{ name: string; address: string; phone: string; is_active: boolean }>(`/stores/${storeId}`).then((res) => {
+      const data = res.data as unknown as { name: string; address: string; phone: string; is_active: boolean };
       if (data) {
         setName(data.name);
         setAddress(data.address);
         setPhone(data.phone);
-        setTaxId(data.tax_id ?? "");
-        setTaxName(data.tax_name ?? "");
-        setWebsite(data.website ?? "");
         setIsActive(data.is_active);
       }
     });
@@ -72,7 +66,7 @@ export default function EditStorePage() {
     setError("");
     setLoading(true);
     try {
-      await api.put(`/stores/${storeId}`, { name, address, phone, tax_id: taxId, tax_name: taxName, website, is_active: isActive });
+      await api.put(`/stores/${storeId}`, { name, address, phone, is_active: isActive });
       router.push(`/stores/${storeId}`);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "แก้ไขร้านไม่สำเร็จ");
@@ -105,12 +99,9 @@ export default function EditStorePage() {
             classNames={{ inputWrapper: "bg-gradient-to-br from-black/10 to-transparent border-1 border-black/10 rounded-2xl" }} />
           <Input label="เบอร์โทร" value={phone} onValueChange={setPhone}
             classNames={{ inputWrapper: "bg-gradient-to-br from-black/10 to-transparent border-1 border-black/10 rounded-2xl" }} />
-          <Input label="รายละเอียดร้าน (บรรทัดใต้ชื่อร้านบนหัวใบ)" value={website} onValueChange={setWebsite}
-            classNames={{ inputWrapper: "bg-gradient-to-br from-black/10 to-transparent border-1 border-black/10 rounded-2xl" }} />
-          <Input label="ชื่อผู้เสียภาษี" value={taxName} onValueChange={setTaxName}
-            classNames={{ inputWrapper: "bg-gradient-to-br from-black/10 to-transparent border-1 border-black/10 rounded-2xl" }} />
-          <Input label="เลขประจำตัวผู้เสียภาษี" value={taxId} onValueChange={setTaxId}
-            classNames={{ inputWrapper: "bg-gradient-to-br from-black/10 to-transparent border-1 border-black/10 rounded-2xl" }} />
+          <div className="text-xs text-black/50 bg-black/5 border-1 border-black/10 rounded-xl px-4 py-2">
+            ข้อมูลหัวใบเสร็จ (โลโก้ ชื่อบนใบ ที่อยู่ ผู้เสียภาษี) ตั้งค่าแยกในแต่ละสาขาแล้ว
+          </div>
           <Switch isSelected={isActive} onValueChange={setIsActive}>
             <span className="text-sm">{isActive ? "เปิดให้บริการ" : "ปิดให้บริการ"}</span>
           </Switch>

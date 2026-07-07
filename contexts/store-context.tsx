@@ -21,6 +21,15 @@ interface BranchOption {
   code: string;
   name: string;
   store_id: number;
+  // Receipt-header fields live on the branch now (each branch prints its own).
+  header_name?: string;
+  address?: string;
+  phone?: string;
+  tax_id?: string;
+  tax_name?: string;
+  website?: string;
+  logo?: string;
+  is_main?: boolean;
 }
 
 interface StoreContextType {
@@ -73,12 +82,18 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           const branchList = (res.data as unknown as BranchOption[]) || [];
           setBranches(branchList);
 
-          // Auto-select branch for employee users
+          // Auto-select the branch whose receipt header will be used.
           if (!isMaster && !isOwner && user?.branch_id) {
+            // Employee: locked to their assigned branch.
             const userBranch = branchList.find((b) => b.id === user.branch_id);
             if (userBranch) {
               setSelectedBranch(userBranch);
             }
+          } else {
+            // Master/owner: default to the store's main branch (fallback: first),
+            // so a quotation always captures a real header. They can still switch.
+            const main = branchList.find((b) => b.is_main) ?? branchList[0];
+            setSelectedBranch(main ?? null);
           }
         })
         .catch(() => setBranches([]));

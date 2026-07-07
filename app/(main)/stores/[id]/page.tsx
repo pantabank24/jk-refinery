@@ -17,6 +17,7 @@ interface BranchData {
   name: string;
   address: string;
   phone: string;
+  is_main: boolean;
   is_active: boolean;
 }
 
@@ -151,9 +152,16 @@ export default function StoreDetailPage() {
           >
             <div className="flex items-center justify-between">
               <div className="flex flex-col">
-                <span className="font-bold text-md bg-gradient-to-l from-black/90 to-yellow-600 bg-clip-text text-transparent">
-                  {branch.name}
-                </span>
+                <div className="flex items-center gap-x-2">
+                  <span className="font-bold text-md bg-gradient-to-l from-black/90 to-yellow-600 bg-clip-text text-transparent">
+                    {branch.name}
+                  </span>
+                  {branch.is_main && (
+                    <Chip size="sm" variant="flat" color="warning" className="text-[10px]">
+                      สาขาหลัก
+                    </Chip>
+                  )}
+                </div>
                 <span className="text-xs text-black/50">{branch.code}</span>
               </div>
               <Chip size="sm" variant="dot" color={branch.is_active ? "success" : "danger"}>

@@ -25,9 +25,6 @@ export default function CreateStorePage() {
   const [name, setName] = useState("");
   const [address, setAddress] = useState("");
   const [phone, setPhone] = useState("");
-  const [taxId, setTaxId] = useState("");
-  const [taxName, setTaxName] = useState("");
-  const [website, setWebsite] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
@@ -38,7 +35,7 @@ export default function CreateStorePage() {
     setLoading(true);
 
     try {
-      await api.post("/stores", { name, address, phone, tax_id: taxId, tax_name: taxName, website });
+      await api.post("/stores", { name, address, phone });
       router.push("/stores");
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "สร้างร้านไม่สำเร็จ");
@@ -96,36 +93,9 @@ export default function CreateStorePage() {
                 "bg-gradient-to-br from-black/10 to-transparent border-1 border-black/10 rounded-2xl",
             }}
           />
-          <Input
-            label="รายละเอียดร้าน (บรรทัดใต้ชื่อร้านบนหัวใบ)"
-            placeholder="เช่น JK Gold Refinery / เว็บไซต์ / Line"
-            value={website}
-            onValueChange={setWebsite}
-            classNames={{
-              inputWrapper:
-                "bg-gradient-to-br from-black/10 to-transparent border-1 border-black/10 rounded-2xl",
-            }}
-          />
-          <Input
-            label="ชื่อผู้เสียภาษี"
-            placeholder="ชื่อนิติบุคคล/บุคคลผู้เสียภาษี (สำหรับหัวใบ)"
-            value={taxName}
-            onValueChange={setTaxName}
-            classNames={{
-              inputWrapper:
-                "bg-gradient-to-br from-black/10 to-transparent border-1 border-black/10 rounded-2xl",
-            }}
-          />
-          <Input
-            label="เลขประจำตัวผู้เสียภาษี"
-            placeholder="กรอกเลขผู้เสียภาษี (สำหรับหัวใบ)"
-            value={taxId}
-            onValueChange={setTaxId}
-            classNames={{
-              inputWrapper:
-                "bg-gradient-to-br from-black/10 to-transparent border-1 border-black/10 rounded-2xl",
-            }}
-          />
+          <div className="text-xs text-black/50 bg-black/5 border-1 border-black/10 rounded-xl px-4 py-2">
+            ข้อมูลหัวใบเสร็จ (โลโก้ ชื่อบนใบ ผู้เสียภาษี) ตั้งค่าในแต่ละสาขาหลังสร้างร้าน
+          </div>
 
           {error && (
             <div className="text-red-500 text-sm bg-red-50 border border-red-200 rounded-xl px-4 py-2">

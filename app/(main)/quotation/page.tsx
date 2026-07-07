@@ -96,10 +96,22 @@ function ImageUploadGroup({
 
 export default function QuotationPage() {
   const { hasPermission, permissions, credits, refreshUser, user } = useAuth();
-  const { selectedStore } = useStore();
-  // Header store: owner/employee → their own store; master → the store they
-  // selected (master users have no personal store_id).
-  const headerStore = user?.store ?? selectedStore ?? undefined;
+  const { selectedStore, selectedBranch } = useStore();
+  // Receipt header now comes from the branch (each branch prints its own):
+  // employee → their assigned branch; owner/master → the branch they selected
+  // (defaults to the store's main branch, see store-context).
+  const headerStore = selectedBranch
+    ? {
+        name: selectedBranch.header_name,
+        branch: selectedBranch.name,
+        address: selectedBranch.address,
+        phone: selectedBranch.phone,
+        tax_id: selectedBranch.tax_id,
+        tax_name: selectedBranch.tax_name,
+        website: selectedBranch.website,
+        logo: selectedBranch.logo,
+      }
+    : undefined;
   const { status: salesStatus } = useSalesStatus();
   const salesClosed = !!salesStatus?.enabled && !salesStatus.is_open;
   const canBypassSales = hasPermission("sales.bypass");
@@ -562,6 +574,13 @@ export default function QuotationPage() {
 
   // Actual save (after preview, and after the overdraw warning if shown)
   const doSave = async () => {
+    // Master/owner have no fixed branch, so the receipt header comes from the
+    // branch they pick. Block saving without one — otherwise the header snapshot
+    // is captured empty and the customer's copy prints with no header.
+    if (!user?.branch_id && !selectedBranch) {
+      setSaveError("กรุณาเลือกร้าน/สาขาสำหรับหัวใบเสร็จก่อนบันทึก");
+      return;
+    }
     setSaving(true);
     setSaveError("");
     try {
@@ -593,6 +612,9 @@ export default function QuotationPage() {
         signer_phone: signerPhone,
         pdpa_consent: consent,
         store_id: selectedStore?.id, // used only for master; others derive from JWT
+        // Which branch's receipt header to snapshot (master/owner choose; employees
+        // are locked to their JWT branch on the server).
+        branch_id: selectedBranch?.id,
         bill_ids: billIds.length ? billIds : undefined, // links to the customer's bill(s)
         items: saveItems,
         created_at: quotationDate,
@@ -667,6 +689,95 @@ export default function QuotationPage() {
     router.push(billId ? "/bills" : "/quote-list");
   };
 
+  // Reference card listing the customer's submitted items — shared between the
+  // desktop right column and the mobile drawer (extraClass tunes the height cap
+  // per layout). Only shown in bill mode when there are submitted items.
+  const renderReferenceCard = (extraClass = "") => {
+    if (!billId || referenceItems.length === 0) return null;
+    const netTotal = hasBalance ? refTotal - (billBalance ?? 0) : refTotal;
+    return (
+      <div className={`flex flex-col gap-y-2 border-1 border-black/10 bg-white/15 shadow-xl backdrop-blur-xl rounded-4xl p-3 shrink-0 ${extraClass}`}>
+        <span className="font-bold text-sm bg-gradient-to-l from-black/90 to-yellow-600 bg-clip-text text-transparent pl-2">
+          รายการที่ลูกค้าส่งมา (อ้างอิง · หลอมแล้ว)
+        </span>
+        {/* Summary: sold total, processed so far, remaining (can go negative) */}
+        <div className="grid grid-cols-2 gap-2">
+          <div className="flex flex-col border-1 border-black/10 bg-black/5 rounded-xl p-1.5">
+            <span className="font-bold text-[10px] text-black/50 pl-1">ราคาเฉลี่ย (บาท)</span>
+            <span className="font-bold text-sm text-yellow-700 pl-1">
+              {(hasBalance && billAvgPrice > 0 && blendedAvgPrice > 0 ? blendedAvgPrice : refAvgPrice).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </span>
+            {hasBalance && billAvgPrice > 0 && blendedAvgPrice > 0 && (
+              <span className="font-bold text-[10px] text-black/35 pl-1 mt-0.5">
+                บิลนี้ {refAvgPrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </span>
+            )}
+          </div>
+          <div className="flex flex-col border-1 border-black/10 bg-black/5 rounded-xl p-1.5">
+            <span className="font-bold text-[10px] text-black/50 pl-1">ยอดรวมที่ขาย</span>
+            <span className="font-bold text-sm bg-gradient-to-l from-black/90 to-yellow-600 bg-clip-text text-transparent pl-1">
+              {netTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+            </span>
+            {hasBalance && (
+              <span className="font-bold text-[10px] text-black/35 pl-1 mt-0.5">
+                {billBalance! > 0
+                  ? `หักจากที่จ่ายเกิน ${billBalance!.toLocaleString(undefined, { minimumFractionDigits: 2 })}`
+                  : `บวกจากที่ขาดไป ${Math.abs(billBalance!).toLocaleString(undefined, { minimumFractionDigits: 2 })}`}
+              </span>
+            )}
+          </div>
+          {processedAmount > 0 && (
+            <>
+              <div className="flex flex-col border-1 border-blue-200 bg-blue-50 rounded-xl p-1.5">
+                <span className="font-bold text-[10px] text-black/50 pl-1">ส่งไปแล้ว</span>
+                <span className="font-bold text-sm text-blue-700 pl-1">
+                  {processedAmount.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                </span>
+              </div>
+              <div className={`flex flex-col border-1 rounded-xl p-1.5 ${(refTotal - processedAmount) < 0 ? "border-red-200 bg-red-50" : "border-green-200 bg-green-50"}`}>
+                <span className="font-bold text-[10px] text-black/50 pl-1">คงเหลือ</span>
+                <span className={`font-bold text-sm pl-1 ${(refTotal - processedAmount) < 0 ? "text-red-600" : "text-green-700"}`}>
+                  {(refTotal - processedAmount).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                </span>
+              </div>
+            </>
+          )}
+          {/* Non-gold rounds live only in the delivery-log items (not in
+              the bill's gold aggregates) — surface them so they don't
+              look lost after a reload. */}
+          {nonGoldPriorTotal > 0 && (
+            <div className="flex flex-col border-1 border-purple-200 bg-purple-50 rounded-xl p-1.5">
+              <span className="font-bold text-[10px] text-black/50 pl-1">โลหะอื่นรอบก่อน</span>
+              <span className="font-bold text-sm text-purple-700 pl-1">
+                {nonGoldPriorTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+              </span>
+            </div>
+          )}
+        </div>
+        <div className="flex flex-col gap-y-1 overflow-y-auto scrollbar-hide">
+          {referenceItems.map((it, i) => (
+            <div key={it.itemId} className="flex items-center justify-between gap-x-2 bg-black/5 border border-black/10 rounded-xl px-3 py-2 text-xs">
+              <div className="flex flex-col min-w-0">
+                <span className="text-black/70 font-bold truncate">{i + 1}. {it.typeName}</span>
+                <span className="text-black/50 text-[10px] whitespace-nowrap">
+                  ราคา {it.price.toLocaleString()} · น้ำหนัก {it.weight} · รวม {it.total.toLocaleString()} บาท
+                </span>
+              </div>
+              <button
+                type="button"
+                title="ลบรายการนี้ออกจากบิลลูกค้า"
+                onClick={() => setRemovingRef(it)}
+                className="h-5 w-5 shrink-0 bg-gradient-to-br from-red-600/50 to-transparent border-1 border-black/10 rounded-full flex items-center justify-center"
+              >
+                <X size={13} className="text-red-600" />
+              </button>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="h-full flex flex-col gap-y-3">
       {salesClosed && <SalesStatusBanner status={salesStatus} />}
@@ -703,90 +814,7 @@ export default function QuotationPage() {
         </div>
         {/* Right column: reference card (customer's submitted items) above the quote card */}
         <div className="flex flex-col gap-y-3 w-[500px] min-w-0 max-lg:hidden">
-          {billId && referenceItems.length > 0 && (
-            <div className="flex flex-col gap-y-2 border-1 border-black/10 bg-white/15 shadow-xl backdrop-blur-xl rounded-4xl p-3 shrink-0 max-h-[38%]">
-              <span className="font-bold text-sm bg-gradient-to-l from-black/90 to-yellow-600 bg-clip-text text-transparent pl-2">
-                รายการที่ลูกค้าส่งมา (อ้างอิง · หลอมแล้ว)
-              </span>
-              {/* Summary: sold total, processed so far, remaining (can go negative) */}
-              {(() => {
-                const netTotal = hasBalance ? refTotal - (billBalance ?? 0) : refTotal;
-                return (
-                  <div className="grid grid-cols-2 gap-2">
-                    <div className="flex flex-col border-1 border-black/10 bg-black/5 rounded-xl p-1.5">
-                      <span className="font-bold text-[10px] text-black/50 pl-1">ราคาเฉลี่ย (บาท)</span>
-                      <span className="font-bold text-sm text-yellow-700 pl-1">
-                        {(hasBalance && billAvgPrice > 0 && blendedAvgPrice > 0 ? blendedAvgPrice : refAvgPrice).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                      </span>
-                      {hasBalance && billAvgPrice > 0 && blendedAvgPrice > 0 && (
-                        <span className="font-bold text-[10px] text-black/35 pl-1 mt-0.5">
-                          บิลนี้ {refAvgPrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                        </span>
-                      )}
-                    </div>
-                    <div className="flex flex-col border-1 border-black/10 bg-black/5 rounded-xl p-1.5">
-                      <span className="font-bold text-[10px] text-black/50 pl-1">ยอดรวมที่ขาย</span>
-                      <span className="font-bold text-sm bg-gradient-to-l from-black/90 to-yellow-600 bg-clip-text text-transparent pl-1">
-                        {netTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}
-                      </span>
-                      {hasBalance && (
-                        <span className="font-bold text-[10px] text-black/35 pl-1 mt-0.5">
-                          {billBalance! > 0
-                            ? `หักจากที่จ่ายเกิน ${billBalance!.toLocaleString(undefined, { minimumFractionDigits: 2 })}`
-                            : `บวกจากที่ขาดไป ${Math.abs(billBalance!).toLocaleString(undefined, { minimumFractionDigits: 2 })}`}
-                        </span>
-                      )}
-                    </div>
-                    {processedAmount > 0 && (
-                      <>
-                        <div className="flex flex-col border-1 border-blue-200 bg-blue-50 rounded-xl p-1.5">
-                          <span className="font-bold text-[10px] text-black/50 pl-1">ส่งไปแล้ว</span>
-                          <span className="font-bold text-sm text-blue-700 pl-1">
-                            {processedAmount.toLocaleString(undefined, { minimumFractionDigits: 2 })}
-                          </span>
-                        </div>
-                        <div className={`flex flex-col border-1 rounded-xl p-1.5 ${(refTotal - processedAmount) < 0 ? "border-red-200 bg-red-50" : "border-green-200 bg-green-50"}`}>
-                          <span className="font-bold text-[10px] text-black/50 pl-1">คงเหลือ</span>
-                          <span className={`font-bold text-sm pl-1 ${(refTotal - processedAmount) < 0 ? "text-red-600" : "text-green-700"}`}>
-                            {(refTotal - processedAmount).toLocaleString(undefined, { minimumFractionDigits: 2 })}
-                          </span>
-                        </div>
-                      </>
-                    )}
-                    {/* Non-gold rounds live only in the delivery-log items (not in
-                        the bill's gold aggregates) — surface them so they don't
-                        look lost after a reload. */}
-                    {nonGoldPriorTotal > 0 && (
-                      <div className="flex flex-col border-1 border-purple-200 bg-purple-50 rounded-xl p-1.5">
-                        <span className="font-bold text-[10px] text-black/50 pl-1">โลหะอื่นรอบก่อน</span>
-                        <span className="font-bold text-sm text-purple-700 pl-1">
-                          {nonGoldPriorTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}
-                        </span>
-                      </div>
-                    )}
-                  </div>
-                );
-              })()}
-              <div className="flex flex-col gap-y-1 overflow-y-auto scrollbar-hide">
-                {referenceItems.map((it, i) => (
-                  <div key={it.itemId} className="flex items-center justify-between gap-x-2 bg-black/5 border border-black/10 rounded-xl px-3 py-2 text-xs">
-                    <span className="text-black/70 font-bold truncate min-w-0">{i + 1}. {it.typeName}</span>
-                    <div className="flex items-center gap-x-2 shrink-0">
-                      <span className="text-black/50 whitespace-nowrap">น้ำหนัก {it.weight} · {it.total.toLocaleString()} บาท</span>
-                      <button
-                        type="button"
-                        title="ลบรายการนี้ออกจากบิลลูกค้า"
-                        onClick={() => setRemovingRef(it)}
-                        className="h-5 w-5 shrink-0 bg-gradient-to-br from-red-600/50 to-transparent border-1 border-black/10 rounded-full flex items-center justify-center"
-                      >
-                        <X size={13} className="text-red-600" />
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
+          {renderReferenceCard("max-h-[38%]")}
           <div className="flex-1 min-h-0">
             <Quotation
               quotation={quotation}
@@ -825,6 +853,9 @@ export default function QuotationPage() {
               <X size={18} />
             </button>
           </div>
+
+          {/* Reference card — same customer-submitted items shown on desktop */}
+          {renderReferenceCard("max-h-[45%]")}
 
           {/* Items */}
           <div className="flex flex-col gap-y-2 overflow-y-auto flex-1 scrollbar-hide">
