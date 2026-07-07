@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import moment from "moment";
 import { CheckCircle, XCircle, Pencil, ChevronDown, AlertCircle, Trash2 } from "lucide-react";
 import { ConfirmDeleteModal } from "@/components/confirmDeleteModal";
@@ -61,6 +61,32 @@ export function QuotationDetailPanel({ quotation, members, goldTypes, canUpdate,
   // Asks whether to also reconcile the creator's credits when a master edit
   // changes the total.
   const creditAdjustDisc = useDisclosure();
+
+  // For a bill-issued quotation, the saved items are a single consolidated line
+  // whose `price` is the effective per-gram rate (used for page 2 / totals). The
+  // detailed page-1 preview needs each round's real per-baht price instead, so
+  // rebuild it from the bill's delivery logs — same as the customers/bills modals.
+  const [page1Items, setPage1Items] = useState<QuotationProps[]>([]);
+  useEffect(() => {
+    setPage1Items([]);
+    const billId = quotation?.bill_id;
+    if (!billId) return;
+    let cancelled = false;
+    type LogRow = { id: number; items?: QuotationProps[] };
+    api
+      .get<LogRow[]>(`/bills/${billId}/delivery-logs`)
+      .then((r) => {
+        if (cancelled) return;
+        const logs = (r.data as unknown as LogRow[]) ?? [];
+        const items: QuotationProps[] = [];
+        for (const lg of logs) for (const it of lg.items ?? []) items.push(it);
+        setPage1Items(items);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [quotation?.bill_id]);
 
   const refresh = async () => {
     if (!quotation) return;
@@ -264,6 +290,7 @@ export function QuotationDetailPanel({ quotation, members, goldTypes, canUpdate,
           perGram: item.per_gram,
           total: item.total,
         }))}
+        page1Items={page1Items.length ? page1Items : undefined}
         onPrint={() => window.print()}
         documentNo={quotation.code}
         store={storeHeader}

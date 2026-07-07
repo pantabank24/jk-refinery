@@ -20,6 +20,10 @@ export interface QuotationData {
   note: string;
   reject_reason: string;
   total_amount: number;
+  // Set when this quotation was issued for a customer bill. Its saved items are a
+  // consolidated single line (price = effective per-gram), so the detailed page-1
+  // preview is rebuilt from the bill's delivery logs instead — see quotationDetailPanel.
+  bill_id?: number | null;
   member?: { id: number; fname: string; lname: string; phone: string; code: string } | null;
   store?: { id: number; name: string; address?: string; phone?: string; tax_id?: string; tax_name?: string; website?: string; logo?: string } | null;
   branch?: { id: number; name: string } | null;

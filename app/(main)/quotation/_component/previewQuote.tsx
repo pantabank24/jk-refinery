@@ -953,8 +953,12 @@ export const PreviewQuote = React.forwardRef<PreviewQuoteHandle, Props>(
                     <div className="flex gap-x-2">
                       <span>ราคาทองรูปพรรณรับซื้อคืนต่อกรัม</span>
                       <span className="font-semibold">
+                        {/* รับซื้อคืน = ราคาทองคำแท่งซื้อเข้า หัก 2% */}
                         {goldPrices
-                          ? goldPrices.ornament_sell.toLocaleString()
+                          ? (
+                              goldPrices.bar_buy -
+                              goldPrices.bar_buy * 0.02
+                            ).toLocaleString()
                           : "-"}
                       </span>
                       <span>บาท</span>
