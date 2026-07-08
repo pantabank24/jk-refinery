@@ -8,7 +8,21 @@ import { TermsForm } from "./_component/termsForm";
 import { api } from "@/lib/api";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/contexts/auth-context";
-import { ShieldOff, X, Save, AlertCircle, Receipt, Trash2, Camera, Image as ImageIcon, UserCheck, PenLine, Store } from "lucide-react";
+import {
+  ShieldOff,
+  X,
+  Save,
+  AlertCircle,
+  Receipt,
+  Trash2,
+  Camera,
+  Image as ImageIcon,
+  UserCheck,
+  PenLine,
+  Store,
+  Check,
+  ListChecks,
+} from "lucide-react";
 import {
   Modal,
   ModalContent,
@@ -26,10 +40,12 @@ import { useSalesStatus } from "@/hooks/use-sales-status";
 import { SalesStatusBanner } from "@/components/sales-status-banner";
 import { SignaturePad } from "@/components/signature-pad";
 import { WebcamCaptureModal } from "@/components/webcam-capture-modal";
-import { Truck } from "lucide-react";
 import { ConfirmDeleteModal } from "@/components/confirmDeleteModal";
+import { BillItemPicker } from "./_component/billItemPicker";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL?.replace("/api/v1", "") || "http://localhost:8080";
+const API_BASE =
+  process.env.NEXT_PUBLIC_API_URL?.replace("/api/v1", "") ||
+  "http://localhost:8080";
 
 // A customer's submitted line shown in the reference card, tagged with the source
 // bill + item id so the master can delete it from the customer's actual bill.
@@ -39,21 +55,35 @@ type ReferenceItem = QuotationProps & { billId: number; itemId: number };
 // with an inline "+" tile to add more, instead of a separate dropzone box.
 // The "+" tile offers a choice between picking a file or capturing from the webcam.
 function ImageUploadGroup({
-  label, files, setFiles,
-}: { label: string; files: File[]; setFiles: React.Dispatch<React.SetStateAction<File[]>> }) {
+  label,
+  files,
+  setFiles,
+}: {
+  label: string;
+  files: File[];
+  setFiles: React.Dispatch<React.SetStateAction<File[]>>;
+}) {
   const [showWebcam, setShowWebcam] = useState(false);
 
   return (
     <div>
-      <label className="block text-xs font-bold text-black/60 mb-1.5">{label}</label>
+      <label className="block text-xs font-bold text-black/60 mb-1.5">
+        {label}
+      </label>
       <div className="flex flex-wrap gap-1.5">
         {files.map((f, i) => (
           <div key={i} className="relative w-12 h-12 shrink-0">
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={URL.createObjectURL(f)} className="w-12 h-12 object-cover rounded-lg border border-black/10" alt="" />
+            <img
+              src={URL.createObjectURL(f)}
+              className="w-12 h-12 object-cover rounded-lg border border-black/10"
+              alt=""
+            />
             <button
               type="button"
-              onClick={() => setFiles((prev) => prev.filter((_, idx) => idx !== i))}
+              onClick={() =>
+                setFiles((prev) => prev.filter((_, idx) => idx !== i))
+              }
               className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white rounded-full text-[10px] flex items-center justify-center"
             >
               ×
@@ -72,7 +102,8 @@ function ImageUploadGroup({
             accept="image/*"
             className="hidden"
             onChange={(e) => {
-              if (e.target.files) setFiles((prev) => [...prev, ...Array.from(e.target.files!)]);
+              if (e.target.files)
+                setFiles((prev) => [...prev, ...Array.from(e.target.files!)]);
             }}
           />
         </label>
@@ -96,7 +127,15 @@ function ImageUploadGroup({
 }
 
 export default function QuotationPage() {
-  const { hasPermission, permissions, credits, refreshUser, user, isMaster, isOwner } = useAuth();
+  const {
+    hasPermission,
+    permissions,
+    credits,
+    refreshUser,
+    user,
+    isMaster,
+    isOwner,
+  } = useAuth();
   const { selectedStore, selectedBranch } = useStore();
   // Store/branch picker (receipt header) now lives inside the preview modal on this
   // page instead of the global navbar — only master/owner can change it.
@@ -108,18 +147,19 @@ export default function QuotationPage() {
   // Receipt header now comes from the branch (each branch prints its own):
   // employee → their assigned branch; owner/master → the branch they selected
   // (defaults to the store's main branch, see store-context).
-  const headerStore = selectedBranch && !noHeader
-    ? {
-        name: selectedBranch.header_name,
-        branch: selectedBranch.name,
-        address: selectedBranch.address,
-        phone: selectedBranch.phone,
-        tax_id: selectedBranch.tax_id,
-        tax_name: selectedBranch.tax_name,
-        website: selectedBranch.website,
-        logo: selectedBranch.logo,
-      }
-    : undefined;
+  const headerStore =
+    selectedBranch && !noHeader
+      ? {
+          name: selectedBranch.header_name,
+          branch: selectedBranch.name,
+          address: selectedBranch.address,
+          phone: selectedBranch.phone,
+          tax_id: selectedBranch.tax_id,
+          tax_name: selectedBranch.tax_name,
+          website: selectedBranch.website,
+          logo: selectedBranch.logo,
+        }
+      : undefined;
   const { status: salesStatus } = useSalesStatus();
   const salesClosed = !!salesStatus?.enabled && !salesStatus.is_open;
   const canBypassSales = hasPermission("sales.bypass");
@@ -131,7 +171,10 @@ export default function QuotationPage() {
   // document number + a print button. The form's state is kept around until
   // this is dismissed, so the print preview still has its data.
   const [showPostSavePreview, setShowPostSavePreview] = useState(false);
-  const [savedQuotation, setSavedQuotation] = useState<{ id: number; code: string } | null>(null);
+  const [savedQuotation, setSavedQuotation] = useState<{
+    id: number;
+    code: string;
+  } | null>(null);
   const router = useRouter();
   const [saveError, setSaveError] = useState("");
   const [showCreditWarning, setShowCreditWarning] = useState(false);
@@ -143,7 +186,9 @@ export default function QuotationPage() {
   const [signatureDataUrl, setSignatureDataUrl] = useState<string | null>(null);
   const [signerName, setSignerName] = useState("");
   const [signerPhone, setSignerPhone] = useState("");
-  const [quotationDate, setQuotationDate] = useState(() => new Date().toISOString().split("T")[0]);
+  const [quotationDate, setQuotationDate] = useState(
+    () => new Date().toISOString().split("T")[0],
+  );
   const beforeImages = beforeFiles.map((f) => URL.createObjectURL(f));
   const afterImages = afterFiles.map((f) => URL.createObjectURL(f));
   const [listOpen, setListOpen] = useState(false);
@@ -158,14 +203,18 @@ export default function QuotationPage() {
   const [billCustomer, setBillCustomer] = useState("");
   // The customer's registered profile (suggested for the signer fields) + their
   // most recent signature (offered for reuse), loaded in bill mode.
-  const [customerProfile, setCustomerProfile] = useState<{ name: string; phone: string; store_name: string; address: string; tax_id: string } | null>(null);
+  const [customerProfile, setCustomerProfile] = useState<{
+    name: string;
+    phone: string;
+    store_name: string;
+    address: string;
+    tax_id: string;
+  } | null>(null);
   const [prevSignatureUrl, setPrevSignatureUrl] = useState<string | null>(null);
   const [usingPrevSig, setUsingPrevSig] = useState(false);
   // Which registered field to use as the signer name when applying the
   // suggestion — the person's name (default) or the company/store name.
   const [nameSource, setNameSource] = useState<"person" | "company">("person");
-  const [billBalance, setBillBalance] = useState<number | null>(null);
-  const [billAvgPrice, setBillAvgPrice] = useState(0);
   const [billIds, setBillIds] = useState<number[]>([]);
   // The customer's submitted items — shown for reference (gold already melted, so
   // the master builds a fresh quote). billId/itemId let the master delete one from
@@ -173,23 +222,46 @@ export default function QuotationPage() {
   const [referenceItems, setReferenceItems] = useState<ReferenceItem[]>([]);
   const [removingRef, setRemovingRef] = useState<ReferenceItem | null>(null);
   const [removingRefBusy, setRemovingRefBusy] = useState(false);
-  // Partial delivery tracking: accumulated processed weight/amount across all customer's bills.
-  const [processedWeight, setProcessedWeight] = useState(0);
-  const [processedAmount, setProcessedAmount] = useState(0);
-  // Items from this session's partial-deliver rounds, kept so page 1 can list each
-  // one individually (the API only persists aggregate weight/amount per round).
-  const [priorRoundItems, setPriorRoundItems] = useState<QuotationProps[]>([]);
-  // "รอส่งเพิ่ม / บันทึกเลย" choice modal — shown when master clicks the save button in bill mode.
-  const [showDeliveryChoice, setShowDeliveryChoice] = useState(false);
-  const [partialSaving, setPartialSaving] = useState(false);
-  const [partialError, setPartialError] = useState("");
+  // Which submitted items the master TICKED for this round. The locked price
+  // averages only the ticked items; unticked ones stay in the bill (the backend
+  // splits the bill) waiting for a later round. Defaults to everything ticked.
+  const [selectedItemIds, setSelectedItemIds] = useState<Set<number>>(
+    new Set(),
+  );
 
   // Delete the bill being issued — เผื่อกรณีกดเข้ามาผิดหรือบิลนี้ไม่ควรออกแล้ว.
   const deleteBillDisc = useDisclosure();
   const [deletingBill, setDeletingBill] = useState(false);
+  // "แก้ไขรายการ" — reopen the tick picker to change which items go on this round.
+  const pickerDisc = useDisclosure();
 
-  type BillItemLite = { id: number; type_id: string; type_name: string; metal?: string; price: number; percent: number; plus: number; weight: number; per_gram: number; total: number };
-  type BillLite = { id: number; total_amount: number; processed_weight: number; processed_amount: number; items?: BillItemLite[]; creator?: { id: number; name: string; phone?: string; store_name?: string; address?: string; tax_id?: string } };
+  type BillItemLite = {
+    id: number;
+    type_id: string;
+    type_name: string;
+    metal?: string;
+    price: number;
+    percent: number;
+    plus: number;
+    weight: number;
+    per_gram: number;
+    total: number;
+  };
+  type BillLite = {
+    id: number;
+    total_amount: number;
+    processed_weight: number;
+    processed_amount: number;
+    items?: BillItemLite[];
+    creator?: {
+      id: number;
+      name: string;
+      phone?: string;
+      store_name?: string;
+      address?: string;
+      tax_id?: string;
+    };
+  };
 
   useEffect(() => {
     if (!billId) return;
@@ -213,7 +285,10 @@ export default function QuotationPage() {
         }
         // Auto-load the customer's most recent signature (they can still redraw).
         if (clicked?.creator?.id) {
-          api.get<{ image_url: string }>(`/quotations/latest-signature?created_by=${clicked.creator.id}`)
+          api
+            .get<{ image_url: string }>(
+              `/quotations/latest-signature?created_by=${clicked.creator.id}`,
+            )
             .then((r) => {
               const u = (r.data as unknown as { image_url: string })?.image_url;
               if (u) {
@@ -224,38 +299,39 @@ export default function QuotationPage() {
             })
             .catch(() => {});
         }
-        // Customer's debt/credit balance (shown for reference in both modes).
-        if (clicked?.creator?.id) {
-          api.get(`/bills/balance?user_id=${clicked.creator.id}`)
-            .then((res) => {
-              const d = res.data as unknown as { balance: number; avg_price: number };
-              setBillBalance(d.balance ?? 0);
-              setBillAvgPrice(d.avg_price ?? 0);
-            })
-            .catch(() => {});
-        }
-
         // Edit mode: fixing an already-issued quote. Use the stashed bill group and
         // the previously-issued items (pre-filled into the calculator), and do NOT
-        // merge the customer's other pending bills. processed_* start at 0 because
-        // the current issuance is reversed at save time before re-issuing.
+        // merge the customer's other pending bills. The current issuance is
+        // reversed at save time before re-issuing.
         if (editIssued) {
           const stashedIds = sessionStorage.getItem("editBillIds");
-          const gids = stashedIds ? (JSON.parse(stashedIds) as number[]) : [clicked?.id ?? Number(billId)];
+          const gids = stashedIds
+            ? (JSON.parse(stashedIds) as number[])
+            : [clicked?.id ?? Number(billId)];
           setBillIds(gids);
-          setReferenceItems((clicked?.items ?? []).map((i) => ({
-            typeId: i.type_id, typeName: i.type_name, price: i.price, plus: i.plus,
-            percent: i.percent, weight: i.weight, perGram: i.per_gram, total: i.total,
-            billId: clicked?.id ?? Number(billId), itemId: i.id,
-          })));
-          setProcessedWeight(0);
-          setProcessedAmount(0);
+          const editRef = (clicked?.items ?? []).map((i) => ({
+            typeId: i.type_id,
+            typeName: i.type_name,
+            metal: i.metal || "gold",
+            price: i.price,
+            plus: i.plus,
+            percent: i.percent,
+            weight: i.weight,
+            perGram: i.per_gram,
+            total: i.total,
+            billId: clicked?.id ?? Number(billId),
+            itemId: i.id,
+          }));
+          setReferenceItems(editRef);
+          setSelectedItemIds(new Set(editRef.map((r) => r.itemId)));
           const stashedItems = sessionStorage.getItem("editBillItems");
           if (stashedItems) {
             try {
               const items = JSON.parse(stashedItems) as QuotationProps[];
               if (Array.isArray(items) && items.length > 0) setQuotation(items);
-            } catch { /* ignore */ }
+            } catch {
+              /* ignore */
+            }
           }
           sessionStorage.removeItem("editBillItems");
           sessionStorage.removeItem("editBillIds");
@@ -266,43 +342,41 @@ export default function QuotationPage() {
         // as reference (their gold was melted; the master re-assesses from scratch).
         let bills: BillLite[] = [];
         if (clicked?.creator?.id) {
-          const listRes = await api.get(`/bills?created_by=${clicked.creator.id}&status=10&limit=100`);
+          const listRes = await api.get(
+            `/bills?created_by=${clicked.creator.id}&status=10&limit=100`,
+          );
           bills = (listRes.data as unknown as { data: BillLite[] }).data || [];
         }
         if (bills.length === 0 && clicked) bills = [clicked];
 
         const ids: number[] = [];
         const reference: ReferenceItem[] = [];
-        let totalProcessedW = 0;
-        let totalProcessedA = 0;
         for (const b of bills) {
           ids.push(b.id);
-          totalProcessedW += b.processed_weight || 0;
-          totalProcessedA += b.processed_amount || 0;
           for (const i of b.items ?? []) {
             reference.push({
-              typeId: i.type_id, typeName: i.type_name, metal: i.metal || "gold", price: i.price, plus: i.plus,
-              percent: i.percent, weight: i.weight, perGram: i.per_gram, total: i.total,
-              billId: b.id, itemId: i.id,
+              typeId: i.type_id,
+              typeName: i.type_name,
+              metal: i.metal || "gold",
+              price: i.price,
+              plus: i.plus,
+              percent: i.percent,
+              weight: i.weight,
+              perGram: i.per_gram,
+              total: i.total,
+              billId: b.id,
+              itemId: i.id,
             });
           }
         }
         setBillIds(ids);
         setReferenceItems(reference); // reference only — quote stays empty
-        setProcessedWeight(totalProcessedW);
-        setProcessedAmount(totalProcessedA);
-        // Rebuild the itemised prior rounds from delivery logs so page 1 can list
-        // each item even after a reload (items are persisted per delivery round).
-        const priorItems: QuotationProps[] = [];
-        for (const bid of ids) {
-          try {
-            const lr = await api.get(`/bills/${bid}/delivery-logs`);
-            const logs = (lr.data as unknown as { items?: QuotationProps[] }[]) || [];
-            for (const lg of logs) for (const it of lg.items ?? []) priorItems.push(it);
-          } catch { /* ignore */ }
-        }
-        setPriorRoundItems(priorItems);
-      } catch { /* ignore */ }
+        // Everything ticked by default — untick (via แก้ไขรายการ) to hold items
+        // for a later round.
+        setSelectedItemIds(new Set(reference.map((r) => r.itemId)));
+      } catch {
+        /* ignore */
+      }
     })();
   }, [billId, editIssued]);
 
@@ -333,9 +407,17 @@ export default function QuotationPage() {
     if (!ref) return;
     setRemovingRefBusy(true);
     try {
-      const res = await api.delete<{ deleted: boolean }>(`/bills/${ref.billId}/items/${ref.itemId}`);
-      const deleted = (res.data as unknown as { deleted?: boolean })?.deleted ?? false;
+      const res = await api.delete<{ deleted: boolean }>(
+        `/bills/${ref.billId}/items/${ref.itemId}`,
+      );
+      const deleted =
+        (res.data as unknown as { deleted?: boolean })?.deleted ?? false;
       setReferenceItems((prev) => prev.filter((r) => r.itemId !== ref.itemId));
+      setSelectedItemIds((prev) => {
+        const next = new Set(prev);
+        next.delete(ref.itemId);
+        return next;
+      });
       setRemovingRef(null);
       if (deleted) {
         setBillIds((prev) => prev.filter((id) => id !== ref.billId));
@@ -345,25 +427,26 @@ export default function QuotationPage() {
           return;
         }
       }
-    } catch { /* ignore */ } finally {
+    } catch {
+      /* ignore */
+    } finally {
       setRemovingRefBusy(false);
     }
   };
 
-  // Opens delivery choice ("รอส่งเพิ่ม" vs "บันทึกเลย") in bill mode, else goes
-  // straight to the terms step.
+  // Save entry: in bill mode at least one submitted item must be ticked — the
+  // quotation is issued FOR those items (unticked ones stay for a later round).
   const handleRequestSave = () => {
     if (quotation.length === 0) return;
     if (salesClosed && !canBypassSales) {
       setSaveError("ขณะนี้ปิดทำการ ไม่สามารถออกใบเสนอราคาได้");
       return;
     }
-    setSaveError("");
-    if (billId) {
-      setPartialError("");
-      setShowDeliveryChoice(true);
+    if (billId && referenceItems.length > 0 && selectedItemIds.size === 0) {
+      setSaveError("กรุณาติ๊กเลือกรายการของลูกค้าอย่างน้อย 1 รายการ");
       return;
     }
+    setSaveError("");
     setShowTerms(true);
   };
 
@@ -375,51 +458,15 @@ export default function QuotationPage() {
       await api.delete(`/bills/${billId}`);
       deleteBillDisc.onClose();
       router.push("/bills");
-    } catch { /* ignore */ } finally {
+    } catch {
+      /* ignore */
+    } finally {
       setDeletingBill(false);
     }
   };
 
   // Missing metal means gold — items created before the metal tag existed.
   const isGoldItem = (i: QuotationProps) => (i.metal || "gold") === "gold";
-
-  // "รอส่งเพิ่ม": record partial delivery for all bill IDs and stay on page.
-  // Only GOLD items add to the bill's processed weight/amount — the bill (and its
-  // debt/credit cycle) is gold-only. Other metals still ride along in the items
-  // JSON so page 1 can itemise them after a reload.
-  const handlePartialDeliver = async () => {
-    setPartialSaving(true);
-    setPartialError("");
-    const goldItems = quotation.filter(isGoldItem);
-    const totalW = goldItems.reduce((s, i) => s + (i.weight || 0), 0);
-    const totalA = goldItems.reduce((s, i) => s + i.total, 0);
-    try {
-      if (totalW <= 0 && totalA <= 0) {
-        // Round has no gold — nothing to add to the bills' processed aggregates.
-        // Log the items once on the first bill so they survive a reload.
-        await api.post(`/bills/${billIds[0]}/partial-deliver`, {
-          weight: 0, amount: 0, items: quotation,
-        });
-      } else {
-        // Send the itemised lines only to the first bill (groups share one quote) so
-        // reading them back later doesn't duplicate across the group's bills.
-        for (let idx = 0; idx < billIds.length; idx++) {
-          await api.post(`/bills/${billIds[idx]}/partial-deliver`, {
-            weight: totalW, amount: totalA, items: idx === 0 ? quotation : [],
-          });
-        }
-      }
-      setProcessedWeight((p) => p + totalW);
-      setProcessedAmount((p) => p + totalA);
-      setPriorRoundItems((p) => [...p, ...quotation]);
-      setQuotation([]);
-      setShowDeliveryChoice(false);
-    } catch {
-      setPartialError("บันทึกส่งบางส่วนไม่สำเร็จ กรุณาลองใหม่");
-    } finally {
-      setPartialSaving(false);
-    }
-  };
 
   // From the terms step → preview. Signature is optional (the seller may sign
   // in person but it isn't required).
@@ -429,64 +476,50 @@ export default function QuotationPage() {
     setShowPreview(true);
   };
 
-  const refTotal = referenceItems.reduce((s, i) => s + i.total, 0);
-  const refWeight = referenceItems.reduce((s, i) => s + (i.weight || 0), 0);
-  // Weighted-average effective rate: Σ(total) / Σ(weight) — this is what
-  // the customer was actually locked in at (total includes percent/plus adjustments).
-  const refAvgPrice = refWeight > 0 ? refTotal / refWeight : 0;
-  const hasBalance = billBalance !== null && billBalance !== 0;
-  // Blend by baht amount: the previous cycle counts only its outstanding
-  // balance (ขาด/เกิน) — NOT its full weight — priced at that cycle's avg.
-  const outstanding = Math.abs(billBalance ?? 0);
-  const combinedAmount = outstanding + refTotal;
-  const blendedAvgPrice = hasBalance && combinedAmount > 0
-    ? (billAvgPrice * outstanding + refAvgPrice * refTotal) / combinedAmount
-    : 0;
-  const effectiveForcedPrice = billId
-    ? (blendedAvgPrice > 0 ? blendedAvgPrice : refAvgPrice > 0 ? refAvgPrice : 0)
-    : 0;
+  // Only the TICKED submitted items count: they define this round's locked
+  // average price. Unticked items stay in the bill for a later round.
+  const selectedRef = referenceItems.filter((r) =>
+    selectedItemIds.has(r.itemId),
+  );
+  const selTotal = selectedRef.reduce((s, i) => s + i.total, 0);
+  const selWeight = selectedRef.reduce((s, i) => s + (i.weight || 0), 0);
+  // Weighted-average effective rate of the selection: Σ(total) / Σ(weight) —
+  // what the customer was locked in at (total includes percent/plus adjustments).
+  const selAvgPrice = selWeight > 0 ? selTotal / selWeight : 0;
+  const effectiveForcedPrice = billId && selAvgPrice > 0 ? selAvgPrice : 0;
 
-  // In bill mode ("บันทึกเลย"), consolidate per METAL: gold collapses into one
-  // line (all partial deliveries + current batch — identical to the old
-  // single-line behaviour when everything is gold), and each other metal gets
-  // its own consolidated line. Non-gold is paid in full on this quotation and
-  // never enters the bill's debt/credit cycle.
+  // The receipt's "ชื่อลูกค้า / เบอร์โทร" line names the actual customer, which is
+  // independent of who signs: in bill mode it comes from the bill's registered
+  // customer (so changing the signer to a company name doesn't overwrite it);
+  // walk-in quotes have no customer, so they fall back to the signer fields.
+  const previewCustomerName = billId
+    ? (customerProfile?.name || billCustomer || signerName)
+    : signerName;
+  const previewCustomerPhone = billId
+    ? (customerProfile?.phone || signerPhone)
+    : signerPhone;
+
+  // In bill mode, consolidate the keyed lines per METAL: gold collapses into one
+  // line, and each other metal gets its own consolidated line. Each round is
+  // self-contained — no aggregates from earlier rounds.
   const previewItems: QuotationProps[] = (() => {
     if (billIds.length === 0 || quotation.length === 0) return quotation;
 
     const lines: QuotationProps[] = [];
-
-    // Gold line: current gold items + accumulated processed weight/amount
-    // (the bill's aggregates are gold-only).
-    const goldItems = quotation.filter(isGoldItem);
-    const currentW = goldItems.reduce((s, i) => s + (i.weight || 0), 0);
-    const currentT = goldItems.reduce((s, i) => s + i.total, 0);
-    const totalW = processedWeight + currentW;
-    const totalT = processedAmount + currentT;
-    // Template for the gold line: a current gold item, else a prior-round gold
-    // item (e.g. this session only adds silver on top of earlier gold rounds).
-    const goldTemplate = goldItems[0] ?? priorRoundItems.filter(isGoldItem)[0];
-    if (goldTemplate && (totalW > 0 || totalT > 0)) {
-      const avgPrice = totalW > 0 ? totalT / totalW : goldTemplate.price;
-      lines.push({
-        ...goldTemplate,
-        price: Math.round(avgPrice * 100) / 100,
-        weight: totalW,
-        perGram: totalW > 0 ? totalT / totalW : goldTemplate.perGram,
-        total: totalT,
-      });
-    }
-
-    // Other metals: one line per metal, combining prior partial rounds (kept in
-    // the delivery-log items, not in the bill aggregates) with the current batch.
-    const nonGold = [...priorRoundItems, ...quotation].filter((i) => !isGoldItem(i));
     const byMetal = new Map<string, QuotationProps[]>();
-    for (const item of nonGold) {
+    for (const item of quotation) {
       const m = item.metal || "gold";
       const group = byMetal.get(m);
-      if (group) group.push(item); else byMetal.set(m, [item]);
+      if (group) group.push(item);
+      else byMetal.set(m, [item]);
     }
-    byMetal.forEach((group) => {
+    // Gold first so the document leads with the main line.
+    const metalKeys: string[] = [];
+    byMetal.forEach((_, k) => metalKeys.push(k));
+    const metals = ["gold", ...metalKeys.filter((m) => m !== "gold")];
+    for (const m of metals) {
+      const group = byMetal.get(m);
+      if (!group) continue;
       const w = group.reduce((s, i) => s + (i.weight || 0), 0);
       const t = group.reduce((s, i) => s + i.total, 0);
       const first = group[0];
@@ -498,49 +531,19 @@ export default function QuotationPage() {
         perGram: w > 0 ? t / w : first.perGram,
         total: t,
       });
-    });
-
+    }
     return lines;
   })();
 
-  // Page 1 of the preview lists each saved quote item individually (not the
-  // consolidated single line used for the total / page 2). When earlier partial
-  // deliveries exist, prepend them as one "ยกมาจากรอบก่อน" line so the itemised
-  // page still reflects everything sold so far.
-  const page1Items: QuotationProps[] = (() => {
-    if (billIds.length === 0) return quotation;
-    // Any processed amount we DON'T have itemised (e.g. delivered in a previous
-    // session, before reload) is shown as one carried-over line so nothing is lost.
-    // Compare against GOLD prior items only — the bill's processed aggregates are
-    // gold-only, so non-gold itemised lines must not eat into the carry.
-    const goldPrior = priorRoundItems.filter(isGoldItem);
-    const itemisedW = goldPrior.reduce((s, i) => s + (i.weight || 0), 0);
-    const itemisedA = goldPrior.reduce((s, i) => s + i.total, 0);
-    const carryW = processedWeight - itemisedW;
-    const carryA = processedAmount - itemisedA;
-    const carry: QuotationProps[] = carryW > 0.0001
-      ? [{
-          typeId: "prev",
-          typeName: "ยกมาจากรอบก่อน",
-          price: carryW > 0 ? Math.round((carryA / carryW) * 100) / 100 : 0,
-          plus: 0,
-          percent: 0,
-          weight: carryW,
-          perGram: carryW > 0 ? carryA / carryW : 0,
-          total: carryA,
-        }]
-      : [];
-    return [...carry, ...priorRoundItems, ...quotation];
-  })();
-
-  // Non-gold items from earlier "รอส่งเพิ่ม" rounds — they never enter the bill's
-  // gold aggregates, so they're surfaced separately in the reference card.
-  const nonGoldPriorTotal = priorRoundItems
-    .filter((i) => !isGoldItem(i))
-    .reduce((s, i) => s + i.total, 0);
+  // Page 1 of the preview lists each keyed line individually (not the
+  // consolidated per-metal lines used for the total / page 2).
+  const page1Items: QuotationProps[] = quotation;
 
   const totalAmount = previewItems.reduce((sum, item) => sum + item.total, 0);
-  const totalWeight = previewItems.reduce((sum, item) => sum + (item.weight || 0), 0);
+  const totalWeight = previewItems.reduce(
+    (sum, item) => sum + (item.weight || 0),
+    0,
+  );
   // Whether the current user's quotations deduct credits (role holds credits.use).
   // Strict check — credits.use is a constraint, not a privilege, so master is
   // never auto-granted it (mirrors the backend's HasPermissionStrict).
@@ -559,7 +562,9 @@ export default function QuotationPage() {
   // Clicking ยืนยันบันทึก: require PDPA consent, then confirm missing images.
   const handleConfirmClick = () => {
     if (!consent) {
-      setSaveError("กรุณายอมรับเงื่อนไขการเก็บข้อมูลส่วนบุคคล (PDPA) ก่อนบันทึก");
+      setSaveError(
+        "กรุณายอมรับเงื่อนไขการเก็บข้อมูลส่วนบุคคล (PDPA) ก่อนบันทึก",
+      );
       return;
     }
     if (missingImages().length > 0) {
@@ -586,7 +591,9 @@ export default function QuotationPage() {
     // branch they pick. Warn when there's none — unless they explicitly opted
     // into a headerless document, which is a supported way to issue.
     if (!noHeader && !user?.branch_id && !selectedBranch) {
-      setSaveError("กรุณาเลือกร้าน/สาขาสำหรับหัวใบเสร็จ หรือติ๊ก \"ออกใบโดยไม่มีหัวใบเสร็จ\"");
+      setSaveError(
+        'กรุณาเลือกร้าน/สาขาสำหรับหัวใบเสร็จ หรือติ๊ก "ออกใบโดยไม่มีหัวใบเสร็จ"',
+      );
       return;
     }
     setSaving(true);
@@ -600,8 +607,8 @@ export default function QuotationPage() {
         await api.post(`/bills/${billId}/revert`, {});
       }
 
-      // previewItems already contains the correctly-combined single item in bill
-      // mode (processedAmount + current batch), so reuse it directly.
+      // previewItems already contains the per-metal consolidated lines in bill
+      // mode, so reuse it directly.
       const saveItems = previewItems.map((item) => ({
         type_id: item.typeId,
         type_name: item.typeName,
@@ -615,7 +622,13 @@ export default function QuotationPage() {
         total: item.total,
       }));
 
-      const res = await api.post<{id: number; code: string}>("/quotations", {
+      // Only bills that actually have ticked items are covered by this round.
+      // In editIssued mode the whole reverted group is re-issued (no ticking),
+      // so the legacy whole-bill payload is kept.
+      const tickedBillIds = selectedRef
+        .map((r) => r.billId)
+        .filter((v, i, a) => a.indexOf(v) === i);
+      const res = await api.post<{ id: number; code: string }>("/quotations", {
         signer_name: signerName,
         signer_phone: signerPhone,
         pdpa_consent: consent,
@@ -625,26 +638,49 @@ export default function QuotationPage() {
         branch_id: selectedBranch?.id,
         // Skip the header snapshot server-side (store/branch link is still kept).
         no_header: noHeader,
-        bill_ids: billIds.length ? billIds : undefined, // links to the customer's bill(s)
+        bill_ids: editIssued
+          ? billIds.length
+            ? billIds
+            : undefined
+          : tickedBillIds.length
+            ? tickedBillIds
+            : undefined,
+        bill_item_ids: editIssued
+          ? undefined
+          : selectedRef.length
+            ? selectedRef.map((r) => r.itemId)
+            : undefined,
         items: saveItems,
         created_at: quotationDate,
       });
       const saved = res.data as unknown as { id: number; code: string };
       const quotationId = saved.id;
 
-      // Persist the final batch's individual items (log-only → not added to
-      // processed) so page 1 lists every item after reload and when reprinted later.
-      // Weight/amount mirror the gold portion only, consistent with the bill's
-      // processed aggregates; the items JSON still carries every metal.
-      if (billIds.length > 0 && quotation.length > 0) {
+      // Persist the keyed lines for page-1 reprints. A delivery log attaches to a
+      // bill row, so only log to a bill that ends up issued: a FULLY-ticked bill.
+      // (A partially-ticked bill is split server-side and we don't know the new id
+      // — those reprints fall back to the quotation's consolidated lines.)
+      const logTargetBill = editIssued
+        ? Number(billId)
+        : tickedBillIds.find((bid) =>
+            referenceItems
+              .filter((r) => r.billId === bid)
+              .every((r) => selectedItemIds.has(r.itemId)),
+          );
+      if (logTargetBill && quotation.length > 0) {
         const goldFinal = quotation.filter(isGoldItem);
         const w = goldFinal.reduce((s, i) => s + (i.weight || 0), 0);
         const a = goldFinal.reduce((s, i) => s + i.total, 0);
         try {
-          await api.post(`/bills/${billIds[0]}/partial-deliver`, {
-            weight: w, amount: a, items: quotation, log_only: true,
+          await api.post(`/bills/${logTargetBill}/partial-deliver`, {
+            weight: w,
+            amount: a,
+            items: quotation,
+            log_only: true,
           });
-        } catch { /* non-fatal */ }
+        } catch {
+          /* non-fatal */
+        }
       }
 
       // Upload images grouped by type
@@ -676,7 +712,8 @@ export default function QuotationPage() {
       setShowPostSavePreview(true);
       await refreshUser(); // credit balance changed
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "บันทึกไม่สำเร็จ กรุณาลองใหม่";
+      const msg =
+        err instanceof Error ? err.message : "บันทึกไม่สำเร็จ กรุณาลองใหม่";
       setSaveError(msg);
     } finally {
       setSaving(false);
@@ -704,85 +741,104 @@ export default function QuotationPage() {
   // per layout). Only shown in bill mode when there are submitted items.
   const renderReferenceCard = (extraClass = "") => {
     if (!billId || referenceItems.length === 0) return null;
-    const netTotal = hasBalance ? refTotal - (billBalance ?? 0) : refTotal;
     return (
-      <div className={`flex flex-col gap-y-2 border-1 border-black/10 bg-white/15 shadow-xl backdrop-blur-xl rounded-4xl p-3 shrink-0 ${extraClass}`}>
-        <span className="font-bold text-sm bg-gradient-to-l from-black/90 to-yellow-600 bg-clip-text text-transparent pl-2">
-          รายการที่ลูกค้าส่งมา (อ้างอิง · หลอมแล้ว)
-        </span>
-        {/* Summary: sold total, processed so far, remaining (can go negative) */}
-        <div className="grid grid-cols-2 gap-2">
-          <div className="flex flex-col border-1 border-black/10 bg-black/5 rounded-xl p-1.5">
-            <span className="font-bold text-[10px] text-black/50 pl-1">ราคาเฉลี่ย (บาท)</span>
-            <span className="font-bold text-sm text-yellow-700 pl-1">
-              {(hasBalance && billAvgPrice > 0 && blendedAvgPrice > 0 ? blendedAvgPrice : refAvgPrice).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-            </span>
-            {hasBalance && billAvgPrice > 0 && blendedAvgPrice > 0 && (
-              <span className="font-bold text-[10px] text-black/35 pl-1 mt-0.5">
-                บิลนี้ {refAvgPrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-              </span>
-            )}
-          </div>
-          <div className="flex flex-col border-1 border-black/10 bg-black/5 rounded-xl p-1.5">
-            <span className="font-bold text-[10px] text-black/50 pl-1">ยอดรวมที่ขาย</span>
-            <span className="font-bold text-sm bg-gradient-to-l from-black/90 to-yellow-600 bg-clip-text text-transparent pl-1">
-              {netTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}
-            </span>
-            {hasBalance && (
-              <span className="font-bold text-[10px] text-black/35 pl-1 mt-0.5">
-                {billBalance! > 0
-                  ? `หักจากที่จ่ายเกิน ${billBalance!.toLocaleString(undefined, { minimumFractionDigits: 2 })}`
-                  : `บวกจากที่ขาดไป ${Math.abs(billBalance!).toLocaleString(undefined, { minimumFractionDigits: 2 })}`}
-              </span>
-            )}
-          </div>
-          {processedAmount > 0 && (
-            <>
-              <div className="flex flex-col border-1 border-blue-200 bg-blue-50 rounded-xl p-1.5">
-                <span className="font-bold text-[10px] text-black/50 pl-1">ส่งไปแล้ว</span>
-                <span className="font-bold text-sm text-blue-700 pl-1">
-                  {processedAmount.toLocaleString(undefined, { minimumFractionDigits: 2 })}
-                </span>
-              </div>
-              <div className={`flex flex-col border-1 rounded-xl p-1.5 ${(refTotal - processedAmount) < 0 ? "border-red-200 bg-red-50" : "border-green-200 bg-green-50"}`}>
-                <span className="font-bold text-[10px] text-black/50 pl-1">คงเหลือ</span>
-                <span className={`font-bold text-sm pl-1 ${(refTotal - processedAmount) < 0 ? "text-red-600" : "text-green-700"}`}>
-                  {(refTotal - processedAmount).toLocaleString(undefined, { minimumFractionDigits: 2 })}
-                </span>
-              </div>
-            </>
-          )}
-          {/* Non-gold rounds live only in the delivery-log items (not in
-              the bill's gold aggregates) — surface them so they don't
-              look lost after a reload. */}
-          {nonGoldPriorTotal > 0 && (
-            <div className="flex flex-col border-1 border-purple-200 bg-purple-50 rounded-xl p-1.5">
-              <span className="font-bold text-[10px] text-black/50 pl-1">โลหะอื่นรอบก่อน</span>
-              <span className="font-bold text-sm text-purple-700 pl-1">
-                {nonGoldPriorTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}
-              </span>
-            </div>
+      <div
+        className={`flex flex-col gap-y-2 border-1 border-black/10 bg-white/15 shadow-xl backdrop-blur-xl rounded-4xl p-3 shrink-0 ${extraClass}`}
+      >
+        <div className="flex items-center justify-between pl-2 pr-1">
+          <span className="font-bold text-sm bg-gradient-to-l from-black/90 to-yellow-600 bg-clip-text text-transparent">
+            รายการที่ลูกค้าส่งมา
+          </span>
+          {!editIssued && (
+            <button
+              type="button"
+              onClick={pickerDisc.onOpen}
+              className="flex items-center gap-x-1 text-[11px] font-bold text-yellow-700 hover:text-yellow-800 shrink-0 border-1 border-yellow-500/30 bg-yellow-500/10 rounded-full px-2.5 py-1"
+            >
+              <ListChecks size={13} /> แก้ไขรายการ
+            </button>
           )}
         </div>
+        {/* Summary of the TICKED items — these define this round's locked price. */}
+        <div className="grid grid-cols-3 max-md:grid-cols-2 gap-2">
+          <div className="flex flex-col border-1 border-black/10 bg-black/5 rounded-xl p-1.5">
+            <span className="font-bold text-[10px] text-black/50 pl-1">
+              เลือกแล้ว
+            </span>
+            <span className="font-bold text-sm bg-gradient-to-l from-black/90 to-yellow-600 bg-clip-text text-transparent pl-1">
+              {selectedItemIds.size}/{referenceItems.length} รายการ
+            </span>
+          </div>
+          <div className="flex flex-col border-1 border-black/10 bg-black/5 rounded-xl p-1.5">
+            <span className="font-bold text-[10px] text-black/50 pl-1">
+              ราคาเฉลี่ย (บาท)
+            </span>
+            <span className="font-bold text-sm text-yellow-700 pl-1">
+              {selAvgPrice > 0
+                ? selAvgPrice.toLocaleString(undefined, {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2,
+                  })
+                : "-"}
+            </span>
+          </div>
+          <div className="flex flex-col border-1 border-black/10 bg-black/5 rounded-xl p-1.5">
+            <span className="font-bold text-[10px] text-black/50 pl-1">
+              ยอดที่เลือก
+            </span>
+            <span className="font-bold text-sm bg-gradient-to-l from-black/90 to-yellow-600 bg-clip-text text-transparent pl-1">
+              {selTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+            </span>
+            <span className="font-bold text-[10px] text-black/35 pl-1 mt-0.5">
+              น้ำหนัก{" "}
+              {selWeight.toLocaleString(undefined, {
+                maximumFractionDigits: 4,
+              })}
+            </span>
+          </div>
+        </div>
         <div className="flex flex-col gap-y-1 overflow-y-auto scrollbar-hide">
-          {referenceItems.map((it, i) => (
-            <div key={it.itemId} className="flex items-center justify-between gap-x-2 bg-black/5 border border-black/10 rounded-xl px-3 py-2 text-xs">
-              <div className="flex flex-col min-w-0">
-                <span className="text-black/70 font-bold truncate">{i + 1}. {it.typeName}</span>
-                <span className="text-black/50 text-[10px] whitespace-nowrap">
-                  ราคา {it.price.toLocaleString()} · น้ำหนัก {it.weight} · รวม {it.total.toLocaleString()} บาท
-                </span>
-              </div>
-              <button
-                type="button"
-                title="ลบรายการนี้ออกจากบิลลูกค้า"
-                onClick={() => setRemovingRef(it)}
-                className="h-5 w-5 shrink-0 bg-gradient-to-br from-red-600/50 to-transparent border-1 border-black/10 rounded-full flex items-center justify-center"
+          {referenceItems.map((it, i) => {
+            const ticked = selectedItemIds.has(it.itemId);
+            return (
+              <div
+                key={it.itemId}
+                className={`flex items-center justify-between gap-x-2 border rounded-xl px-2 py-2 text-xs transition-colors ${ticked ? "bg-yellow-500/10 border-yellow-500/30" : "bg-black/5 border-black/10 opacity-50"}`}
               >
-                <X size={13} className="text-red-600" />
-              </button>
-            </div>
-          ))}
+                <div className="flex items-center gap-x-2 min-w-0">
+                  <div
+                    className={`h-4 w-4 shrink-0 rounded-full border flex items-center justify-center ${ticked ? "bg-yellow-500/80 border-yellow-600" : "border-black/20"}`}
+                  >
+                    {ticked && (
+                      <Check size={11} className="text-white" strokeWidth={3} />
+                    )}
+                  </div>
+                  <div className="flex flex-col min-w-0">
+                    <span className="text-black/70 font-bold truncate">
+                      {i + 1}. {it.typeName}
+                      {!ticked && (
+                        <span className="ml-1 text-[9px] font-normal text-black/40">
+                          (รอรอบหน้า)
+                        </span>
+                      )}
+                    </span>
+                    <span className="text-black/50 text-[10px] whitespace-nowrap">
+                      ราคา {it.price.toLocaleString()} · น้ำหนัก {it.weight} ·
+                      รวม {it.total.toLocaleString()} บาท
+                    </span>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  title="ลบรายการนี้ออกจากบิลลูกค้า"
+                  onClick={() => setRemovingRef(it)}
+                  className="h-5 w-5 shrink-0 bg-gradient-to-br from-red-600/50 to-transparent border-1 border-black/10 rounded-full flex items-center justify-center"
+                >
+                  <X size={13} className="text-red-600" />
+                </button>
+              </div>
+            );
+          })}
         </div>
       </div>
     );
@@ -796,7 +852,8 @@ export default function QuotationPage() {
           <Receipt size={16} className="text-blue-600 shrink-0" />
           <span className="text-sm font-bold text-blue-700 flex-1">
             ออกบิลให้ลูกค้า{billCustomer ? ` : ${billCustomer}` : ""}
-            {billIds.length > 1 ? ` (${billIds.length} รายการ)` : ""} — กรอกรายการใหม่จากทองที่หลอมเสร็จ
+            {billIds.length > 1 ? ` (${billIds.length} รายการ)` : ""} —
+            กรอกรายการใหม่จากทองที่หลอมเสร็จ
           </span>
           {hasPermission("bills.approve") && (
             <Button
@@ -819,7 +876,9 @@ export default function QuotationPage() {
             onOpenList={() => setListOpen(true)}
             quotationCount={quotation.length}
             lockMeltType={!!billId}
-            forcedPrice={effectiveForcedPrice > 0 ? effectiveForcedPrice : undefined}
+            forcedPrice={
+              effectiveForcedPrice > 0 ? effectiveForcedPrice : undefined
+            }
           />
         </div>
         {/* Right column: reference card (customer's submitted items) above the quote card */}
@@ -840,7 +899,9 @@ export default function QuotationPage() {
       <div
         onClick={() => setListOpen(false)}
         className={`lg:hidden fixed inset-0 z-40 bg-black/50 backdrop-blur-sm transition-opacity duration-300 ${
-          listOpen ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"
+          listOpen
+            ? "opacity-100 pointer-events-auto"
+            : "opacity-0 pointer-events-none"
         }`}
       />
 
@@ -875,7 +936,10 @@ export default function QuotationPage() {
               </div>
             ) : (
               quotation.map((item, index) => (
-                <div key={index} className="flex flex-col w-full border-1 border-black/10 bg-black/5 backdrop-blur-xl rounded-2xl p-3">
+                <div
+                  key={index}
+                  className="flex flex-col w-full border-1 border-black/10 bg-black/5 backdrop-blur-xl rounded-2xl p-3"
+                >
                   <div className="flex w-full justify-between mb-2">
                     <span className="font-bold text-sm bg-gradient-to-l from-black/90 to-yellow-600 bg-clip-text text-transparent pl-1">
                       {index + 1}. {item.typeName}
@@ -896,9 +960,16 @@ export default function QuotationPage() {
                       { label: "ต่อกรัม", value: item.perGram.toFixed(2) },
                       { label: "รวม", value: item.total.toLocaleString() },
                     ].map((f) => (
-                      <div key={f.label} className="flex flex-col border-1 border-black/10 bg-black/5 rounded-xl p-1">
-                        <span className="font-bold text-[10px] text-black/50 pl-1">{f.label}</span>
-                        <span className="font-bold text-xs bg-gradient-to-l from-black/90 to-yellow-600 bg-clip-text text-transparent pl-1">{f.value}</span>
+                      <div
+                        key={f.label}
+                        className="flex flex-col border-1 border-black/10 bg-black/5 rounded-xl p-1"
+                      >
+                        <span className="font-bold text-[10px] text-black/50 pl-1">
+                          {f.label}
+                        </span>
+                        <span className="font-bold text-xs bg-gradient-to-l from-black/90 to-yellow-600 bg-clip-text text-transparent pl-1">
+                          {f.value}
+                        </span>
                       </div>
                     ))}
                   </div>
@@ -910,7 +981,10 @@ export default function QuotationPage() {
           {/* Save button */}
           <button
             disabled={quotation.length === 0 || saving}
-            onClick={() => { setListOpen(false); handleRequestSave(); }}
+            onClick={() => {
+              setListOpen(false);
+              handleRequestSave();
+            }}
             className="w-full bg-gradient-to-bl from-transparent to-yellow-600/50 border-1 border-black/10 font-bold text-sm py-3 rounded-2xl flex items-center justify-center gap-x-2 disabled:opacity-40 disabled:cursor-not-allowed"
           >
             <Save size={15} />
@@ -918,70 +992,6 @@ export default function QuotationPage() {
           </button>
         </div>
       </div>
-
-      {/* Delivery choice: รอส่งเพิ่ม vs บันทึกเลย — shown in bill mode only */}
-      <Modal
-        isOpen={showDeliveryChoice}
-        onOpenChange={setShowDeliveryChoice}
-        size="sm"
-        classNames={{ base: "rounded-3xl border-1 border-black/10 shadow-2xl" }}
-      >
-        <ModalContent>
-          {(onClose) => (
-            <>
-              <ModalHeader className="flex flex-col gap-0.5">
-                <div className="flex items-center gap-2">
-                  <Truck size={18} className="text-yellow-600" />
-                  <span className="font-bold text-base bg-gradient-to-l from-black/90 to-yellow-600 bg-clip-text text-transparent">
-                    บันทึกทองที่หลอม
-                  </span>
-                </div>
-                <span className="text-xs font-normal text-black/50">เลือกการดำเนินการสำหรับรายการนี้</span>
-              </ModalHeader>
-              <ModalBody className="gap-y-3">
-                {partialError && (
-                  <div className="text-red-500 text-sm bg-red-50 border border-red-200 rounded-xl px-4 py-2">
-                    {partialError}
-                  </div>
-                )}
-                <div className="flex flex-col gap-y-2">
-                  <div className="flex flex-col border-1 border-black/10 bg-black/5 rounded-2xl p-3 gap-y-1">
-                    <span className="font-bold text-sm text-black/70">น้ำหนักรวม</span>
-                    <span className="font-bold text-lg bg-gradient-to-l from-black/90 to-yellow-600 bg-clip-text text-transparent">
-                      {quotation.reduce((s, i) => s + (i.weight || 0), 0).toLocaleString(undefined, { maximumFractionDigits: 4 })}
-                    </span>
-                  </div>
-                  <div className="flex flex-col border-1 border-black/10 bg-black/5 rounded-2xl p-3 gap-y-1">
-                    <span className="font-bold text-sm text-black/70">ยอดรวม</span>
-                    <span className="font-bold text-lg bg-gradient-to-l from-black/90 to-yellow-600 bg-clip-text text-transparent">
-                      {quotation.reduce((s, i) => s + i.total, 0).toLocaleString(undefined, { minimumFractionDigits: 2 })} บาท
-                    </span>
-                  </div>
-                </div>
-              </ModalBody>
-              <ModalFooter className="flex-col gap-y-2">
-                <Button
-                  className="w-full bg-gradient-to-r from-blue-500 to-blue-600 text-white font-bold"
-                  onPress={handlePartialDeliver}
-                  isLoading={partialSaving}
-                >
-                  รอส่งเพิ่ม
-                </Button>
-                <Button
-                  className="w-full bg-gradient-to-r from-[#c09c42] to-yellow-600 text-white font-bold"
-                  onPress={() => { onClose(); setShowTerms(true); }}
-                  isDisabled={partialSaving}
-                >
-                  บันทึกเลย (ออกบิล)
-                </Button>
-                <Button variant="light" onPress={onClose} isDisabled={partialSaving} className="w-full">
-                  ยกเลิก
-                </Button>
-              </ModalFooter>
-            </>
-          )}
-        </ModalContent>
-      </Modal>
 
       {/* Rules + signature step — shown before the quotation preview */}
       <Modal
@@ -998,65 +1008,94 @@ export default function QuotationPage() {
                 <span className="font-bold text-lg bg-gradient-to-l from-black/90 to-yellow-600 bg-clip-text text-transparent">
                   กฎและรายละเอียดการรับซื้อทอง เงิน และนาก
                 </span>
-                <span className="text-xs font-normal text-black/50">กรุณาอ่านและลงลายมือชื่อก่อนดำเนินการต่อ</span>
+                <span className="text-xs font-normal text-black/50">
+                  กรุณาอ่านและลงลายมือชื่อก่อนดำเนินการต่อ
+                </span>
               </ModalHeader>
               <ModalBody className="px-3">
                 {/* The rules rendered as an A5 paper document (with live signature) */}
-                <TermsForm signatureImage={signatureDataUrl} signerName={signerName} onPrint={() => window.print()} />
+                <TermsForm
+                  signatureImage={signatureDataUrl}
+                  signerName={signerName}
+                  onPrint={() => window.print()}
+                />
 
                 {/* Signature input — ผู้ขาย/เจ้าของสินทรัพย์ */}
                 <div className="flex flex-col gap-y-2 mt-4">
-                  <label className="block text-sm font-bold text-black/70">เซ็นชื่อ ผู้ขาย / เจ้าของสินทรัพย์</label>
+                  <label className="block text-sm font-bold text-black/70">
+                    เซ็นชื่อ ผู้ขาย / เจ้าของสินทรัพย์
+                  </label>
 
                   {/* Suggestion: fill signer fields from the customer's registered profile */}
-                  {customerProfile && (customerProfile.name || customerProfile.phone) && (
-                    <div className="flex flex-col gap-2 border-1 border-[#c09c42]/30 bg-[#c09c42]/5 rounded-2xl p-3">
-                      <div className="flex items-center gap-x-1.5 text-xs font-bold text-[#c09c42]">
-                        <UserCheck size={14} /> ข้อมูลลูกค้าที่ลงทะเบียนไว้
-                      </div>
-                      <div className="text-xs text-black/60 leading-relaxed">
-                        {customerProfile.name || "-"}
-                        {customerProfile.phone ? ` · ${customerProfile.phone}` : ""}
-                        {customerProfile.address ? <div className="text-black/40">{customerProfile.address}</div> : null}
-                        {customerProfile.tax_id ? <div className="text-black/40">เลขภาษี: {customerProfile.tax_id}</div> : null}
-                      </div>
-
-                      {/* Choose which name to put as the signer (default: person) */}
-                      <div className="flex flex-col gap-1">
-                        <span className="text-[11px] font-bold text-black/50">ใช้ชื่อผู้เซ็นเป็น</span>
-                        <div className="flex gap-1.5">
-                          <button
-                            type="button"
-                            onClick={() => setNameSource("person")}
-                            className={`text-xs font-bold px-3 py-1 rounded-full border-1 transition-colors ${nameSource === "person" ? "bg-[#c09c42] text-white border-[#c09c42]" : "bg-white/60 text-black/60 border-black/10"}`}
-                          >
-                            ชื่อลูกค้า
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setNameSource("company")}
-                            disabled={!customerProfile.store_name}
-                            className={`text-xs font-bold px-3 py-1 rounded-full border-1 transition-colors disabled:opacity-40 ${nameSource === "company" ? "bg-[#c09c42] text-white border-[#c09c42]" : "bg-white/60 text-black/60 border-black/10"}`}
-                          >
-                            ชื่อบริษัท{customerProfile.store_name ? ` (${customerProfile.store_name})` : ""}
-                          </button>
+                  {customerProfile &&
+                    (customerProfile.name || customerProfile.phone) && (
+                      <div className="flex flex-col gap-2 border-1 border-[#c09c42]/30 bg-[#c09c42]/5 rounded-2xl p-3">
+                        <div className="flex items-center gap-x-1.5 text-xs font-bold text-[#c09c42]">
+                          <UserCheck size={14} /> ข้อมูลลูกค้าที่ลงทะเบียนไว้
                         </div>
-                      </div>
+                        <div className="text-xs text-black/60 leading-relaxed">
+                          {customerProfile.name || "-"}
+                          {customerProfile.phone
+                            ? ` · ${customerProfile.phone}`
+                            : ""}
+                          {customerProfile.address ? (
+                            <div className="text-black/40">
+                              {customerProfile.address}
+                            </div>
+                          ) : null}
+                          {customerProfile.tax_id ? (
+                            <div className="text-black/40">
+                              เลขภาษี: {customerProfile.tax_id}
+                            </div>
+                          ) : null}
+                        </div>
 
-                      <Button
-                        size="sm"
-                        variant="flat"
-                        className="self-start border-1 border-[#c09c42]/30 bg-white/60 font-bold text-[#c09c42]"
-                        onPress={() => {
-                          if (!customerProfile) return;
-                          setSignerName(nameSource === "company" && customerProfile.store_name ? customerProfile.store_name : customerProfile.name);
-                          setSignerPhone(customerProfile.phone);
-                        }}
-                      >
-                        ใช้ข้อมูลที่ลงทะเบียนไว้
-                      </Button>
-                    </div>
-                  )}
+                        {/* Choose which name to put as the signer (default: person) */}
+                        <div className="flex flex-col gap-1">
+                          <span className="text-[11px] font-bold text-black/50">
+                            ใช้ชื่อผู้เซ็นเป็น
+                          </span>
+                          <div className="flex gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => setNameSource("person")}
+                              className={`text-xs font-bold px-3 py-1 rounded-full border-1 transition-colors ${nameSource === "person" ? "bg-[#c09c42] text-white border-[#c09c42]" : "bg-white/60 text-black/60 border-black/10"}`}
+                            >
+                              ชื่อลูกค้า
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setNameSource("company")}
+                              disabled={!customerProfile.store_name}
+                              className={`text-xs font-bold px-3 py-1 rounded-full border-1 transition-colors disabled:opacity-40 ${nameSource === "company" ? "bg-[#c09c42] text-white border-[#c09c42]" : "bg-white/60 text-black/60 border-black/10"}`}
+                            >
+                              ชื่อบริษัท
+                              {customerProfile.store_name
+                                ? ` (${customerProfile.store_name})`
+                                : ""}
+                            </button>
+                          </div>
+                        </div>
+
+                        <Button
+                          size="sm"
+                          variant="flat"
+                          className="self-start border-1 border-[#c09c42]/30 bg-white/60 font-bold text-[#c09c42]"
+                          onPress={() => {
+                            if (!customerProfile) return;
+                            setSignerName(
+                              nameSource === "company" &&
+                                customerProfile.store_name
+                                ? customerProfile.store_name
+                                : customerProfile.name,
+                            );
+                            setSignerPhone(customerProfile.phone);
+                          }}
+                        >
+                          ใช้ข้อมูลที่ลงทะเบียนไว้
+                        </Button>
+                      </div>
+                    )}
 
                   <Input
                     size="sm"
@@ -1064,7 +1103,10 @@ export default function QuotationPage() {
                     label="วันที่ในเอกสาร"
                     value={quotationDate}
                     onValueChange={setQuotationDate}
-                    classNames={{ inputWrapper: "bg-gradient-to-br from-black/10 to-transparent border-1 border-black/10 rounded-2xl" }}
+                    classNames={{
+                      inputWrapper:
+                        "bg-gradient-to-br from-black/10 to-transparent border-1 border-black/10 rounded-2xl",
+                    }}
                   />
                   <div className="grid grid-cols-2 gap-2">
                     <Input
@@ -1072,30 +1114,46 @@ export default function QuotationPage() {
                       label="ชื่อผู้เซ็น"
                       value={signerName}
                       onValueChange={setSignerName}
-                      classNames={{ inputWrapper: "bg-gradient-to-br from-black/10 to-transparent border-1 border-black/10 rounded-2xl" }}
+                      classNames={{
+                        inputWrapper:
+                          "bg-gradient-to-br from-black/10 to-transparent border-1 border-black/10 rounded-2xl",
+                      }}
                     />
                     <Input
                       size="sm"
                       label="เบอร์โทร"
                       value={signerPhone}
                       onValueChange={setSignerPhone}
-                      classNames={{ inputWrapper: "bg-gradient-to-br from-black/10 to-transparent border-1 border-black/10 rounded-2xl" }}
+                      classNames={{
+                        inputWrapper:
+                          "bg-gradient-to-br from-black/10 to-transparent border-1 border-black/10 rounded-2xl",
+                      }}
                     />
                   </div>
 
                   {usingPrevSig && signatureDataUrl ? (
                     // Reusing the customer's previous signature — show it with an option to draw a new one.
                     <div className="flex flex-col gap-y-2">
-                      <div className="relative rounded-2xl border-2 border-[#c09c42]/40 bg-white overflow-hidden flex items-center justify-center" style={{ height: 180 }}>
+                      <div
+                        className="relative rounded-2xl border-2 border-[#c09c42]/40 bg-white overflow-hidden flex items-center justify-center"
+                        style={{ height: 180 }}
+                      >
                         {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src={signatureDataUrl} alt="ลายเซ็นเดิม" className="max-h-full max-w-full object-contain" />
+                        <img
+                          src={signatureDataUrl}
+                          alt="ลายเซ็นเดิม"
+                          className="max-h-full max-w-full object-contain"
+                        />
                         <span className="absolute top-2 left-2 text-[10px] font-bold text-[#c09c42] bg-white/80 rounded-full px-2 py-0.5 border-1 border-[#c09c42]/30">
                           ใช้ลายเซ็นเดิม
                         </span>
                       </div>
                       <button
                         type="button"
-                        onClick={() => { setUsingPrevSig(false); setSignatureDataUrl(null); }}
+                        onClick={() => {
+                          setUsingPrevSig(false);
+                          setSignatureDataUrl(null);
+                        }}
                         className="self-end flex items-center gap-x-1.5 text-xs font-bold text-[#c09c42] hover:text-yellow-700"
                       >
                         <PenLine size={14} /> เซ็นใหม่
@@ -1109,7 +1167,12 @@ export default function QuotationPage() {
                           variant="flat"
                           className="self-start border-1 border-[#c09c42]/30 bg-[#c09c42]/5 font-bold text-[#c09c42]"
                           startContent={<PenLine size={14} />}
-                          onPress={() => { setSignatureDataUrl(`${API_BASE}${prevSignatureUrl}`); setUsingPrevSig(true); }}
+                          onPress={() => {
+                            setSignatureDataUrl(
+                              `${API_BASE}${prevSignatureUrl}`,
+                            );
+                            setUsingPrevSig(true);
+                          }}
                         >
                           ใช้ลายเซ็นเดิม
                         </Button>
@@ -1166,23 +1229,37 @@ export default function QuotationPage() {
                       <Store size={14} /> หัวใบเสร็จ (ร้าน / สาขา)
                     </div>
                     {!noHeader && <StoreBranchSelector />}
-                    <Checkbox size="sm" isSelected={noHeader} onValueChange={setNoHeader}>
-                      <span className="text-xs text-black/60">ออกใบโดยไม่มีหัวใบเสร็จ</span>
+                    <Checkbox
+                      size="sm"
+                      isSelected={noHeader}
+                      onValueChange={setNoHeader}
+                    >
+                      <span className="text-xs text-black/60">
+                        ออกใบโดยไม่มีหัวใบเสร็จ
+                      </span>
                     </Checkbox>
                   </div>
                 )}
                 {/* Typed image uploads — before/after side by side */}
                 <div className="grid grid-cols-2 gap-3 mb-3">
-                  <ImageUploadGroup label="รูปก่อนหลอม (ไม่บังคับ)" files={beforeFiles} setFiles={setBeforeFiles} />
-                  <ImageUploadGroup label="รูปบนตราชั่ง / หลังหลอม (ไม่บังคับ)" files={afterFiles} setFiles={setAfterFiles} />
+                  <ImageUploadGroup
+                    label="รูปก่อนหลอม (ไม่บังคับ)"
+                    files={beforeFiles}
+                    setFiles={setBeforeFiles}
+                  />
+                  <ImageUploadGroup
+                    label="รูปบนตราชั่ง / หลังหลอม (ไม่บังคับ)"
+                    files={afterFiles}
+                    setFiles={setAfterFiles}
+                  />
                 </div>
                 <PreviewQuote
                   hidePrint
                   items={previewItems}
                   page1Items={page1Items}
                   store={headerStore}
-                  customerName={signerName}
-                  customerPhone={signerPhone}
+                  customerName={previewCustomerName}
+                  customerPhone={previewCustomerPhone}
                   customerAddress={customerProfile?.address}
                   customerTaxId={customerProfile?.tax_id}
                   date={quotationDate}
@@ -1195,25 +1272,39 @@ export default function QuotationPage() {
                 {/* Summary: weight and total of this quotation */}
                 <div className="mt-3 grid grid-cols-2 gap-2">
                   <div className="flex flex-col border-1 border-black/10 bg-black/5 rounded-2xl p-3">
-                    <span className="text-[10px] font-bold text-black/50">น้ำหนักรวม</span>
+                    <span className="text-[10px] font-bold text-black/50">
+                      น้ำหนักรวม
+                    </span>
                     <span className="font-bold text-sm bg-gradient-to-l from-black/90 to-yellow-600 bg-clip-text text-transparent">
-                      {totalWeight.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                      {totalWeight.toLocaleString(undefined, {
+                        maximumFractionDigits: 2,
+                      })}
                     </span>
                   </div>
                   <div className="flex flex-col border-1 border-black/10 bg-black/5 rounded-2xl p-3">
-                    <span className="text-[10px] font-bold text-black/50">ยอดรวม (บาท)</span>
+                    <span className="text-[10px] font-bold text-black/50">
+                      ยอดรวม (บาท)
+                    </span>
                     <span className="font-bold text-sm bg-gradient-to-l from-black/90 to-yellow-600 bg-clip-text text-transparent">
-                      {totalAmount.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                      {totalAmount.toLocaleString(undefined, {
+                        minimumFractionDigits: 2,
+                      })}
                     </span>
                   </div>
                 </div>
 
                 {/* PDPA consent — required before saving */}
                 <div className="mt-4 bg-black/5 border-1 border-black/10 rounded-2xl p-3">
-                  <Checkbox size="sm" isSelected={consent} onValueChange={setConsent}>
+                  <Checkbox
+                    size="sm"
+                    isSelected={consent}
+                    onValueChange={setConsent}
+                  >
                     <span className="text-xs text-black/70 leading-relaxed">
-                      ข้าพเจ้ายินยอมให้ร้านเก็บรวบรวม ใช้ และเปิดเผยข้อมูลส่วนบุคคล รวมถึงรูปภาพและลายเซ็น
-                      เพื่อวัตถุประสงค์ในการออกใบเสนอราคาและทำธุรกรรม ตามพระราชบัญญัติคุ้มครองข้อมูลส่วนบุคคล (PDPA)
+                      ข้าพเจ้ายินยอมให้ร้านเก็บรวบรวม ใช้
+                      และเปิดเผยข้อมูลส่วนบุคคล รวมถึงรูปภาพและลายเซ็น
+                      เพื่อวัตถุประสงค์ในการออกใบเสนอราคาและทำธุรกรรม
+                      ตามพระราชบัญญัติคุ้มครองข้อมูลส่วนบุคคล (PDPA)
                     </span>
                   </Checkbox>
                 </div>
@@ -1246,7 +1337,9 @@ export default function QuotationPage() {
           real document number, today's date, and a clear print button. */}
       <Modal
         isOpen={showPostSavePreview}
-        onOpenChange={(open) => { if (!open) handleFinishPostSave(); }}
+        onOpenChange={(open) => {
+          if (!open) handleFinishPostSave();
+        }}
         size="3xl"
         scrollBehavior="inside"
         isDismissable={false}
@@ -1268,8 +1361,8 @@ export default function QuotationPage() {
                   onPrint={() => window.print()}
                   store={headerStore}
                   documentNo={savedQuotation?.code}
-                  customerName={signerName}
-                  customerPhone={signerPhone}
+                  customerName={previewCustomerName}
+                  customerPhone={previewCustomerPhone}
                   customerAddress={customerProfile?.address}
                   customerTaxId={customerProfile?.tax_id}
                   date={quotationDate}
@@ -1311,11 +1404,15 @@ export default function QuotationPage() {
               <ModalBody>
                 <div className="flex flex-col gap-y-3">
                   <p className="text-sm text-black/70">
-                    คุณยังไม่ได้แนบรายการต่อไปนี้ ต้องการบันทึกโดยไม่แนบจริงหรือไม่?
+                    คุณยังไม่ได้แนบรายการต่อไปนี้
+                    ต้องการบันทึกโดยไม่แนบจริงหรือไม่?
                   </p>
                   <ul className="flex flex-col gap-y-1">
                     {missingImages().map((m) => (
-                      <li key={m} className="flex items-center gap-x-2 text-sm bg-amber-50 border border-amber-100 rounded-xl px-3 py-2">
+                      <li
+                        key={m}
+                        className="flex items-center gap-x-2 text-sm bg-amber-50 border border-amber-100 rounded-xl px-3 py-2"
+                      >
                         <span className="text-amber-500">•</span>
                         <span className="font-bold text-black/70">{m}</span>
                       </li>
@@ -1329,7 +1426,10 @@ export default function QuotationPage() {
                 </Button>
                 <Button
                   className="bg-gradient-to-r from-amber-500 to-amber-600 text-white font-bold"
-                  onPress={() => { setShowMissingWarn(false); handleConfirmSave(); }}
+                  onPress={() => {
+                    setShowMissingWarn(false);
+                    handleConfirmSave();
+                  }}
                   isLoading={saving}
                 >
                   บันทึกโดยไม่แนบ
@@ -1359,25 +1459,35 @@ export default function QuotationPage() {
               <ModalBody>
                 <div className="flex flex-col gap-y-3">
                   <p className="text-sm text-black/70">
-                    เครดิตของคุณไม่เพียงพอ การออกใบเสนอราคานี้จะทำให้เครดิตติดลบ ยืนยันที่จะสร้างหรือไม่?
+                    เครดิตของคุณไม่เพียงพอ การออกใบเสนอราคานี้จะทำให้เครดิตติดลบ
+                    ยืนยันที่จะสร้างหรือไม่?
                   </p>
                   <div className="flex flex-col gap-y-1 bg-amber-50 border border-amber-100 rounded-2xl px-4 py-3">
                     <div className="flex justify-between text-sm">
                       <span className="text-black/50">เครดิตคงเหลือ</span>
                       <span className="font-bold text-black">
-                        {credits.toLocaleString(undefined, { minimumFractionDigits: 2 })} บาท
+                        {credits.toLocaleString(undefined, {
+                          minimumFractionDigits: 2,
+                        })}{" "}
+                        บาท
                       </span>
                     </div>
                     <div className="flex justify-between text-sm">
                       <span className="text-black/50">ยอดรวมใบเสนอราคา</span>
                       <span className="font-bold text-black">
-                        {totalAmount.toLocaleString(undefined, { minimumFractionDigits: 2 })} บาท
+                        {totalAmount.toLocaleString(undefined, {
+                          minimumFractionDigits: 2,
+                        })}{" "}
+                        บาท
                       </span>
                     </div>
                     <div className="flex justify-between text-sm border-t border-amber-200 mt-1 pt-1">
                       <span className="text-black/50">เครดิตหลังหัก</span>
                       <span className="font-bold text-red-600">
-                        {(credits - totalAmount).toLocaleString(undefined, { minimumFractionDigits: 2 })} บาท
+                        {(credits - totalAmount).toLocaleString(undefined, {
+                          minimumFractionDigits: 2,
+                        })}{" "}
+                        บาท
                       </span>
                     </div>
                   </div>
@@ -1415,12 +1525,35 @@ export default function QuotationPage() {
         loading={deletingBill}
       />
 
+      {/* แก้ไขรายการ — reopen the tick picker on the quote page */}
+      <BillItemPicker
+        isOpen={pickerDisc.isOpen}
+        onClose={pickerDisc.onClose}
+        items={referenceItems.map((r) => ({
+          billId: r.billId,
+          itemId: r.itemId,
+          typeName: r.typeName,
+          metal: r.metal,
+          price: r.price,
+          weight: r.weight,
+          total: r.total,
+        }))}
+        selected={selectedItemIds}
+        onChange={setSelectedItemIds}
+        onConfirm={pickerDisc.onClose}
+        confirmLabel="เสร็จสิ้น"
+      />
+
       {/* Delete one of the customer's submitted reference items from their bill */}
       <ConfirmDeleteModal
         isOpen={!!removingRef}
         onClose={() => setRemovingRef(null)}
         onConfirm={confirmRemoveReference}
-        name={removingRef ? `รายการ "${removingRef.typeName}" ที่ลูกค้าส่งมา` : undefined}
+        name={
+          removingRef
+            ? `รายการ "${removingRef.typeName}" ที่ลูกค้าส่งมา`
+            : undefined
+        }
         related="รายการนี้จะถูกลบออกจากบิลของลูกค้าจริง และยอดรวมบิล/ยอดขาด-เกินจะถูกคำนวณใหม่ (ถ้าไม่เหลือรายการ บิลจะถูกลบทั้งใบ)"
         loading={removingRefBusy}
       />

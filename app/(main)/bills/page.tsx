@@ -156,11 +156,6 @@ export default function BillsList() {
   // together). Approve/cancel apply to all of them.
   const [groupBillIds, setGroupBillIds] = useState<number[]>([]);
 
-  // Bill balance (debt/credit) for the customer whose bill is open.
-  const [billBalance, setBillBalance] = useState<number | null>(null);
-  const [billBalanceHistory, setBillBalanceHistory] = useState<{ id: number; amount: number; description: string; settled_at?: string | null; created_at: string }[]>([]);
-  // ประวัติขาด/เกิน — collapsed shows only the first 3 rows.
-  const [balanceHistoryExpanded, setBalanceHistoryExpanded] = useState(false);
   // Per-session delivery logs for the open bill.
   const [deliveryLogs, setDeliveryLogs] = useState<{ id: number; weight: number; amount: number; note: string; created_at: string }[]>([]);
   // Itemised lines for the preview's page 1 (from delivery logs) so a reprinted
@@ -254,9 +249,6 @@ export default function BillsList() {
   useEffect(() => { if (canRead) fetchBills(); }, [fetchBills, canRead]);
 
   const openDetail = async (b: BillData, groupIds?: number[]) => {
-    setBillBalance(null);
-    setBillBalanceHistory([]);
-    setBalanceHistoryExpanded(false);
     setDeliveryLogs([]);
     setBillPage1Items([]);
     try {
@@ -264,16 +256,6 @@ export default function BillsList() {
       setDetailB(res.data as unknown as BillData);
     } catch {
       setDetailB(b);
-    }
-    // Balance/history — staff/master view only.
-    if (!isCustomer && b.creator?.id) {
-      api.get(`/bills/balance?user_id=${b.creator.id}`)
-        .then((res) => {
-          const d = res.data as unknown as { balance: number; history: { id: number; amount: number; description: string; settled_at?: string | null; created_at: string }[] };
-          setBillBalance(d.balance ?? 0);
-          setBillBalanceHistory(d.history ?? []);
-        })
-        .catch(() => {});
     }
     // Delivery logs → itemise the preview's page 1 for every viewer (incl. the
     // customer's รอตรวจบิล review) so it breaks items down line-by-line instead of
@@ -702,8 +684,6 @@ export default function BillsList() {
             {!isCustomer && (deliveryLogs.length > 0 || detailB?.issued_quotation) && (() => {
               const issuedTotal = detailB?.issued_quotation?.total_amount ?? 0;
               const lockedTotal = detailB?.total_amount ?? 0;
-              const diff = issuedTotal - lockedTotal;
-              const hasDiff = issuedTotal > 0;
               return (
                 <div className="flex flex-col gap-y-2 border-1 border-black/10 bg-black/5 rounded-2xl p-3 mb-2">
                   <span className="text-xs font-bold text-black/60">การส่งหลอม</span>
@@ -740,68 +720,6 @@ export default function BillsList() {
                     <span className="font-bold text-black/70">{lockedTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })} บาท</span>
                   </div>
 
-                  {/* Net ขาด/เกิน — uses accumulated balance (includes this round) when
-                      loaded. A cleared bill's ledger row is settled (excluded from the
-                      balance), so its "this bill vs prior" breakdown no longer applies. */}
-                  {hasDiff && (() => {
-                    const isCleared = detailB?.status === 14;
-                    const netBalance = billBalance !== null ? billBalance : diff;
-                    const prevBalance = billBalance !== null ? billBalance - diff : 0;
-                    const showBreakdown = billBalance !== null && Math.abs(prevBalance) >= 0.01 && !isCleared;
-                    return (
-                      <>
-                        <div className={`flex items-center justify-between rounded-xl px-3 py-1.5 text-xs border-1 ${netBalance > 0 ? "bg-green-50 border-green-200" : netBalance < 0 ? "bg-red-50 border-red-200" : "bg-black/5 border-black/10"}`}>
-                          <span className={`font-bold ${netBalance > 0 ? "text-green-700" : netBalance < 0 ? "text-red-600" : "text-black/50"}`}>
-                            {netBalance > 0 ? "เกิน" : netBalance < 0 ? "ขาด" : "ตรงกัน"}
-                          </span>
-                          <span className={`font-bold text-base ${netBalance > 0 ? "text-green-700" : netBalance < 0 ? "text-red-600" : "text-black/40"}`}>
-                            {netBalance > 0 ? "+" : ""}{netBalance.toLocaleString(undefined, { minimumFractionDigits: 2 })} บาท
-                          </span>
-                        </div>
-                        {showBreakdown && (
-                          <div className="flex items-center justify-between text-[10px] text-black/40 px-1">
-                            <span>บิลนี้ {diff > 0 ? "+" : ""}{diff.toLocaleString(undefined, { minimumFractionDigits: 2 })} บาท</span>
-                            <span>สะสมก่อนหน้า {prevBalance > 0 ? "+" : ""}{prevBalance.toLocaleString(undefined, { minimumFractionDigits: 2 })} บาท</span>
-                          </div>
-                        )}
-                      </>
-                    );
-                  })()}
-
-                  {/* Debt/credit ledger history — settled rows (เคลียร์แล้ว) no
-                      longer count toward the balance but stay visible. */}
-                  {billBalanceHistory.length > 0 && (
-                    <div className="flex flex-col gap-y-1 pt-1">
-                      <span className="text-[10px] font-bold text-black/40">ประวัติขาด/เกิน</span>
-                      {(balanceHistoryExpanded ? billBalanceHistory : billBalanceHistory.slice(0, 3)).map((h) => (
-                        <div key={h.id} className="flex items-center justify-between gap-x-2 bg-white/60 border border-black/10 rounded-xl px-3 py-1.5 text-xs">
-                          <div className="flex items-center gap-x-2 min-w-0">
-                            <span className="text-black/50 shrink-0">{moment(h.created_at).format("DD/MM/YY")}</span>
-                            <span className="text-black/40 truncate">{h.description}</span>
-                          </div>
-                          <div className="flex items-center gap-x-2 shrink-0">
-                            {h.settled_at && (
-                              <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full border-1 ${STATUS_COLOR[14]}`}>
-                                เคลียร์แล้ว
-                              </span>
-                            )}
-                            <span className={`font-bold ${h.settled_at ? "text-black/30 line-through" : h.amount > 0 ? "text-green-700" : h.amount < 0 ? "text-red-600" : "text-black/40"}`}>
-                              {h.amount > 0 ? "+" : ""}{h.amount.toLocaleString(undefined, { minimumFractionDigits: 2 })} บาท
-                            </span>
-                          </div>
-                        </div>
-                      ))}
-                      {billBalanceHistory.length > 3 && (
-                        <button
-                          type="button"
-                          className="text-[10px] font-bold text-black/40 hover:text-black/60 py-0.5"
-                          onClick={() => setBalanceHistoryExpanded((v) => !v)}
-                        >
-                          {balanceHistoryExpanded ? "ย่อ" : `ดูเพิ่มเติม (${billBalanceHistory.length - 3} รายการ)`}
-                        </button>
-                      )}
-                    </div>
-                  )}
                 </div>
               );
             })()}

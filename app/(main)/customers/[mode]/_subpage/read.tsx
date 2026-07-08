@@ -42,12 +42,6 @@ interface Bill {
   items?: BillItem[];
 }
 
-interface Balance {
-  balance: number;
-  total_weight: number;
-  avg_price: number;
-}
-
 interface BillItem {
   id: number;
   type_name: string;
@@ -140,7 +134,6 @@ export const CustomerDetail = ({ selfMode = false }: { selfMode?: boolean } = {}
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [docs, setDocs] = useState<CustomerDocument[]>([]);
   const [bills, setBills] = useState<Bill[]>([]);
-  const [balance, setBalance] = useState<Balance | null>(null);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState("bills");
   const [uploading, setUploading] = useState(false);
@@ -201,11 +194,8 @@ export const CustomerDetail = ({ selfMode = false }: { selfMode?: boolean } = {}
     setLoading(true);
     try {
       if (selfMode) {
-        // ลูกค้าดูตัวเอง: /bills และ /bills/balance ถูก scope เป็นของลูกค้าที่ล็อกอินอยู่แล้ว
-        const [bRes, balRes] = await Promise.all([
-          api.get<Bill[]>(`/bills?limit=100`).catch(() => null),
-          api.get<Balance>(`/bills/balance`).catch(() => null),
-        ]);
+        // ลูกค้าดูตัวเอง: /bills ถูก scope เป็นของลูกค้าที่ล็อกอินอยู่แล้ว
+        const bRes = await api.get<Bill[]>(`/bills?limit=100`).catch(() => null);
         setCustomer(
           user
             ? { id: user.id, name: user.name, email: user.email, phone: user.phone, avatar: user.avatar, is_active: true }
@@ -213,20 +203,17 @@ export const CustomerDetail = ({ selfMode = false }: { selfMode?: boolean } = {}
         );
         setDocs([]);
         setBills((bRes?.data as unknown as Bill[]) || []);
-        setBalance((balRes?.data as unknown as Balance) || null);
         return;
       }
       if (!customerId) return;
-      const [cRes, dRes, bRes, balRes] = await Promise.all([
+      const [cRes, dRes, bRes] = await Promise.all([
         api.get<Customer>(`/customers/${customerId}`),
         api.get<CustomerDocument[]>(`/customers/${customerId}/documents`),
         api.get<Bill[]>(`/bills?created_by=${customerId}&limit=100`).catch(() => null),
-        api.get<Balance>(`/bills/balance?user_id=${customerId}`).catch(() => null),
       ]);
       setCustomer((cRes.data as unknown as Customer) || null);
       setDocs((dRes.data as unknown as CustomerDocument[]) || []);
       setBills((bRes?.data as unknown as Bill[]) || []);
-      setBalance((balRes?.data as unknown as Balance) || null);
     } catch {
       setCustomer(null);
     } finally {
@@ -365,27 +352,6 @@ export const CustomerDetail = ({ selfMode = false }: { selfMode?: boolean } = {}
             canEdit={canUpdate}
             onImageUpload={handleAvatarUpload}
           />
-
-          {/* ยอดค้าง/เกิน — มุมมองลูกค้า: บวก = เกิน (ร้านค้างลูกค้า), ลบ = ค้าง (ลูกค้าค้างร้าน) */}
-          {balance && (() => {
-            const bal = balance.balance;
-            const isExcess = bal > 0.005;
-            const isOwed = bal < -0.005;
-            return (
-              <div className={`flex flex-col border-1 rounded-xl p-3 gap-y-1 ${isExcess ? "bg-green-50 border-green-200" : isOwed ? "bg-red-50 border-red-200" : "bg-black/5 border-black/10"}`}>
-                <span className="text-[10px] font-bold text-black/50">ยอดค้าง/เกิน</span>
-                <div className="flex items-baseline gap-x-1">
-                  <span className={`font-bold text-lg tabular-nums ${isExcess ? "text-green-700" : isOwed ? "text-red-600" : "text-black/50"}`}>
-                    {bal > 0 ? "+" : ""}{bal.toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                  </span>
-                  <span className="text-[10px] text-black/40">บาท</span>
-                </div>
-                <span className={`text-[10px] font-bold ${isExcess ? "text-green-700/70" : isOwed ? "text-red-600/70" : "text-black/40"}`}>
-                  {isExcess ? "เกิน (ร้านค้างลูกค้า)" : isOwed ? "ค้าง (ลูกค้าค้างร้าน)" : "ตรงกัน"}
-                </span>
-              </div>
-            );
-          })()}
 
           {/* Overview — สรุปรายการที่ลูกค้าส่งเข้ามา รวมทุกบิล */}
           {bills.length > 0 && (
