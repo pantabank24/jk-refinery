@@ -39,6 +39,7 @@ interface IssuedQuotation extends QuotationStoreSnapshot {
   items?: BillItem[];
   images?: { id: number; image_url: string; type?: string }[];
   signer_name?: string;
+  signer_phone?: string;
 }
 
 interface BillData {
@@ -51,6 +52,7 @@ interface BillData {
   items?: BillItem[];
   images?: { id: number; image_url: string; type?: string }[];
   issued_quotation?: IssuedQuotation | null;
+  creator?: { id: number; name: string; phone?: string } | null;
   // Full store relation (preloaded on /bills/:id) — feeds the receipt header.
   store?: (StoreHeaderSnapshot & { id: number; name: string }) | null;
   branch?: { id: number; name: string } | null;
@@ -341,6 +343,8 @@ export default function IssuedBillsPage() {
                       afterImages={urlsOf("after_melt")}
                       previewImages={urlsOf("")}
                       signatureImage={urlsOf("signature")[0] ?? null}
+                      customerName={detailB.issued_quotation?.signer_name || detailB.creator?.name}
+                      customerPhone={detailB.issued_quotation?.signer_phone || detailB.creator?.phone}
                       signerName={detailB.issued_quotation?.signer_name}
                     />
                   </div>

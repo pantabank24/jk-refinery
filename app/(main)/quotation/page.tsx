@@ -20,8 +20,6 @@ import {
   UserCheck,
   PenLine,
   Store,
-  Check,
-  ListChecks,
 } from "lucide-react";
 import {
   Modal,
@@ -41,7 +39,6 @@ import { SalesStatusBanner } from "@/components/sales-status-banner";
 import { SignaturePad } from "@/components/signature-pad";
 import { WebcamCaptureModal } from "@/components/webcam-capture-modal";
 import { ConfirmDeleteModal } from "@/components/confirmDeleteModal";
-import { BillItemPicker } from "./_component/billItemPicker";
 
 const API_BASE =
   process.env.NEXT_PUBLIC_API_URL?.replace("/api/v1", "") ||
@@ -232,8 +229,6 @@ export default function QuotationPage() {
   // Delete the bill being issued — เผื่อกรณีกดเข้ามาผิดหรือบิลนี้ไม่ควรออกแล้ว.
   const deleteBillDisc = useDisclosure();
   const [deletingBill, setDeletingBill] = useState(false);
-  // "แก้ไขรายการ" — reopen the tick picker to change which items go on this round.
-  const pickerDisc = useDisclosure();
 
   type BillItemLite = {
     id: number;
@@ -739,23 +734,39 @@ export default function QuotationPage() {
   // Reference card listing the customer's submitted items — shared between the
   // desktop right column and the mobile drawer (extraClass tunes the height cap
   // per layout). Only shown in bill mode when there are submitted items.
+  const toggleRefItem = (itemId: number) => {
+    setSelectedItemIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(itemId)) next.delete(itemId);
+      else next.add(itemId);
+      return next;
+    });
+  };
+
   const renderReferenceCard = (extraClass = "") => {
     if (!billId || referenceItems.length === 0) return null;
+    const allSelected = selectedItemIds.size === referenceItems.length;
     return (
       <div
         className={`flex flex-col gap-y-2 border-1 border-black/10 bg-white/15 shadow-xl backdrop-blur-xl rounded-4xl p-3 shrink-0 ${extraClass}`}
       >
         <div className="flex items-center justify-between pl-2 pr-1">
           <span className="font-bold text-sm bg-gradient-to-l from-black/90 to-yellow-600 bg-clip-text text-transparent">
-            รายการที่ลูกค้าส่งมา
+            รายการที่ลูกค้าส่งมา — ติ๊กเลือกที่จะออกรอบนี้
           </span>
           {!editIssued && (
             <button
               type="button"
-              onClick={pickerDisc.onOpen}
-              className="flex items-center gap-x-1 text-[11px] font-bold text-yellow-700 hover:text-yellow-800 shrink-0 border-1 border-yellow-500/30 bg-yellow-500/10 rounded-full px-2.5 py-1"
+              onClick={() =>
+                setSelectedItemIds(
+                  allSelected
+                    ? new Set<number>()
+                    : new Set(referenceItems.map((r) => r.itemId)),
+                )
+              }
+              className="text-[11px] font-bold text-yellow-700 hover:text-yellow-800 shrink-0"
             >
-              <ListChecks size={13} /> แก้ไขรายการ
+              {allSelected ? "ไม่เลือกทั้งหมด" : "เลือกทั้งหมด"}
             </button>
           )}
         </div>
@@ -803,16 +814,17 @@ export default function QuotationPage() {
             return (
               <div
                 key={it.itemId}
-                className={`flex items-center justify-between gap-x-2 border rounded-xl px-2 py-2 text-xs transition-colors ${ticked ? "bg-yellow-500/10 border-yellow-500/30" : "bg-black/5 border-black/10 opacity-50"}`}
+                className={`flex items-center justify-between gap-x-2 border rounded-xl px-2 py-2 text-xs transition-colors ${ticked ? "bg-yellow-500/10 border-yellow-500/30" : "bg-black/5 border-black/10 opacity-60"}`}
               >
-                <div className="flex items-center gap-x-2 min-w-0">
-                  <div
-                    className={`h-4 w-4 shrink-0 rounded-full border flex items-center justify-center ${ticked ? "bg-yellow-500/80 border-yellow-600" : "border-black/20"}`}
-                  >
-                    {ticked && (
-                      <Check size={11} className="text-white" strokeWidth={3} />
-                    )}
-                  </div>
+                <div className="flex items-center gap-x-1 min-w-0">
+                  <Checkbox
+                    size="sm"
+                    color="warning"
+                    isSelected={ticked}
+                    onValueChange={() => toggleRefItem(it.itemId)}
+                    isDisabled={editIssued}
+                    aria-label={`เลือก ${it.typeName}`}
+                  />
                   <div className="flex flex-col min-w-0">
                     <span className="text-black/70 font-bold truncate">
                       {i + 1}. {it.typeName}
@@ -1523,25 +1535,6 @@ export default function QuotationPage() {
         name={billCustomer ? `บิลของ ${billCustomer}` : undefined}
         related="รายการสินค้า ประวัติการส่ง และยอดหนี้/เครดิตของบิลนี้จะถูกลบออกจากการคำนวณ"
         loading={deletingBill}
-      />
-
-      {/* แก้ไขรายการ — reopen the tick picker on the quote page */}
-      <BillItemPicker
-        isOpen={pickerDisc.isOpen}
-        onClose={pickerDisc.onClose}
-        items={referenceItems.map((r) => ({
-          billId: r.billId,
-          itemId: r.itemId,
-          typeName: r.typeName,
-          metal: r.metal,
-          price: r.price,
-          weight: r.weight,
-          total: r.total,
-        }))}
-        selected={selectedItemIds}
-        onChange={setSelectedItemIds}
-        onConfirm={pickerDisc.onClose}
-        confirmLabel="เสร็จสิ้น"
       />
 
       {/* Delete one of the customer's submitted reference items from their bill */}

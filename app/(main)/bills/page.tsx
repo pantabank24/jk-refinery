@@ -63,6 +63,7 @@ interface BillData {
     items?: BillItem[];
     images?: { id: number; image_url: string; type?: string }[];
     signer_name?: string;
+    signer_phone?: string;
   } & QuotationStoreSnapshot) | null;
   created_at: string;
 }
@@ -803,6 +804,8 @@ export default function BillsList() {
                   afterImages={urlsOf("after_melt")}
                   previewImages={urlsOf("")}
                   signatureImage={urlsOf("signature")[0] ?? null}
+                  customerName={detailB.issued_quotation?.signer_name || detailB.creator?.name}
+                  customerPhone={detailB.issued_quotation?.signer_phone || detailB.creator?.phone}
                   signerName={detailB.issued_quotation?.signer_name}
                 />
               );

@@ -6,7 +6,7 @@ import { Button } from "@heroui/button";
 import { Spinner } from "@heroui/spinner";
 import { Tabs, Tab } from "@heroui/tabs";
 import { Modal, ModalContent, ModalHeader, ModalBody, ModalFooter, useDisclosure } from "@heroui/modal";
-import { ArrowLeft, Pencil, ShieldOff, Upload, FolderOpen, Trash2, Printer } from "lucide-react";
+import { ArrowLeft, Pencil, ShieldOff, Upload, FolderOpen, Trash2, Printer, Receipt } from "lucide-react";
 import { api } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
 import { CustomerCard } from "../_components/customerCard";
@@ -60,6 +60,7 @@ interface IssuedQuotation extends QuotationStoreSnapshot {
   items?: BillItem[];
   images?: { id: number; image_url: string; type?: string }[];
   signer_name?: string;
+  signer_phone?: string;
 }
 
 interface BillDetail {
@@ -290,8 +291,14 @@ export const CustomerDetail = ({ selfMode = false }: { selfMode?: boolean } = {}
     const amounts: Record<Metal, number> = { gold: 0, silver: 0, platinum: 0, palladium: 0 };
     let total = 0;
     let totalWeight = 0;
+    // Split the sold total by whether the bill is done: สำเร็จ/เคลียร์แล้ว (12/14)
+    // vs still in progress รอออกบิล/รอตรวจบิล (10/11). Cancelled (13) is excluded.
+    let completedTotal = 0;
+    let pendingTotal = 0;
     for (const b of bills) {
       total += b.total_amount || 0;
+      if (b.status === 12 || b.status === 14) completedTotal += b.total_amount || 0;
+      else if (b.status === 10 || b.status === 11) pendingTotal += b.total_amount || 0;
       for (const it of b.items ?? []) {
         totalWeight += it.weight || 0;
         const metal = metalOf(it.type_name);
@@ -301,8 +308,12 @@ export const CustomerDetail = ({ selfMode = false }: { selfMode?: boolean } = {}
         }
       }
     }
-    return { total, totalWeight, count: bills.length, grams, amounts };
+    return { total, completedTotal, pendingTotal, totalWeight, count: bills.length, grams, amounts };
   })();
+
+  // The customer's open "รอออกบิล" bill (status 10), if any — the target when the
+  // master issues a quotation for their pending sale.
+  const pendingBill = bills.find((b) => b.status === 10);
 
   if (!customer) {
     return (
@@ -325,6 +336,18 @@ export const CustomerDetail = ({ selfMode = false }: { selfMode?: boolean } = {}
         <div className="font-bold text-2xl bg-gradient-to-l from-black/90 to-yellow-600 bg-clip-text text-transparent flex-1">
           {selfMode ? "โปรไฟล์ของฉัน" : "รายละเอียดลูกค้า"}
         </div>
+        {/* Issue a quotation for this customer's pending sale — jumps to the quote
+            page keyed to their "รอออกบิล" bill, which loads their submitted items. */}
+        {!selfMode && hasPermission("bills.issue") && pendingBill && (
+          <Button
+            className="bg-gradient-to-r from-[#c09c42] to-yellow-600 text-white rounded-2xl font-bold shadow-md"
+            startContent={<Receipt size={14} />}
+            size="sm"
+            onPress={() => router.push(`/quotation?billId=${pendingBill.id}`)}
+          >
+            ออกใบเสนอราคา
+          </Button>
+        )}
         {canUpdate && (
           <Button
             className="border-1 border-black/10 bg-black/5 backdrop-blur-xl rounded-2xl font-bold shadow-md"
@@ -357,7 +380,10 @@ export const CustomerDetail = ({ selfMode = false }: { selfMode?: boolean } = {}
           {bills.length > 0 && (
             <div className="flex flex-col gap-2">
               <span className="text-xs font-bold text-black/50 pl-1">สรุปรายการที่ส่งเข้ามา</span>
-              <StatCard title="ยอดรวม" value={fmtMoney(overview.total)} unit="บาท" highlight />
+              <div className="grid grid-cols-2 gap-2">
+                <StatCard title="ออกบิลสำเร็จ" value={fmtMoney(overview.completedTotal)} unit="บาท" highlight />
+                <StatCard title="ยังไม่สำเร็จ" value={fmtMoney(overview.pendingTotal)} unit="บาท" />
+              </div>
               <div className="grid grid-cols-2 gap-2">
                 <StatCard title="จำนวนบิล" value={overview.count.toLocaleString("th-TH")} unit="บิล" />
                 <StatCard title="น้ำหนักรวม" value={fmtGram(overview.totalWeight)} unit="กรัม" />
@@ -548,6 +574,8 @@ export const CustomerDetail = ({ selfMode = false }: { selfMode?: boolean } = {}
                       afterImages={urlsOf("after_melt")}
                       previewImages={urlsOf("")}
                       signatureImage={urlsOf("signature")[0] ?? null}
+                      customerName={detailB.issued_quotation?.signer_name || customer?.name}
+                      customerPhone={detailB.issued_quotation?.signer_phone || customer?.phone}
                       signerName={detailB.issued_quotation?.signer_name}
                     />
                   </div>
