@@ -13,7 +13,7 @@ export function MainContent({ children }: { children: React.ReactNode }) {
       <div className="relative flex flex-col h-screen">
         <Navbar onMenuClick={() => setSidebarOpen(true)} />
         <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
-        <main className="flex flex-col h-full w-full px-5 lg:pl-80 pt-20 pb-5">
+        <main className="flex flex-col h-full w-full min-w-0 overflow-auto px-5 lg:pl-80 pt-20 pb-5">
           {children}
         </main>
       </div>

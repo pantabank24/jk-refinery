@@ -1,4 +1,4 @@
-'use client'
+"use client";
 
 import { BoxCard } from "@/components/boxcard";
 import { ArrowUp, ArrowDown, Minus, Plus, List } from "lucide-react";
@@ -20,11 +20,11 @@ import {
 } from "@/lib/gold-calc";
 
 const OPERAND_LABELS: Record<OperandType, string> = {
-  number:  "กำหนดเอง",
-  price:   "ราคาทอง",
+  number: "กำหนดเอง",
+  price: "ราคาทอง",
   percent: "เปอร์เซ็นต์",
-  plus:    "ราคาบวก",
-  weight:  "น้ำหนัก",
+  plus: "ราคาบวก",
+  weight: "น้ำหนัก",
   service: "ค่าบริการ",
 };
 
@@ -38,9 +38,13 @@ const METALS = [
 
 // Default product type for a metal tab. Gold defaults to "ทองหลอม"; other metals
 // just take their (single) type.
-const pickType = (types: GoldType[], metalKey: string): GoldType | undefined => {
+const pickType = (
+  types: GoldType[],
+  metalKey: string,
+): GoldType | undefined => {
   const list = types.filter((t) => (t.metal || "gold") === metalKey);
-  if (metalKey === "gold") return list.find((t) => t.name.includes("หลอม")) ?? list[0];
+  if (metalKey === "gold")
+    return list.find((t) => t.name.includes("หลอม")) ?? list[0];
   return list[0];
 };
 
@@ -76,7 +80,13 @@ interface Props {
   forcedPrice?: number;
 }
 
-export const Calculate = ({ onAdd, onOpenList, quotationCount = 0, lockMeltType, forcedPrice }: Props) => {
+export const Calculate = ({
+  onAdd,
+  onOpenList,
+  quotationCount = 0,
+  lockMeltType,
+  forcedPrice,
+}: Props) => {
   const [goldTypes, setGoldTypes] = useState<GoldType[]>([]);
   const [goldPrice, setGoldPrice] = useState<GoldPrice | null>(null);
   const [silverPrice, setSilverPrice] = useState<SilverPrice | null>(null);
@@ -92,7 +102,8 @@ export const Calculate = ({ onAdd, onOpenList, quotationCount = 0, lockMeltType,
   // Real-time pricing: when the shop is outside association hours and real-time
   // mode is on, gold prices stream live. Only applies to the gold tab.
   const { status: salesStatus } = useSalesStatus();
-  const realtimeActive = salesStatus?.price_mode === "realtime" && metal === "gold";
+  const realtimeActive =
+    salesStatus?.price_mode === "realtime" && metal === "gold";
   // อัปเดตทุก 10 วินาที — ตอนออกใบเสนอราคาไม่ต้องรัวเท่าหน้าดูราคาสด
   const { data: rt, dir: rtDir } = useRealtimeGold(!!realtimeActive, 10000);
   // The forced (blended-avg) price only applies to melted GOLD. Silver / platinum
@@ -114,7 +125,8 @@ export const Calculate = ({ onAdd, onOpenList, quotationCount = 0, lockMeltType,
       : goldPrice;
 
   useEffect(() => {
-    api.get<GoldType[]>("/gold-types")
+    api
+      .get<GoldType[]>("/gold-types")
       .then((res) => {
         const types = (res.data as unknown as GoldType[]) || [];
         setGoldTypes(types);
@@ -125,14 +137,18 @@ export const Calculate = ({ onAdd, onOpenList, quotationCount = 0, lockMeltType,
       })
       .catch(() => {});
 
-    api.get<GoldPrice>("/gold-prices/latest")
+    api
+      .get<GoldPrice>("/gold-prices/latest")
       .then((res) => setGoldPrice((res.data as unknown as GoldPrice) || null))
       .catch(() => {});
 
-    api.get<SilverPrice>("/metal-prices/latest?symbol=XAG")
-      .then((res) => setSilverPrice((res.data as unknown as SilverPrice) || null))
+    api
+      .get<SilverPrice>("/metal-prices/latest?symbol=XAG")
+      .then((res) =>
+        setSilverPrice((res.data as unknown as SilverPrice) || null),
+      )
       .catch(() => {});
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Product types belonging to the active metal tab.
@@ -178,7 +194,7 @@ export const Calculate = ({ onAdd, onOpenList, quotationCount = 0, lockMeltType,
     setPercent(0);
     setPlus(gt.default_plus);
     setPlusType(gt.plus_type ?? 0);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [typeId, goldTypes, goldPrice, silverPrice, forcedPrice, metal]);
 
   // Real-time tick: live-update ONLY the base price (leave percent/plus/weight
@@ -189,7 +205,7 @@ export const Calculate = ({ onAdd, onOpenList, quotationCount = 0, lockMeltType,
     if (!gt) return;
     const p = resolvePrice(gt);
     if (p != null) setPrice(p);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rt, realtimeActive, typeId, goldTypes, forcedPrice]);
 
   const handleMetalChange = (key: string) => {
@@ -203,17 +219,31 @@ export const Calculate = ({ onAdd, onOpenList, quotationCount = 0, lockMeltType,
     label: t.name,
   }));
 
-  const selectedGoldType = goldTypes.find((t) => String(t.id) === typeId) ?? null;
-  const isManualPrice = (selectedGoldType?.metal || "gold") !== "gold" && (selectedGoldType?.metal || "gold") !== "silver";
-  const getTypeName = (id: string) => goldTypes.find((t) => String(t.id) === id)?.name || "ทอง";
+  const selectedGoldType =
+    goldTypes.find((t) => String(t.id) === typeId) ?? null;
+  const isManualPrice =
+    (selectedGoldType?.metal || "gold") !== "gold" &&
+    (selectedGoldType?.metal || "gold") !== "silver";
+  const getTypeName = (id: string) =>
+    goldTypes.find((t) => String(t.id) === id)?.name || "ทอง";
 
-  const hasFormula = selectedGoldType ? parseSteps(selectedGoldType.formula_steps).length > 0 : false;
-  const usedVars: Set<OperandType> = selectedGoldType && hasFormula
-    ? getUsedVars(selectedGoldType)
-    : new Set(["percent", "plus"] as OperandType[]);
+  const hasFormula = selectedGoldType
+    ? parseSteps(selectedGoldType.formula_steps).length > 0
+    : false;
+  const usedVars: Set<OperandType> =
+    selectedGoldType && hasFormula
+      ? getUsedVars(selectedGoldType)
+      : new Set(["percent", "plus"] as OperandType[]);
 
   // Shared with the edit screen — single source of truth for per-gram/total.
-  const { perGram, total } = computeItem({ goldType: selectedGoldType, price, percent, plus, weight, plusType });
+  const { perGram, total } = computeItem({
+    goldType: selectedGoldType,
+    price,
+    percent,
+    plus,
+    weight,
+    plusType,
+  });
 
   const handleAdd = () => {
     if (weight <= 0) return;
@@ -237,58 +267,86 @@ export const Calculate = ({ onAdd, onOpenList, quotationCount = 0, lockMeltType,
 
   // Metal-aware price header values.
   const metalLabel = METALS.find((m) => m.key === metal)?.label ?? "";
-  const hasFeed = metal === "gold" ? !!effGold : metal === "silver" ? !!silverPrice : false;
-  const headerBuy = metal === "gold" ? effGold?.bar_buy : metal === "silver" ? silverPrice?.buy : undefined;
-  const headerSell = metal === "gold" ? effGold?.bar_sell : metal === "silver" ? silverPrice?.sell : undefined;
-  const headerChange = (metal === "gold" ? effGold?.change_today : metal === "silver" ? silverPrice?.change_today : 0) ?? 0;
+  const hasFeed =
+    metal === "gold" ? !!effGold : metal === "silver" ? !!silverPrice : false;
+  const headerBuy =
+    metal === "gold"
+      ? effGold?.bar_buy
+      : metal === "silver"
+        ? silverPrice?.buy
+        : undefined;
+  const headerSell =
+    metal === "gold"
+      ? effGold?.bar_sell
+      : metal === "silver"
+        ? silverPrice?.sell
+        : undefined;
+  const headerChange =
+    (metal === "gold"
+      ? effGold?.change_today
+      : metal === "silver"
+        ? silverPrice?.change_today
+        : 0) ?? 0;
   const headerDate = realtimeActive
     ? `เรียลไทม์ ${salesStatus?.now ?? ""}`.trim()
     : metal === "gold"
-    ? `${goldPrice?.gold_date ?? ""} ${goldPrice?.gold_time ?? ""}`.trim()
-    : metal === "silver"
-    ? `${silverPrice?.price_date ?? ""} ${silverPrice?.price_time ?? ""}`.trim()
-    : "";
+      ? `${goldPrice?.gold_date ?? ""} ${goldPrice?.gold_time ?? ""}`.trim()
+      : metal === "silver"
+        ? `${silverPrice?.price_date ?? ""} ${silverPrice?.price_time ?? ""}`.trim()
+        : "";
 
   // Flash the header price cards green/red on each real-time change.
   const flashClass = realtimeActive
-    ? rtDir === "up" ? "rt-flash-up" : rtDir === "down" ? "rt-flash-down" : ""
+    ? rtDir === "up"
+      ? "rt-flash-up"
+      : rtDir === "down"
+        ? "rt-flash-down"
+        : ""
     : "";
 
   return (
-    <div className=" flex flex-col h-full w-full xl:w-[700px] overflow-hidden">
-      <div className="flex flex-col h-full border-1 border-black/10 bg-black/5  backdrop-blur-xl rounded-4xl p-3 gap-y-2 overflow-y-scroll scrollbar-hide">
-        <Tabs
-          aria-label="โลหะ"
-          selectedKey={metal}
-          onSelectionChange={(k) => handleMetalChange(String(k))}
-          variant="solid"
-          radius="full"
-          classNames={{ tabList: "bg-black/5 border-1 border-black/10", cursor: "bg-gradient-to-l from-transparent to-yellow-600/50" }}
-        >
-          {METALS.map((m) => (
-            <Tab key={m.key} title={<span className="font-bold text-xs">{m.label}</span>} />
-          ))}
-        </Tabs>
-
-        {salesStatus && (
-          <div className="flex justify-end px-1">
-            <PriceModeChip status={salesStatus} />
-          </div>
-        )}
+    <div className=" flex flex-col  w-full xl:w-[700px]  pb-5">
+      <div className="flex flex-col border-1 border-black/10 bg-black/5  backdrop-blur-xl rounded-4xl p-3 gap-y-2 ">
+        <div className=" w-full flex justify-center">
+          <Tabs
+            aria-label="โลหะ"
+            selectedKey={metal}
+            onSelectionChange={(k) => handleMetalChange(String(k))}
+            variant="solid"
+            radius="full"
+            classNames={{
+              tabList: "bg-black/5 border-1 border-black/10",
+              cursor: "bg-gradient-to-l from-transparent to-yellow-600/50",
+            }}
+          >
+            {METALS.map((m) => (
+              <Tab
+                key={m.key}
+                title={<span className="font-bold text-xs">{m.label}</span>}
+              />
+            ))}
+          </Tabs>
+        </div>
 
         {isManualPrice ? (
           <div className="flex flex-row w-full bg-gradient-to-br from-black/10 to-transparent border-1 border-black/10 p-2 rounded-3xl">
-            <span className="text-[10px] font-bold text-black/50">กรอกราคา{metalLabel}ต่อกรัมเองในช่องด้านล่าง</span>
+            <span className="text-[10px] font-bold text-black/50">
+              กรอกราคา{metalLabel}ต่อกรัมเองในช่องด้านล่าง
+            </span>
           </div>
         ) : hasFeed ? (
-          <div className={`flex flex-row w-full bg-gradient-to-br from-black/10 to-transparent border-1 border-black/10 p-2 rounded-3xl`}>
+          <div
+            className={`flex flex-row w-full bg-gradient-to-br from-black/10 to-transparent border-1 border-black/10 p-2 rounded-3xl`}
+          >
             <div className=" flex flex-row w-full justify-between">
               <span className=" text-[10px] font-bold text-black/50">
                 อัปเดท: {headerDate}
               </span>
               <div className=" flex flex-row items-center gap-x-2">
                 {headerChange !== 0 && (
-                  <div className={`flex flex-row items-center ${changeColor(headerChange)}`}>
+                  <div
+                    className={`flex flex-row items-center ${changeColor(headerChange)}`}
+                  >
                     {headerChange > 0 ? (
                       <ArrowUp size={10} className="font-bold" />
                     ) : headerChange < 0 ? (
@@ -301,21 +359,31 @@ export const Calculate = ({ onAdd, onOpenList, quotationCount = 0, lockMeltType,
                     </span>
                   </div>
                 )}
-                <div className={`flex flex-row items-center ${changeColor(headerChange)}`}>
+                <div
+                  className={`flex flex-row items-center ${changeColor(headerChange)}`}
+                >
                   <span className=" text-[10px] font-bold">วันนี้</span>
-                  <span className=" text-[10px] font-bold ml-1">{headerChange > 0 ? "+" : ""}{headerChange}</span>
+                  <span className=" text-[10px] font-bold ml-1">
+                    {headerChange > 0 ? "+" : ""}
+                    {headerChange}
+                  </span>
                 </div>
               </div>
             </div>
           </div>
         ) : (
           <div className="flex flex-row w-full bg-gradient-to-br from-black/10 to-transparent border-1 border-black/10 p-2 rounded-3xl">
-            <span className="text-[10px] font-bold text-black/50">ยังไม่มีข้อมูลราคา{metalLabel}</span>
+            <span className="text-[10px] font-bold text-black/50">
+              ยังไม่มีข้อมูลราคา{metalLabel}
+            </span>
           </div>
         )}
 
         {!isManualPrice && (
-          <div key={realtimeActive ? rt?.version : undefined} className={`w-full grid grid-cols-2 gap-x-2 ${flashClass}`}>
+          <div
+            key={realtimeActive ? rt?.version : undefined}
+            className={`w-full grid grid-cols-2 gap-x-2 ${flashClass}`}
+          >
             <BoxCard
               textColor="bg-gradient-to-l from-black/90 to-yellow-600 bg-clip-text text-transparent"
               flex
@@ -326,19 +394,30 @@ export const Calculate = ({ onAdd, onOpenList, quotationCount = 0, lockMeltType,
               textColor="bg-gradient-to-l from-black/90 to-yellow-600 bg-clip-text text-transparent"
               flex
               title="ราคาขาย (บาท)"
-              value={headerSell !== undefined ? headerSell.toLocaleString() : "-"}
+              value={
+                headerSell !== undefined ? headerSell.toLocaleString() : "-"
+              }
             />
           </div>
         )}
 
-        <span className=" font-bold text-2xl bg-gradient-to-l from-black/90 to-yellow-600 bg-clip-text text-transparent pl-2 mt-5">คำนวณราคา{metalLabel}</span>
+        <span className=" font-bold text-2xl bg-gradient-to-l from-black/90 to-yellow-600 bg-clip-text text-transparent pl-2 flex flex-row justify-between">
+          <div className=" truncate">คำนวณราคา{metalLabel}</div>
+          {salesStatus && <PriceModeChip status={salesStatus} />}
+        </span>
 
         {/* Formula badge */}
         {selectedGoldType && hasFormula && (
-          <div className="flex flex-wrap gap-1 px-1">
+          <div className="flex flex-row gap-1 px-1">
             {parseSteps(selectedGoldType.formula_steps).map((s, i) => (
-              <span key={i} className="text-[10px] px-2 py-0.5 rounded-full border-1 border-yellow-500/30 bg-yellow-500/10 text-yellow-700 font-bold">
-                {i === 0 ? "ราคา" : "ผล"} {s.operator} {s.operand_type === "number" ? s.value.toLocaleString() : (OPERAND_LABELS[s.operand_type] ?? s.operand_type)}
+              <span
+                key={i}
+                className="text-[10px] whitespace-nowrap px-2 py-0.5 rounded-full border-1 border-yellow-500/30 bg-yellow-500/10 text-yellow-700 font-bold"
+              >
+                {i === 0 ? "ราคา" : "ผล"} {s.operator}{" "}
+                {s.operand_type === "number"
+                  ? s.value.toLocaleString()
+                  : (OPERAND_LABELS[s.operand_type] ?? s.operand_type)}
               </span>
             ))}
           </div>
@@ -348,7 +427,9 @@ export const Calculate = ({ onAdd, onOpenList, quotationCount = 0, lockMeltType,
           <DecimalInput
             label={isManualPrice ? `ราคา${metalLabel} (ต่อกรัม)` : "ราคา"}
             value={price}
-            onChange={(n) => { if (!priceForced) setPrice(n); }}
+            onChange={(n) => {
+              if (!priceForced) setPrice(n);
+            }}
             isReadOnly={priceForced}
             maxDecimals={2}
           />
@@ -395,11 +476,7 @@ export const Calculate = ({ onAdd, onOpenList, quotationCount = 0, lockMeltType,
               }
             />
           )}
-          <DecimalInput
-            label="น้ำหนัก"
-            value={weight}
-            onChange={setWeight}
-          />
+          <DecimalInput label="น้ำหนัก" value={weight} onChange={setWeight} />
         </div>
 
         <BoxCard
@@ -419,7 +496,9 @@ export const Calculate = ({ onAdd, onOpenList, quotationCount = 0, lockMeltType,
             className="lg:hidden flex items-center gap-x-2 bg-gradient-to-br from-[#c09c42]/30 to-transparent border-1 border-black/10 rounded-2xl h-14 px-4 font-bold text-sm relative"
           >
             <List size={18} className="text-[#c09c42]" />
-            <span className="bg-gradient-to-l from-black/90 to-yellow-600 bg-clip-text text-transparent">รายการ</span>
+            <span className="bg-gradient-to-l from-black/90 to-yellow-600 bg-clip-text text-transparent">
+              รายการ
+            </span>
             {quotationCount > 0 && (
               <span className="absolute -top-1.5 -right-1.5 bg-yellow-600 text-white text-[10px] font-bold rounded-full w-5 h-5 flex items-center justify-center">
                 {quotationCount}
@@ -437,17 +516,31 @@ export const Calculate = ({ onAdd, onOpenList, quotationCount = 0, lockMeltType,
       </div>
 
       <style jsx>{`
-        .rt-flash-up { animation: rtUp 0.6s ease-out; }
-        .rt-flash-down { animation: rtDown 0.6s ease-out; }
+        .rt-flash-up {
+          animation: rtUp 0.6s ease-out;
+        }
+        .rt-flash-down {
+          animation: rtDown 0.6s ease-out;
+        }
         @keyframes rtUp {
-          0% { background-color: rgba(22,163,74,0.18); border-radius: 1rem; }
-          100% { background-color: transparent; }
+          0% {
+            background-color: rgba(22, 163, 74, 0.18);
+            border-radius: 1rem;
+          }
+          100% {
+            background-color: transparent;
+          }
         }
         @keyframes rtDown {
-          0% { background-color: rgba(220,38,38,0.18); border-radius: 1rem; }
-          100% { background-color: transparent; }
+          0% {
+            background-color: rgba(220, 38, 38, 0.18);
+            border-radius: 1rem;
+          }
+          100% {
+            background-color: transparent;
+          }
         }
       `}</style>
     </div>
   );
-}
+};

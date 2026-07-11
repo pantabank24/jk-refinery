@@ -27,9 +27,14 @@ export default function CreateBillPage() {
   const salesClosed = !!salesStatus && !salesStatus.is_open;
   const [billsOpen, setBillsOpen] = useState<boolean | null>(null);
   useEffect(() => {
-    api.get<{ open: boolean }>("/configs/bills-status")
-      .then((res) => setBillsOpen((res.data as unknown as { open: boolean }).open ?? true))
-      .catch(() => { setBillsOpen(true); });
+    api
+      .get<{ open: boolean }>("/configs/bills-status")
+      .then((res) =>
+        setBillsOpen((res.data as unknown as { open: boolean }).open ?? true),
+      )
+      .catch(() => {
+        setBillsOpen(true);
+      });
   }, []);
   // Creation is customer-only — raw permission, bypassing master's auto-grant.
   const canCreateBill = permissions.includes("bills.create");
@@ -61,7 +66,9 @@ export default function CreateBillPage() {
       <div className="flex flex-col items-center justify-center h-full gap-y-3 text-black/60">
         <Store size={40} className="text-yellow-600/60" />
         <span className="font-bold text-lg">ปิดรับซื้อชั่วคราว</span>
-        <span className="text-sm text-black/40 text-center">ขณะนี้ยังไม่เปิดรับซื้อทอง กรุณาติดต่อเจ้าหน้าที่</span>
+        <span className="text-sm text-black/40 text-center">
+          ขณะนี้ยังไม่เปิดรับซื้อทอง กรุณาติดต่อเจ้าหน้าที่
+        </span>
       </div>
     );
   }
@@ -110,7 +117,8 @@ export default function CreateBillPage() {
       await refreshUnfinishedBills();
       router.push("/bills");
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "บันทึกไม่สำเร็จ กรุณาลองใหม่";
+      const msg =
+        err instanceof Error ? err.message : "บันทึกไม่สำเร็จ กรุณาลองใหม่";
       setSaveError(msg);
     } finally {
       setSaving(false);
@@ -118,13 +126,18 @@ export default function CreateBillPage() {
   };
 
   return (
-    <div className="h-full flex flex-col gap-y-3">
+    <div className=" flex flex-col gap-y-3">
       <SalesStatusBanner status={salesStatus} />
       <div className="flex flex-row justify-start flex-1 min-h-0">
         <BillCalculate onAdd={handleAdd} />
       </div>
 
-      <Modal isOpen={showConfirm} onOpenChange={setShowConfirm} size="sm" backdrop="blur">
+      <Modal
+        isOpen={showConfirm}
+        onOpenChange={setShowConfirm}
+        size="sm"
+        backdrop="blur"
+      >
         <ModalContent>
           {(onClose) => (
             <>
@@ -136,16 +149,23 @@ export default function CreateBillPage() {
               <ModalBody>
                 <div className="flex flex-col gap-y-3">
                   <div className="flex flex-col border-1 border-yellow-200 bg-yellow-50 rounded-2xl p-3 gap-y-1">
-                    <span className="text-xs text-black/50">{pendingItem?.typeName}</span>
+                    <span className="text-xs text-black/50">
+                      {pendingItem?.typeName}
+                    </span>
                     <span className="font-bold text-2xl text-yellow-700">
-                      {pendingItem?.total.toLocaleString(undefined, { minimumFractionDigits: 2 })} บาท
+                      {pendingItem?.total.toLocaleString(undefined, {
+                        minimumFractionDigits: 2,
+                      })}{" "}
+                      บาท
                     </span>
                     <span className="text-xs text-black/40">
-                      น้ำหนัก {pendingItem?.weight} บาท · ราคา {pendingItem?.price.toLocaleString()} บาท/บาท
+                      น้ำหนัก {pendingItem?.weight} บาท · ราคา{" "}
+                      {pendingItem?.price.toLocaleString()} บาท/บาท
                     </span>
                   </div>
                   <p className="text-sm text-black/60 text-center">
-                    ต้องการบันทึกรายการขายนี้หรือไม่? หลังบันทึกต้องรอทางร้านออกบิลให้
+                    ต้องการบันทึกรายการขายนี้หรือไม่?
+                    หลังบันทึกต้องรอทางร้านออกบิลให้
                   </p>
                   {saveError && (
                     <div className="text-red-500 text-sm bg-red-50 border border-red-200 rounded-xl px-4 py-2">

@@ -27,7 +27,15 @@ const toText = (n: number, maxDecimals?: number) => {
 // ("1.", "0.05") without the trailing dot getting stripped on every render.
 // It still reflects external numeric changes (autofill, real-time ticks, resets)
 // as long as they differ from what's typed.
-export function DecimalInput({ label, placeholder = "0", value, onChange, isReadOnly, endContent, maxDecimals }: Props) {
+export function DecimalInput({
+  label,
+  placeholder = "0",
+  value,
+  onChange,
+  isReadOnly,
+  endContent,
+  maxDecimals,
+}: Props) {
   const [text, setText] = useState(() => toText(value, maxDecimals));
 
   // Sync when the external value changes to something other than the current
@@ -41,9 +49,10 @@ export function DecimalInput({ label, placeholder = "0", value, onChange, isRead
 
   const handle = (raw: string) => {
     // Allow only digits and a single decimal point, capped at maxDecimals when set.
-    const pattern = maxDecimals === undefined
-      ? /^\d*\.?\d*$/
-      : new RegExp(`^\\d*\\.?\\d{0,${maxDecimals}}$`);
+    const pattern =
+      maxDecimals === undefined
+        ? /^\d*\.?\d*$/
+        : new RegExp(`^\\d*\\.?\\d{0,${maxDecimals}}$`);
     if (raw !== "" && !pattern.test(raw)) return;
     setText(raw);
     onChange(parseFloat(raw) || 0);
@@ -52,14 +61,21 @@ export function DecimalInput({ label, placeholder = "0", value, onChange, isRead
   return (
     <Input
       labelPlacement="inside"
-      label={label ? <div className="font-bold text-md">{label}</div> : undefined}
+      label={
+        label ? (
+          <div className="font-bold text-md truncate">{label}</div>
+        ) : undefined
+      }
       placeholder={placeholder}
       value={text}
       onValueChange={handle}
       isReadOnly={isReadOnly}
       inputMode="decimal"
       endContent={endContent}
-      classNames={{ inputWrapper: "bg-gradient-to-br from-black/10 to-transparent border-1 border-black/10 rounded-2xl" }}
+      classNames={{
+        inputWrapper:
+          "bg-gradient-to-br from-black/10 to-transparent border-1 border-black/10 rounded-2xl",
+      }}
     />
   );
 }

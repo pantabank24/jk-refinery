@@ -1,7 +1,7 @@
-'use client'
+"use client";
 
 import { BoxCard } from "@/components/boxcard";
-import { ArrowUp, ArrowDown, Minus, Plus, Keyboard } from "lucide-react";
+import { ArrowUp, ArrowDown, Minus, Plus, Keyboard, Send } from "lucide-react";
 import { useState, useEffect } from "react";
 import { QuotationProps } from "../../quotation/_component/quotation";
 import { api } from "@/lib/api";
@@ -24,6 +24,9 @@ interface GoldPrice {
 
 interface Props {
   onAdd: (item: QuotationProps) => void;
+  // Staff selling on behalf of a customer: always allow typing the weight or
+  // stepping by 1, regardless of the customer +/-5 schedule.
+  staffMode?: boolean;
 }
 
 // Weight is in baht (gold weight unit), stepped up/down and cannot be typed:
@@ -36,7 +39,7 @@ const WEIGHT_MAX = 1000;
 // hardcoding an id (ids vary across environments / reseeds).
 const isGoldBar = (t: GoldType) => /แท่ง/.test(t.name) && /96\.5/.test(t.name);
 
-export const BillCalculate = ({ onAdd }: Props) => {
+export const BillCalculate = ({ onAdd, staffMode = false }: Props) => {
   const [goldBar, setGoldBar] = useState<GoldType | null>(null);
   const [goldPrice, setGoldPrice] = useState<GoldPrice | null>(null);
   const [price, setPrice] = useState(0);
@@ -63,16 +66,18 @@ export const BillCalculate = ({ onAdd }: Props) => {
       : goldPrice;
 
   useEffect(() => {
-    api.get<GoldType[]>("/gold-types")
+    api
+      .get<GoldType[]>("/gold-types")
       .then((res) => {
         const types = (res.data as unknown as GoldType[]) || [];
         setGoldBar(types.find(isGoldBar) ?? null);
       })
-      .catch(() => { });
+      .catch(() => {});
 
-    api.get<GoldPrice>("/gold-prices/latest")
+    api
+      .get<GoldPrice>("/gold-prices/latest")
       .then((res) => setGoldPrice((res.data as unknown as GoldPrice) || null))
-      .catch(() => { });
+      .catch(() => {});
   }, []);
 
   // Auto-fill price from the gold bar's price source whenever the feed changes
@@ -86,12 +91,18 @@ export const BillCalculate = ({ onAdd }: Props) => {
       ornament_sell: effGold.ornament_sell,
     };
     setPrice(sourceMap[goldBar.price_source] ?? effGold.bar_buy ?? 0);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [goldBar, goldPrice, rt, realtimeActive]);
 
   // Gold-bar price is quoted per baht-weight, so total = price × weight(บาท).
   // perGram is the per-gram figure (informational, weight-independent).
-  const perGram = computeItem({ goldType: goldBar, price, percent: 0, plus: 0, weight: 1 }).perGram;
+  const perGram = computeItem({
+    goldType: goldBar,
+    price,
+    percent: 0,
+    plus: 0,
+    weight: 1,
+  }).perGram;
   const total = price * weight;
 
   const stepWeight = (dir: 1 | -1) => {
@@ -103,7 +114,9 @@ export const BillCalculate = ({ onAdd }: Props) => {
     });
   };
 
-  const canTypeWeight = !!customWeightStatus?.allowed;
+  // Staff always get the free-entry stepper (type / +-1); customers only get it
+  // when the master's schedule allows it right now.
+  const canTypeWeight = staffMode || !!customWeightStatus?.allowed;
   const handleWeightInput = (v: string) => {
     const clean = v.replace(/[^0-9]/g, "");
     const n = parseInt(clean, 10);
@@ -133,23 +146,21 @@ export const BillCalculate = ({ onAdd }: Props) => {
     v > 0 ? "text-green-800" : v < 0 ? "text-red-600" : "text-black/40";
 
   return (
-    <div className="flex flex-col h-full w-full xl:w-[700px] overflow-hidden">
+    <div className="flex flex-col  w-full xl:w-[700px] mb-5">
       <div className="flex flex-col h-full border-1 border-black/10 bg-black/5 backdrop-blur-xl rounded-4xl p-3 gap-y-2 overflow-y-scroll scrollbar-hide">
-        {salesStatus && (
-          <div className="flex justify-end px-1">
-            <PriceModeChip status={salesStatus} />
-          </div>
-        )}
-
         {effGold ? (
           <div className="flex flex-row w-full bg-gradient-to-br from-black/10 to-transparent border-1 border-black/10 p-2 rounded-3xl">
             <div className="flex flex-row w-full justify-between">
               <span className="text-[10px] font-bold text-black/50">
-                {realtimeActive ? `เรียลไทม์ ${salesStatus?.now ?? ""}` : `อัปเดท: ${effGold.gold_date} ${effGold.gold_time}`}
+                {realtimeActive
+                  ? `เรียลไทม์ ${salesStatus?.now ?? ""}`
+                  : `อัปเดท: ${effGold.gold_date} ${effGold.gold_time}`}
               </span>
               <div className="flex flex-row items-center gap-x-2">
                 {effGold.change_today !== 0 && (
-                  <div className={`flex flex-row items-center ${changeColor(effGold.change_today)}`}>
+                  <div
+                    className={`flex flex-row items-center ${changeColor(effGold.change_today)}`}
+                  >
                     {effGold.change_today > 0 ? (
                       <ArrowUp size={10} className="font-bold" />
                     ) : effGold.change_today < 0 ? (
@@ -157,19 +168,28 @@ export const BillCalculate = ({ onAdd }: Props) => {
                     ) : (
                       <Minus size={10} />
                     )}
-                    <span className="text-[10px] font-bold ml-0.5">{Math.abs(effGold.change_today)}</span>
+                    <span className="text-[10px] font-bold ml-0.5">
+                      {Math.abs(effGold.change_today)}
+                    </span>
                   </div>
                 )}
-                <div className={`flex flex-row items-center ${changeColor(effGold.change_today)}`}>
+                <div
+                  className={`flex flex-row items-center ${changeColor(effGold.change_today)}`}
+                >
                   <span className="text-[10px] font-bold">วันนี้</span>
-                  <span className="text-[10px] font-bold ml-1">{effGold.change_today > 0 ? "+" : ""}{effGold.change_today}</span>
+                  <span className="text-[10px] font-bold ml-1">
+                    {effGold.change_today > 0 ? "+" : ""}
+                    {effGold.change_today}
+                  </span>
                 </div>
               </div>
             </div>
           </div>
         ) : (
           <div className="flex flex-row w-full bg-gradient-to-br from-black/10 to-transparent border-1 border-black/10 p-2 rounded-3xl">
-            <span className="text-[10px] font-bold text-black/50">ยังไม่มีข้อมูลราคาทอง</span>
+            <span className="text-[10px] font-bold text-black/50">
+              ยังไม่มีข้อมูลราคาทอง
+            </span>
           </div>
         )}
 
@@ -191,8 +211,9 @@ export const BillCalculate = ({ onAdd }: Props) => {
           />
         </div>
 
-        <span className="font-bold text-2xl bg-gradient-to-l from-black/90 to-yellow-600 bg-clip-text text-transparent pl-2 mt-5">
+        <span className="font-bold text-2xl bg-gradient-to-l from-black/90 to-yellow-600 bg-clip-text text-transparent pl-2 flex flex-row justify-between">
           ขายทองคำแท่ง
+          {salesStatus && <PriceModeChip status={salesStatus} />}
         </span>
 
         {/* Locked gold type */}
@@ -213,7 +234,8 @@ export const BillCalculate = ({ onAdd }: Props) => {
           <span className="text-xs font-bold text-black/50 pl-1 flex items-center gap-x-1">
             {canTypeWeight ? (
               <>
-                <Keyboard size={12} className="text-green-600" /> น้ำหนัก (บาท) · พิมพ์เองได้ตอนนี้
+                <Keyboard size={12} className="text-green-600" /> น้ำหนัก (บาท)
+                · {staffMode ? "พิมพ์เอง / ปรับทีละ 1" : "พิมพ์เองได้ตอนนี้"}
               </>
             ) : (
               `น้ำหนัก (บาท) · ปรับทีละ ${WEIGHT_STEP}`
@@ -236,13 +258,18 @@ export const BillCalculate = ({ onAdd }: Props) => {
                 value={weight === 0 ? "" : String(weight)}
                 onValueChange={handleWeightInput}
                 onKeyDown={(e) => {
-                  if ([".", ",", "e", "E", "+", "-"].includes(e.key)) e.preventDefault();
+                  if ([".", ",", "e", "E", "+", "-"].includes(e.key))
+                    e.preventDefault();
                 }}
-                endContent={<span className="text-xs font-bold text-black/40">บาท</span>}
+                endContent={
+                  <span className="text-xs font-bold text-black/40">บาท</span>
+                }
                 classNames={{
                   base: "flex-1",
-                  inputWrapper: "bg-black/5 border-1 border-green-500/30 rounded-2xl py-3",
-                  input: "text-center font-bold text-2xl bg-gradient-to-l from-black/90 to-yellow-600 bg-clip-text text-transparent",
+                  inputWrapper:
+                    "bg-black/5 border-1 border-green-500/30 rounded-2xl py-3",
+                  input:
+                    "text-center font-bold text-2xl bg-gradient-to-l from-black/90 to-yellow-600 bg-clip-text text-transparent",
                 }}
               />
               <button
@@ -291,28 +318,51 @@ export const BillCalculate = ({ onAdd }: Props) => {
           value={total.toLocaleString()}
         />
 
-        <div className="flex h-full w-full items-end justify-end mt-2">
+        <div className=" w-full flex flex-row justify-end">
           <div
             onClick={handleAdd}
-            className="cursor-pointer bg-gradient-to-br from-blue-600/50 to-transparent border-1 border-black/10 rounded-full w-14 h-14 flex items-center justify-center hover:from-blue-600/70 transition-all"
+            className=" max-xl:hidden cursor-pointer bg-gradient-to-br from-blue-600/50 to-transparent border-1 border-black/10 rounded-full text-blue-950 font-bold gap-x-2 px-4 h-14 flex items-center justify-center hover:from-blue-600/70 transition-all backdrop-blur-lg"
           >
-            <Plus size={20} />
+            <Send size={20} />
+            ส่งขาย
           </div>
         </div>
       </div>
 
+      <div
+        onClick={handleAdd}
+        className=" xl:hidden fixed bottom-5 right-5 cursor-pointer bg-gradient-to-br from-blue-600/50 to-transparent border-1 border-black/10 rounded-full text-blue-950 font-bold gap-x-2 px-4 h-14 flex items-center justify-center hover:from-blue-600/70 transition-all backdrop-blur-lg"
+      >
+        <Send size={20} />
+        ส่งขาย
+      </div>
+
       <style jsx>{`
-        .rt-flash-up { animation: rtUp 0.6s ease-out; }
-        .rt-flash-down { animation: rtDown 0.6s ease-out; }
+        .rt-flash-up {
+          animation: rtUp 0.6s ease-out;
+        }
+        .rt-flash-down {
+          animation: rtDown 0.6s ease-out;
+        }
         @keyframes rtUp {
-          0% { background-color: rgba(22,163,74,0.18); border-radius: 1rem; }
-          100% { background-color: transparent; }
+          0% {
+            background-color: rgba(22, 163, 74, 0.18);
+            border-radius: 1rem;
+          }
+          100% {
+            background-color: transparent;
+          }
         }
         @keyframes rtDown {
-          0% { background-color: rgba(220,38,38,0.18); border-radius: 1rem; }
-          100% { background-color: transparent; }
+          0% {
+            background-color: rgba(220, 38, 38, 0.18);
+            border-radius: 1rem;
+          }
+          100% {
+            background-color: transparent;
+          }
         }
       `}</style>
     </div>
   );
-}
+};

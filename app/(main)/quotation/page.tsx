@@ -488,10 +488,10 @@ export default function QuotationPage() {
   // customer (so changing the signer to a company name doesn't overwrite it);
   // walk-in quotes have no customer, so they fall back to the signer fields.
   const previewCustomerName = billId
-    ? (customerProfile?.name || billCustomer || signerName)
+    ? customerProfile?.name || billCustomer || signerName
     : signerName;
   const previewCustomerPhone = billId
-    ? (customerProfile?.phone || signerPhone)
+    ? customerProfile?.phone || signerPhone
     : signerPhone;
 
   // In bill mode, consolidate the keyed lines per METAL: gold collapses into one
@@ -882,7 +882,7 @@ export default function QuotationPage() {
         </div>
       )}
       <div className="flex flex-row gap-x-5 flex-1 min-h-0">
-        <div className="flex flex-col w-full min-w-0 lg:flex-col-reverse justify-center items-center">
+        <div className="flex flex-col w-full min-w-0 items-start">
           <Calculate
             onAdd={handleAddItem}
             onOpenList={() => setListOpen(true)}

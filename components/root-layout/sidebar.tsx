@@ -1,6 +1,6 @@
 "use client";
 
-import { Home, FileText, List, Users, Store, Settings, Shield, ScrollText, Gem, TrendingUp, Coins, SlidersHorizontal, X, Wallet, Receipt, UserCircle, FileCheck, Radio, MessageCircle } from "lucide-react";
+import { Home, FileText, List, Users, Store, Settings, Shield, ScrollText, Gem, TrendingUp, Coins, SlidersHorizontal, X, Wallet, Receipt, UserCircle, FileCheck, Radio, MessageCircle, ShoppingBag } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useAuth } from "@/contexts/auth-context";
@@ -48,6 +48,7 @@ export const Sidebar = ({ isOpen = false, onClose }: SidebarProps) => {
     { id: 2, name: "ออกใบเสนอราคา", href: "/quotation", icon: <FileText size={18} />, show: hasPermission("quotations.create") },
     { id: 3, name: "ใบเสนอราคาทั้งหมด", href: "/quote-list", icon: <List size={18} />, show: hasPermission("quotations.read") },
     { id: 14, name: "ขาย", href: "/bills/create", icon: <FileText size={18} />, show: canCreateBill },
+    { id: 22, name: "ขายแทนลูกค้า", href: "/bills/sell", icon: <ShoppingBag size={18} />, show: hasPermission("bills.sell") },
     { id: 15, name: "รายการขาย", href: "/bills", icon: <Receipt size={18} />, show: hasPermission("bills.read"), badge: unfinishedBills },
     { id: 17, name: "บิลทั้งหมด", href: "/bills/issued", icon: <FileCheck size={18} />, show: isCustomer },
     { id: 21, name: "โปรไฟล์", href: "/account", icon: <UserCircle size={18} />, show: isCustomer },
