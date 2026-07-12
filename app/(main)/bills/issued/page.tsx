@@ -42,6 +42,8 @@ interface IssuedQuotation extends QuotationStoreSnapshot {
   code: string;
   total_amount: number;
   items?: BillItem[];
+  // Detailed per-item lines captured at issue time (items above is consolidated).
+  page1_items?: QuotationProps[] | null;
   images?: { id: number; image_url: string; type?: string }[];
   signer_name?: string;
   signer_phone?: string;
@@ -341,7 +343,11 @@ export default function IssuedBillsPage() {
                       ref={previewRef}
                       hidePrint
                       documentNo={detailB.issued_quotation?.code ?? detailB.code}
-                      page1Items={billPage1Items.length ? billPage1Items : undefined}
+                      page1Items={
+                        billPage1Items.length
+                          ? billPage1Items
+                          : detailB.issued_quotation?.page1_items ?? undefined
+                      }
                       items={toQuoItems(src.items)}
                       onPrint={() => window.print()}
                       store={buildStoreHeader(detailB.issued_quotation, detailB.store, detailB.branch?.name)}

@@ -241,6 +241,42 @@ export const PreviewQuote = React.forwardRef<PreviewQuoteHandle, Props>(
     // Page 1 uses page1Items (the customer's original itemisation) when given.
     const p1 = page1Items ?? items;
 
+    // Page 2 (official ใบรับซื้อทองเก่า) always shows the CONSOLIDATED view: one line
+    // per metal (all gold collapses into a single line). We derive it here so page 2
+    // stays merged regardless of whether the caller passed itemised or already-
+    // consolidated `items` — page 1 is the itemised sheet, page 2 the summarised one.
+    const page2Items: QuotationProps[] = (() => {
+      if (items.length === 0) return items;
+      const byMetal = new Map<string, QuotationProps[]>();
+      for (const it of items) {
+        const m = it.metal || "gold";
+        const g = byMetal.get(m);
+        if (g) g.push(it);
+        else byMetal.set(m, [it]);
+      }
+      // Gold first, then any other metals in first-seen order.
+      const order = [
+        "gold",
+        ...Array.from(byMetal.keys()).filter((m) => m !== "gold"),
+      ];
+      const lines: QuotationProps[] = [];
+      for (const m of order) {
+        const g = byMetal.get(m);
+        if (!g) continue;
+        const w = g.reduce((s, i) => s + (i.weight || 0), 0);
+        const t = g.reduce((s, i) => s + (i.total || 0), 0);
+        const first = g[0];
+        lines.push({
+          ...first,
+          price: w > 0 ? Math.round((t / w) * 100) / 100 : first.price,
+          weight: w,
+          perGram: w > 0 ? t / w : first.perGram,
+          total: t,
+        });
+      }
+      return lines;
+    })();
+
     const calculateTotalWeight = (arr: QuotationProps[] = items) => {
       return arr.reduce((sum, item) => sum + (item.weight || 0), 0);
     };
@@ -1014,7 +1050,7 @@ export const PreviewQuote = React.forwardRef<PreviewQuoteHandle, Props>(
                     </tr>
                   </thead>
                   <tbody>
-                    {items.map((item, index) => (
+                    {page2Items.map((item, index) => (
                       <tr key={index}>
                         <td className="border border-gray-400 px-2 py-1 text-center text-[9px]">
                           {index + 1}
@@ -1033,7 +1069,7 @@ export const PreviewQuote = React.forwardRef<PreviewQuoteHandle, Props>(
                         </td>
                       </tr>
                     ))}
-                    {Array.from({ length: Math.max(0, 5 - items.length) }).map(
+                    {Array.from({ length: Math.max(0, 5 - page2Items.length) }).map(
                       (_, i) => (
                         <tr key={`formal-empty-${i}`}>
                           <td className="border border-gray-400 px-2 py-1 text-center text-[9px]">

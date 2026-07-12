@@ -657,6 +657,10 @@ export default function QuotationPage() {
             ? selectedRef.map((r) => r.itemId)
             : undefined,
         items: saveItems,
+        // Detailed per-item lines for the printed page 1. `items` above is stored
+        // consolidated (one line per metal); this keeps the itemised view so
+        // reprints never fall back to the merged lines (covers partial ticking too).
+        page1_items: quotation,
         created_at: quotationDate,
       });
       const saved = res.data as unknown as { id: number; code: string };

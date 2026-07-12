@@ -1,3 +1,5 @@
+import { QuotationProps } from "../../quotation/_component/quotation";
+
 export interface QuotationItem {
   id: number;
   type_id: string;
@@ -45,6 +47,10 @@ export interface QuotationData {
   no_header?: boolean;
   creator?: { id: number; name: string } | null;
   items?: QuotationItem[];
+  // Detailed per-item lines captured at issue time, stored in the camelCase
+  // QuotationProps shape (same as delivery-log items). `items` is stored
+  // consolidated (one line per metal); this itemises page 1 on reprint.
+  page1_items?: QuotationProps[] | null;
   images?: { id: number; image_url: string; type?: string }[];
   signer_name?: string;
   signer_phone?: string;

@@ -293,7 +293,11 @@ export function QuotationDetailPanel({ quotation, members, goldTypes, canUpdate,
           perGram: item.per_gram,
           total: item.total,
         }))}
-        page1Items={page1Items.length ? page1Items : undefined}
+        page1Items={
+          page1Items.length
+            ? page1Items
+            : quotation.page1_items ?? undefined
+        }
         onPrint={() => window.print()}
         documentNo={quotation.code}
         store={storeHeader}

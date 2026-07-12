@@ -64,6 +64,9 @@ interface BillData {
   issued_quotation?: ({
     total_amount?: number;
     items?: BillItem[];
+    // Detailed per-item lines captured at issue time — used to itemise the
+    // printed page 1 (items above is consolidated one-line-per-metal).
+    page1_items?: QuotationProps[] | null;
     images?: { id: number; image_url: string; type?: string }[];
     signer_name?: string;
     signer_phone?: string;
@@ -877,7 +880,11 @@ export default function BillsList() {
                 <PreviewQuote
                   hidePrint={isCustomer}
                   documentNo={detailB.code}
-                  page1Items={billPage1Items.length ? billPage1Items : undefined}
+                  page1Items={
+                    billPage1Items.length
+                      ? billPage1Items
+                      : detailB.issued_quotation?.page1_items ?? undefined
+                  }
                   items={(src.items ?? []).map((item): QuotationProps => ({
                     typeId: String(item.id),
                     typeName: item.type_name,
