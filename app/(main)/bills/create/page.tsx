@@ -26,6 +26,9 @@ export default function CreateBillPage() {
   // realtime cutoff. (Previously the master-off case slipped through as open.)
   const salesClosed = !!salesStatus && !salesStatus.is_open;
   const [billsOpen, setBillsOpen] = useState<boolean | null>(null);
+  // Silver has its own schedule (enable + close-shop + daily cutoff), independent
+  // of the gold sales hours. null = not loaded yet.
+  const [silverOpen, setSilverOpen] = useState<boolean | null>(null);
   useEffect(() => {
     api
       .get<{ open: boolean }>("/configs/bills-status")
@@ -34,6 +37,16 @@ export default function CreateBillPage() {
       )
       .catch(() => {
         setBillsOpen(true);
+      });
+    api
+      .get<{ is_open: boolean }>("/configs/silver-sell-status")
+      .then((res) =>
+        setSilverOpen(
+          (res.data as unknown as { is_open: boolean }).is_open ?? false,
+        ),
+      )
+      .catch(() => {
+        setSilverOpen(false);
       });
   }, []);
   // Creation is customer-only — raw permission, bypassing master's auto-grant.
@@ -53,7 +66,7 @@ export default function CreateBillPage() {
     );
   }
 
-  if (billsOpen === null || salesLoading) {
+  if (billsOpen === null || silverOpen === null || salesLoading) {
     return (
       <div className="flex items-center justify-center h-full">
         <Spinner size="lg" color="warning" />
@@ -61,19 +74,24 @@ export default function CreateBillPage() {
     );
   }
 
-  if (!billsOpen) {
-    return (
-      <div className="flex flex-col items-center justify-center h-full gap-y-3 text-black/60">
-        <Store size={40} className="text-yellow-600/60" />
-        <span className="font-bold text-lg">ปิดรับซื้อชั่วคราว</span>
-        <span className="text-sm text-black/40 text-center">
-          ขณะนี้ยังไม่เปิดรับซื้อทอง กรุณาติดต่อเจ้าหน้าที่
-        </span>
-      </div>
-    );
-  }
+  // Gold and silver open independently. Gold follows bills_open + sales hours;
+  // silver follows its own schedule. Show the sell screen if either is open.
+  const goldOpen = billsOpen && !salesClosed;
+  const silverAllowed = !!silverOpen;
 
-  if (salesClosed) {
+  if (!goldOpen && !silverAllowed) {
+    // Nothing sellable — prefer the specific gold reason.
+    if (!billsOpen) {
+      return (
+        <div className="flex flex-col items-center justify-center h-full gap-y-3 text-black/60">
+          <Store size={40} className="text-yellow-600/60" />
+          <span className="font-bold text-lg">ปิดรับซื้อชั่วคราว</span>
+          <span className="text-sm text-black/40 text-center">
+            ขณะนี้ยังไม่เปิดรับซื้อ กรุณาติดต่อเจ้าหน้าที่
+          </span>
+        </div>
+      );
+    }
     return (
       <div className="flex flex-col items-center justify-center h-full gap-y-3 text-black/60">
         <Clock size={40} className="text-amber-500/70" />
@@ -103,6 +121,7 @@ export default function CreateBillPage() {
           {
             type_id: pendingItem.typeId,
             type_name: pendingItem.typeName,
+            metal: pendingItem.metal ?? "gold",
             plus: pendingItem.plus,
             price: pendingItem.price,
             percent: pendingItem.percent,
@@ -127,9 +146,15 @@ export default function CreateBillPage() {
 
   return (
     <div className=" flex flex-col gap-y-3">
-      <SalesStatusBanner status={salesStatus} />
+      {/* Gold sales-hours banner is gold-only — don't show it when gold is closed
+          but silver is still open (that would look like the whole shop is closed). */}
+      {goldOpen && <SalesStatusBanner status={salesStatus} />}
       <div className="flex flex-row justify-start flex-1 min-h-0">
-        <BillCalculate onAdd={handleAdd} />
+        <BillCalculate
+          onAdd={handleAdd}
+          allowGold={goldOpen}
+          allowSilver={silverAllowed}
+        />
       </div>
 
       <Modal
@@ -159,8 +184,10 @@ export default function CreateBillPage() {
                       บาท
                     </span>
                     <span className="text-xs text-black/40">
-                      น้ำหนัก {pendingItem?.weight} บาท · ราคา{" "}
-                      {pendingItem?.price.toLocaleString()} บาท/บาท
+                      น้ำหนัก {pendingItem?.weight}{" "}
+                      {pendingItem?.metal === "silver" ? "กรัม" : "บาท"} · ราคา{" "}
+                      {pendingItem?.price.toLocaleString()}{" "}
+                      {pendingItem?.metal === "silver" ? "บาท/กก." : "บาท/บาท"}
                     </span>
                   </div>
                   <p className="text-sm text-black/60 text-center">

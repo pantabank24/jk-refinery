@@ -24,6 +24,8 @@ import {
 interface BillItem {
   id: number;
   type_name: string;
+  // gold|silver|... — missing means gold. Gold is weighed in baht, others in grams.
+  metal?: string;
   price: number;
   percent: number;
   plus: number;
@@ -31,6 +33,9 @@ interface BillItem {
   per_gram: number;
   total: number;
 }
+
+// Missing metal means gold; gold weighs in baht, other metals in grams.
+const itemWeightUnit = (m?: string) => ((m || "gold") === "gold" ? "บาท" : "กรัม");
 
 interface IssuedQuotation extends QuotationStoreSnapshot {
   id: number;
@@ -52,7 +57,7 @@ interface BillData {
   items?: BillItem[];
   images?: { id: number; image_url: string; type?: string }[];
   issued_quotation?: IssuedQuotation | null;
-  creator?: { id: number; name: string; phone?: string } | null;
+  creator?: { id: number; name: string; phone?: string; address?: string; tax_id?: string } | null;
   // Full store relation (preloaded on /bills/:id) — feeds the receipt header.
   store?: (StoreHeaderSnapshot & { id: number; name: string }) | null;
   branch?: { id: number; name: string } | null;
@@ -104,6 +109,7 @@ export default function IssuedBillsPage() {
     (items ?? []).map((item) => ({
       typeId: String(item.id),
       typeName: item.type_name,
+      metal: item.metal || "gold",
       price: item.price,
       plus: item.plus,
       percent: item.percent,
@@ -324,7 +330,7 @@ export default function IssuedBillsPage() {
                       {(detailB.items ?? []).map((it, i) => (
                         <div key={it.id} className="flex items-center justify-between px-3 py-2 border-b last:border-b-0 border-black/5 text-sm">
                           <span className="text-black/70">{i + 1}. {it.type_name}</span>
-                          <span className="text-black/50">น้ำหนัก {it.weight}</span>
+                          <span className="text-black/50">น้ำหนัก {it.weight} {itemWeightUnit(it.metal)}</span>
                         </div>
                       ))}
                     </div>
@@ -345,6 +351,8 @@ export default function IssuedBillsPage() {
                       signatureImage={urlsOf("signature")[0] ?? null}
                       customerName={detailB.issued_quotation?.signer_name || detailB.creator?.name}
                       customerPhone={detailB.issued_quotation?.signer_phone || detailB.creator?.phone}
+                      customerAddress={detailB.creator?.address}
+                      customerTaxId={detailB.creator?.tax_id}
                       signerName={detailB.issued_quotation?.signer_name}
                     />
                   </div>

@@ -576,6 +576,8 @@ export const CustomerDetail = ({ selfMode = false }: { selfMode?: boolean } = {}
                       signatureImage={urlsOf("signature")[0] ?? null}
                       customerName={detailB.issued_quotation?.signer_name || customer?.name}
                       customerPhone={detailB.issued_quotation?.signer_phone || customer?.phone}
+                      customerAddress={customer?.address}
+                      customerTaxId={customer?.tax_id}
                       signerName={detailB.issued_quotation?.signer_name}
                     />
                   </div>

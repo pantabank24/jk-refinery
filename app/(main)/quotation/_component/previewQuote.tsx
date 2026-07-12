@@ -613,7 +613,11 @@ export const PreviewQuote = React.forwardRef<PreviewQuoteHandle, Props>(
                           </td>
                           {showPlus && (
                             <td className="border border-gray-400 px-2  text-center text-[8px]">
-                              {item.plus.toLocaleString()}
+                              {handleRounding(
+                                item.plus_type === 1
+                                  ? item.price * (item.plus / 100)
+                                  : item.plus,
+                              )}
                             </td>
                           )}
                           {showPercent && (

@@ -29,6 +29,9 @@ interface BillItem {
   id: number;
   type_id: string;
   type_name: string;
+  // gold|silver|platinum|palladium — missing means gold (legacy items). Gold is
+  // weighed in baht; other metals in grams, so weight/avg must not be mixed.
+  metal?: string;
   price: number;
   percent: number;
   plus: number;
@@ -51,7 +54,7 @@ interface BillData {
   // the receipt-header fields, not just id/name.
   store?: StoreHeaderSnapshot & { id: number; name: string } | null;
   branch?: { id: number; name: string } | null;
-  creator?: { id: number; name: string; phone?: string } | null;
+  creator?: { id: number; name: string; phone?: string; address?: string; tax_id?: string } | null;
   issued_quotation_id?: number | null;
   items?: BillItem[];
   images?: { id: number; image_url: string; type?: string }[];
@@ -76,13 +79,47 @@ interface BillGroup {
   status: number;
   total: number;
   rawTotal: number; // unadjusted total_amount before issued quotation
-  weight: number;
+  weight: number; // gold weight (baht) — kept for the melt/refinery metrics
+  // Metal split: gold is weighed in baht, silver (and other metals) in grams, so
+  // they are tracked separately and never summed into one figure.
+  goldWeight: number;
+  silverWeight: number;
+  goldAmount: number;
+  silverAmount: number;
   count: number;
 }
 
-// Once issued, the issued quotation's items are the real (re-assessed) weight;
-// otherwise fall back to what the customer originally submitted.
-const sumWeight = (items: BillItem[] | undefined) => (items ?? []).reduce((s, it) => s + (it.weight || 0), 0);
+// Missing metal means gold (items created before the metal tag existed).
+const isGoldItem = (m?: string) => (m || "gold") === "gold";
+
+// Split a set of items into gold (weighed in baht) vs non-gold (silver etc., in
+// grams). Gold and silver weights are different units and must not be summed.
+const metalSplit = (items: BillItem[] | undefined) => {
+  let goldWeight = 0, silverWeight = 0, goldAmount = 0, silverAmount = 0;
+  for (const it of items ?? []) {
+    if (isGoldItem(it.metal)) {
+      goldWeight += it.weight || 0;
+      goldAmount += it.total || 0;
+    } else {
+      silverWeight += it.weight || 0;
+      silverAmount += it.total || 0;
+    }
+  }
+  return { goldWeight, silverWeight, goldAmount, silverAmount };
+};
+
+// Human-readable weight that keeps gold (บาท) and silver (กรัม) as separate units.
+const fmtWeight = (goldWeight: number, silverWeight: number) => {
+  const parts: string[] = [];
+  if (goldWeight > 0)
+    parts.push(`${goldWeight.toLocaleString(undefined, { maximumFractionDigits: 2 })} บาท`);
+  if (silverWeight > 0)
+    parts.push(`${silverWeight.toLocaleString(undefined, { maximumFractionDigits: 2 })} กรัม`);
+  return parts.length ? parts.join(" + ") : "0";
+};
+
+// Per-item weight with its metal's unit.
+const itemWeightUnit = (m?: string) => (isGoldItem(m) ? "บาท" : "กรัม");
 
 // Combine bills issued together (sharing one issued quotation) into one group.
 // Used by the staff list and the เคลียร์บิล selection modal.
@@ -94,20 +131,29 @@ const groupBills = (list: BillData[]): BillGroup[] => {
     arr.push(b);
     map.set(key, arr);
   }
-  return Array.from(map.values()).map((group) => ({
-    key: group[0].issued_quotation_id ? `q${group[0].issued_quotation_id}` : `b${group[0].id}`,
-    rep: group[0],
-    billIds: group.map((x) => x.id),
-    status: group[0].status,
-    // Bills issued together share one quotation — use its total/items as the real amount/weight.
-    total: group[0].issued_quotation?.total_amount
-      ?? group.reduce((s, x) => s + x.total_amount, 0),
-    rawTotal: group.reduce((s, x) => s + x.total_amount, 0),
-    weight: group[0].issued_quotation?.items
-      ? sumWeight(group[0].issued_quotation.items)
-      : group.reduce((s, x) => s + sumWeight(x.items), 0),
-    count: group.length,
-  }));
+  return Array.from(map.values()).map((group) => {
+    // Bills issued together share one quotation — its items are the real
+    // (re-assessed) weight; otherwise use what each bill originally submitted.
+    const items = group[0].issued_quotation?.items
+      ? group[0].issued_quotation.items
+      : group.flatMap((x) => x.items ?? []);
+    const split = metalSplit(items);
+    return {
+      key: group[0].issued_quotation_id ? `q${group[0].issued_quotation_id}` : `b${group[0].id}`,
+      rep: group[0],
+      billIds: group.map((x) => x.id),
+      status: group[0].status,
+      total: group[0].issued_quotation?.total_amount
+        ?? group.reduce((s, x) => s + x.total_amount, 0),
+      rawTotal: group.reduce((s, x) => s + x.total_amount, 0),
+      weight: split.goldWeight,
+      goldWeight: split.goldWeight,
+      silverWeight: split.silverWeight,
+      goldAmount: split.goldAmount,
+      silverAmount: split.silverAmount,
+      count: group.length,
+    };
+  });
 };
 
 // Bill statuses are distinct from staff quotation statuses (0/1/2).
@@ -200,28 +246,50 @@ export default function BillsList() {
       // and cleared (เคลียร์แล้ว) bills live in "บิลทั้งหมด".
       return bills
         .filter((b) => b.status !== 12 && b.status !== 14)
-        .map((b) => ({
-          key: `b${b.id}`, rep: b, billIds: [b.id], status: b.status,
-          total: b.issued_quotation?.total_amount ?? b.total_amount,
-          rawTotal: b.total_amount,
-          weight: sumWeight(b.issued_quotation?.items ?? b.items),
-          count: 1,
-        }));
+        .map((b) => {
+          const split = metalSplit(b.issued_quotation?.items ?? b.items);
+          return {
+            key: `b${b.id}`, rep: b, billIds: [b.id], status: b.status,
+            total: b.issued_quotation?.total_amount ?? b.total_amount,
+            rawTotal: b.total_amount,
+            weight: split.goldWeight,
+            goldWeight: split.goldWeight,
+            silverWeight: split.silverWeight,
+            goldAmount: split.goldAmount,
+            silverAmount: split.silverAmount,
+            count: 1,
+          };
+        });
     }
     return groupBills(bills);
   }, [bills, isCustomer]);
 
   // Overview of the currently-listed bills (respects the active tab/search).
   const overview = useMemo(() => {
-    let amount = 0, rawAmount = 0, weight = 0, pendingClearWeight = 0;
+    let amount = 0, rawAmount = 0;
+    let goldWeight = 0, silverWeight = 0, goldAmount = 0, silverAmount = 0;
+    let pendingClearGold = 0, pendingClearSilver = 0;
     for (const g of billGroups) {
       amount += g.total;
       rawAmount += g.rawTotal;
-      weight += g.weight;
-      if (g.status === 12) pendingClearWeight += g.weight;
+      goldWeight += g.goldWeight;
+      silverWeight += g.silverWeight;
+      goldAmount += g.goldAmount;
+      silverAmount += g.silverAmount;
+      if (g.status === 12) {
+        pendingClearGold += g.goldWeight;
+        pendingClearSilver += g.silverWeight;
+      }
     }
-    const avgPrice = weight > 0 ? rawAmount / weight : 0;
-    return { amount, rawAmount, weight, pendingClearWeight, count: billGroups.length, avgPrice };
+    // Average price stays per-metal: gold is บาท/บาท, silver is บาท/กรัม — they use
+    // different weight units and must never be averaged together.
+    const avgPrice = goldWeight > 0 ? goldAmount / goldWeight : 0;
+    const silverAvgPrice = silverWeight > 0 ? silverAmount / silverWeight : 0;
+    return {
+      amount, rawAmount, goldWeight, silverWeight, goldAmount, silverAmount,
+      pendingClearGold, pendingClearSilver,
+      count: billGroups.length, avgPrice, silverAvgPrice,
+    };
   }, [billGroups]);
 
   const fetchBills = useCallback(async () => {
@@ -400,6 +468,7 @@ export default function BillsList() {
     const editItems: QuotationProps[] = src.map((it) => ({
       typeId: it.type_id,
       typeName: it.type_name,
+      metal: it.metal || "gold",
       price: it.price,
       plus: it.plus,
       percent: it.percent,
@@ -516,26 +585,46 @@ export default function BillsList() {
           </span>
         </div>
         <div className="flex flex-col border-1 border-black/10 bg-black/5 backdrop-blur-xl rounded-2xl p-3 gap-y-1">
-          <span className="text-xs text-black/50">น้ำหนักรวม</span>
+          <span className="text-xs text-black/50">จำนวนบิล</span>
+          <span className="font-bold text-lg">{overview.count.toLocaleString()}</span>
+        </div>
+
+        {/* Gold: weight + average price */}
+        <div className="flex flex-col border-1 border-black/10 bg-black/5 backdrop-blur-xl rounded-2xl p-3 gap-y-1">
+          <span className="text-xs text-black/50">น้ำหนักรวม (ทอง)</span>
           <span className="font-bold text-lg">
-            {overview.weight.toLocaleString(undefined, { maximumFractionDigits: 2 })} บาท
+            {overview.goldWeight.toLocaleString(undefined, { maximumFractionDigits: 2 })} บาท
           </span>
         </div>
         <div className="flex flex-col border-1 border-yellow-300/60 bg-yellow-50/60 backdrop-blur-xl rounded-2xl p-3 gap-y-1">
-          <span className="text-xs text-black/50">ราคาเฉลี่ย</span>
+          <span className="text-xs text-black/50">ราคาเฉลี่ย (ทอง)</span>
           <span className="font-bold text-lg text-yellow-700">
             {overview.avgPrice.toLocaleString(undefined, { maximumFractionDigits: 2 })} บาท/บาท
           </span>
         </div>
-        <div className="flex flex-col border-1 border-black/10 bg-black/5 backdrop-blur-xl rounded-2xl p-3 gap-y-1">
-          <span className="text-xs text-black/50">จำนวนบิล</span>
-          <span className="font-bold text-lg">{overview.count.toLocaleString()}</span>
-        </div>
-        {!isCustomer && overview.pendingClearWeight > 0 && (
+
+        {/* Silver: weight + average price (only when there's silver) */}
+        {overview.silverWeight > 0 && (
+          <>
+            <div className="flex flex-col border-1 border-black/10 bg-black/5 backdrop-blur-xl rounded-2xl p-3 gap-y-1">
+              <span className="text-xs text-black/50">น้ำหนักรวม (เงิน)</span>
+              <span className="font-bold text-lg">
+                {overview.silverWeight.toLocaleString(undefined, { maximumFractionDigits: 2 })} กรัม
+              </span>
+            </div>
+            <div className="flex flex-col border-1 border-slate-300/60 bg-slate-50/60 backdrop-blur-xl rounded-2xl p-3 gap-y-1">
+              <span className="text-xs text-black/50">ราคาเฉลี่ย (เงิน)</span>
+              <span className="font-bold text-lg text-slate-600">
+                {overview.silverAvgPrice.toLocaleString(undefined, { maximumFractionDigits: 2 })} บาท/กรัม
+              </span>
+            </div>
+          </>
+        )}
+        {!isCustomer && (overview.pendingClearGold > 0 || overview.pendingClearSilver > 0) && (
           <div className="col-span-2 flex flex-col border-1 border-purple-300/60 bg-purple-50/60 backdrop-blur-xl rounded-2xl p-3 gap-y-1">
             <span className="text-xs text-black/50">น้ำหนักรวม (รอเคลียร์)</span>
             <span className="font-bold text-lg text-purple-700">
-              {overview.pendingClearWeight.toLocaleString(undefined, { maximumFractionDigits: 2 })} บาท
+              {fmtWeight(overview.pendingClearGold, overview.pendingClearSilver)}
             </span>
           </div>
         )}
@@ -743,7 +832,7 @@ export default function BillsList() {
                     <div key={it.id} className="flex flex-col px-3 py-2 border-b last:border-b-0 border-black/5 gap-y-0.5">
                       <span className="text-sm font-bold text-black/70">{i + 1}. {it.type_name}</span>
                       <div className="flex items-center gap-x-3 text-xs text-black/50">
-                        <span>น้ำหนัก {it.weight} บาท</span>
+                        <span>น้ำหนัก {it.weight} {itemWeightUnit(it.metal)}</span>
                         <span>ราคา {it.price.toLocaleString()}</span>
                         <span className="font-bold text-yellow-700 ml-auto">{it.total.toLocaleString()} บาท</span>
                       </div>
@@ -755,17 +844,18 @@ export default function BillsList() {
                 </div>
                 {(() => {
                   const items = detailB.items ?? [];
-                  const sumW = items.reduce((s, it) => s + it.weight, 0);
+                  const split = metalSplit(items);
                   const sumT = items.reduce((s, it) => s + it.total, 0);
-                  const avg = sumW > 0 ? sumT / sumW : 0;
+                  // ราคาเฉลี่ย is a gold metric (บาท/บาท); silver never enters it.
+                  const avg = split.goldWeight > 0 ? split.goldAmount / split.goldWeight : 0;
                   return (
                     <div className="grid grid-cols-3 gap-1.5 px-1 pt-1">
                       <div className="flex flex-col border-1 border-black/10 bg-black/5 rounded-xl p-1.5">
                         <span className="text-[10px] font-bold text-black/40">น้ำหนักรวม</span>
-                        <span className="text-xs font-bold text-black/70">{sumW.toLocaleString(undefined, { maximumFractionDigits: 4 })} บาท</span>
+                        <span className="text-xs font-bold text-black/70">{fmtWeight(split.goldWeight, split.silverWeight)}</span>
                       </div>
                       <div className="flex flex-col border-1 border-yellow-300 bg-yellow-50 rounded-xl p-1.5">
-                        <span className="text-[10px] font-bold text-black/40">ราคาเฉลี่ย</span>
+                        <span className="text-[10px] font-bold text-black/40">ราคาเฉลี่ย (ทอง)</span>
                         <span className="text-xs font-bold text-yellow-700">{avg.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                       </div>
                       <div className="flex flex-col border-1 border-black/10 bg-black/5 rounded-xl p-1.5">
@@ -791,6 +881,7 @@ export default function BillsList() {
                   items={(src.items ?? []).map((item): QuotationProps => ({
                     typeId: String(item.id),
                     typeName: item.type_name,
+                    metal: item.metal || "gold",
                     price: item.price,
                     plus: item.plus,
                     percent: item.percent,
@@ -806,6 +897,8 @@ export default function BillsList() {
                   signatureImage={urlsOf("signature")[0] ?? null}
                   customerName={detailB.issued_quotation?.signer_name || detailB.creator?.name}
                   customerPhone={detailB.issued_quotation?.signer_phone || detailB.creator?.phone}
+                  customerAddress={detailB.creator?.address}
+                  customerTaxId={detailB.creator?.tax_id}
                   signerName={detailB.issued_quotation?.signer_name}
                 />
               );
@@ -833,17 +926,17 @@ export default function BillsList() {
                     {/* Weighted average summary */}
                     {(() => {
                       const items = detailB.items ?? [];
-                      const sumW = items.reduce((s, it) => s + it.weight, 0);
+                      const split = metalSplit(items);
                       const sumT = items.reduce((s, it) => s + it.total, 0);
-                      const avg = sumW > 0 ? sumT / sumW : 0;
+                      const avg = split.goldWeight > 0 ? split.goldAmount / split.goldWeight : 0;
                       return items.length > 0 ? (
                         <div className="grid grid-cols-3 gap-1.5 pt-1">
                           <div className="flex flex-col border-1 border-black/10 bg-white/60 rounded-xl p-1.5">
                             <span className="text-[10px] font-bold text-black/40">น้ำหนักรวม</span>
-                            <span className="text-xs font-bold text-black/70">{sumW.toLocaleString(undefined, { maximumFractionDigits: 4 })} บาท</span>
+                            <span className="text-xs font-bold text-black/70">{fmtWeight(split.goldWeight, split.silverWeight)}</span>
                           </div>
                           <div className="flex flex-col border-1 border-yellow-300 bg-yellow-50 rounded-xl p-1.5">
-                            <span className="text-[10px] font-bold text-black/40">ราคาเฉลี่ย</span>
+                            <span className="text-[10px] font-bold text-black/40">ราคาเฉลี่ย (ทอง)</span>
                             <span className="text-xs font-bold text-yellow-700">{avg.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                           </div>
                           <div className="flex flex-col border-1 border-black/10 bg-white/60 rounded-xl p-1.5">
@@ -1051,7 +1144,8 @@ export default function BillsList() {
               }
               const selected = clearGroups.filter((g) => selectedClearKeys.has(g.key));
               const selBills = selected.reduce((s, g) => s + g.count, 0);
-              const selWeight = selected.reduce((s, g) => s + g.weight, 0);
+              const selGoldWeight = selected.reduce((s, g) => s + g.goldWeight, 0);
+              const selSilverWeight = selected.reduce((s, g) => s + g.silverWeight, 0);
               const selTotal = selected.reduce((s, g) => s + g.total, 0);
               const allSelected = selectedClearKeys.size === clearGroups.length;
               return (
@@ -1093,7 +1187,7 @@ export default function BillsList() {
                                 {g.total.toLocaleString(undefined, { minimumFractionDigits: 2 })} บาท
                               </span>
                               <span className="text-[10px] text-black/40">
-                                {g.weight.toLocaleString(undefined, { maximumFractionDigits: 2 })} บาท · {moment(g.rep.created_at).format("DD/MM/YY")}
+                                {fmtWeight(g.goldWeight, g.silverWeight)} · {moment(g.rep.created_at).format("DD/MM/YY")}
                               </span>
                             </div>
                           </div>
@@ -1110,7 +1204,7 @@ export default function BillsList() {
                     </div>
                     <div className="flex flex-col">
                       <span className="text-[10px] text-black/50">น้ำหนักรวม</span>
-                      <span className="text-sm font-bold text-purple-700">{selWeight.toLocaleString(undefined, { maximumFractionDigits: 2 })} บาท</span>
+                      <span className="text-sm font-bold text-purple-700">{fmtWeight(selGoldWeight, selSilverWeight)}</span>
                     </div>
                     <div className="flex flex-col">
                       <span className="text-[10px] text-black/50">ยอดรวม</span>

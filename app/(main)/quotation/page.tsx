@@ -477,10 +477,21 @@ export default function QuotationPage() {
     selectedItemIds.has(r.itemId),
   );
   const selTotal = selectedRef.reduce((s, i) => s + i.total, 0);
-  const selWeight = selectedRef.reduce((s, i) => s + (i.weight || 0), 0);
-  // Weighted-average effective rate of the selection: Σ(total) / Σ(weight) —
+  // Gold and silver are weighed in different units (baht vs grams), so weight and
+  // the locked average price are computed from the GOLD portion only. The average
+  // feeds the gold tab's forced price; silver (per-gram) must never distort it.
+  const selGoldWeight = selectedRef
+    .filter(isGoldItem)
+    .reduce((s, i) => s + (i.weight || 0), 0);
+  const selGoldTotal = selectedRef
+    .filter(isGoldItem)
+    .reduce((s, i) => s + i.total, 0);
+  const selSilverWeight = selectedRef
+    .filter((i) => !isGoldItem(i))
+    .reduce((s, i) => s + (i.weight || 0), 0);
+  // Weighted-average effective rate of the gold selection: Σ(total) / Σ(weight) —
   // what the customer was locked in at (total includes percent/plus adjustments).
-  const selAvgPrice = selWeight > 0 ? selTotal / selWeight : 0;
+  const selAvgPrice = selGoldWeight > 0 ? selGoldTotal / selGoldWeight : 0;
   const effectiveForcedPrice = billId && selAvgPrice > 0 ? selAvgPrice : 0;
 
   // The receipt's "ชื่อลูกค้า / เบอร์โทร" line names the actual customer, which is
@@ -782,7 +793,7 @@ export default function QuotationPage() {
           </div>
           <div className="flex flex-col border-1 border-black/10 bg-black/5 rounded-xl p-1.5">
             <span className="font-bold text-[10px] text-black/50 pl-1">
-              ราคาเฉลี่ย (บาท)
+              ราคาเฉลี่ย (ทอง/บาท)
             </span>
             <span className="font-bold text-sm text-yellow-700 pl-1">
               {selAvgPrice > 0
@@ -802,9 +813,14 @@ export default function QuotationPage() {
             </span>
             <span className="font-bold text-[10px] text-black/35 pl-1 mt-0.5">
               น้ำหนัก{" "}
-              {selWeight.toLocaleString(undefined, {
-                maximumFractionDigits: 4,
-              })}
+              {selGoldWeight > 0
+                ? `${selGoldWeight.toLocaleString(undefined, { maximumFractionDigits: 4 })} บาท`
+                : ""}
+              {selGoldWeight > 0 && selSilverWeight > 0 ? " + " : ""}
+              {selSilverWeight > 0
+                ? `${selSilverWeight.toLocaleString(undefined, { maximumFractionDigits: 2 })} กรัม`
+                : ""}
+              {selGoldWeight === 0 && selSilverWeight === 0 ? "0" : ""}
             </span>
           </div>
         </div>

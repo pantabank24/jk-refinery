@@ -24,7 +24,9 @@ export interface QuotationData {
   // consolidated single line (price = effective per-gram), so the detailed page-1
   // preview is rebuilt from the bill's delivery logs instead — see quotationDetailPanel.
   bill_id?: number | null;
-  member?: { id: number; fname: string; lname: string; phone: string; code: string } | null;
+  // user carries the member's saved profile address/tax id (address lives on the
+  // linked login user, not the member row) — used for the quotation preview header.
+  member?: { id: number; fname: string; lname: string; phone: string; code: string; user?: { address?: string; tax_id?: string } | null } | null;
   store?: { id: number; name: string; address?: string; phone?: string; tax_id?: string; tax_name?: string; website?: string; logo?: string } | null;
   branch?: { id: number; name: string } | null;
   // Store header snapshot — taken at creation time, so reprinting later still

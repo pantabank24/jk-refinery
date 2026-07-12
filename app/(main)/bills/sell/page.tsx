@@ -75,6 +75,7 @@ export default function SellForCustomerPage() {
           {
             type_id: pendingItem.typeId,
             type_name: pendingItem.typeName,
+            metal: pendingItem.metal ?? "gold",
             plus: pendingItem.plus,
             price: pendingItem.price,
             percent: pendingItem.percent,
@@ -196,8 +197,10 @@ export default function SellForCustomerPage() {
                       บาท
                     </span>
                     <span className="text-xs text-black/40">
-                      น้ำหนัก {pendingItem?.weight} บาท · ราคา{" "}
-                      {pendingItem?.price.toLocaleString()} บาท/บาท
+                      น้ำหนัก {pendingItem?.weight}{" "}
+                      {pendingItem?.metal === "silver" ? "กรัม" : "บาท"} · ราคา{" "}
+                      {pendingItem?.price.toLocaleString()}{" "}
+                      {pendingItem?.metal === "silver" ? "บาท/กก." : "บาท/บาท"}
                     </span>
                   </div>
                   <p className="text-sm text-black/60 text-center">

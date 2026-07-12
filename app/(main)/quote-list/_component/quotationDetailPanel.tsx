@@ -299,6 +299,8 @@ export function QuotationDetailPanel({ quotation, members, goldTypes, canUpdate,
         store={storeHeader}
         customerName={quotation.signer_name || (quotation.member ? `${quotation.member.fname} ${quotation.member.lname}` : "")}
         customerPhone={quotation.signer_phone || quotation.member?.phone}
+        customerAddress={quotation.member?.user?.address}
+        customerTaxId={quotation.member?.user?.tax_id}
         date={quotation.created_at}
         beforeImages={imgUrls(quotation.images, "before_melt")}
         afterImages={imgUrls(quotation.images, "after_melt")}
