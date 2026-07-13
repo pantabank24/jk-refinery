@@ -63,6 +63,58 @@ function shortThaiDate(d?: string | Date): string {
   return `${dt.getDate()}/${dt.getMonth() + 1}/${dt.getFullYear() + 543}`;
 }
 
+// ช่องเว้นให้เขียนด้วยมือ — เมื่อมีข้อมูล จะพิมพ์ทับบนเส้นประแทนจุดไข่ปลา
+function Blank({
+  value,
+  dots = ".......................................",
+}: {
+  value?: string;
+  dots?: string;
+}) {
+  if (!value) return <span>{dots}</span>;
+  return (
+    <span className="font-bold border-b border-dotted border-gray-500 px-1">
+      {value}
+    </span>
+  );
+}
+
+// หัวเอกสาร (แบบทางการ) — ใช้ร่วมกันทั้งใบที่ 1 และใบที่ 2 เพื่อให้หน้าตาตรงกันเสมอ
+function StoreHeaderBlock({ store }: { store?: StoreHeader }) {
+  if (!store || !(store.name || store.address || store.tax_id)) return null;
+  return (
+    <div className="text-center">
+      {store.logo && (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={`${IMG_BASE}${store.logo}`}
+          alt="logo"
+          className="h-8 mx-auto mb-1 object-contain"
+        />
+      )}
+      {store.name && (
+        <h1 className="text-[13px] font-bold leading-tight">
+          {store.name}
+          {store.branch ? ` (${store.branch})` : " (สำนักงานใหญ่)"}
+        </h1>
+      )}
+      {store.address && (
+        <p className="text-[9px] leading-snug">{store.address}</p>
+      )}
+      {store.phone && (
+        <p className="text-[9px] font-bold bg-yellow-300 inline-block px-3 mt-0.5">
+          โทร {store.phone}
+        </p>
+      )}
+      {store.tax_id && (
+        <p className="text-[9px] mt-0.5">
+          เลขประจำตัวผู้เสียภาษีอากร (Tax ID) {store.tax_id}
+        </p>
+      )}
+    </div>
+  );
+}
+
 interface Props {
   items: QuotationProps[];
   // Page 1 (detailed quote) itemises these instead of `items` when provided —
@@ -84,7 +136,17 @@ interface Props {
   afterImages?: string[]; // รูปบนตราชั่ง (หลังหลอม)
   signatureImage?: string | null; // ลายเซ็น (data-URL หรือ URL)
   signerName?: string;
+  // บัญชีธนาคารของลูกค้า — เติมลงช่อง "ชำระโดย เช็ค/บัตร/เงินโอน" เมื่อผู้ใช้ติ๊กเลือก
+  bankName?: string;
+  bankAccountNo?: string;
+  bankAccountName?: string;
+  // ชำระโดย ที่บันทึกไว้กับใบเสนอราคา ("" | cash | transfer)
+  paymentMethod?: PayMethod;
+  // ไม่ส่ง = อ่านอย่างเดียว (ติ๊กไม่ได้) เพราะไม่มีใครรับไปบันทึกต่อ
+  onPaymentMethodChange?: (m: PayMethod) => void;
 }
+
+export type PayMethod = "cash" | "transfer" | null;
 
 export interface PreviewQuoteHandle {
   print: () => void;
@@ -110,10 +172,38 @@ export const PreviewQuote = React.forwardRef<PreviewQuoteHandle, Props>(
       afterImages,
       signatureImage,
       signerName,
+      bankName,
+      bankAccountNo,
+      bankAccountName,
+      paymentMethod,
+      onPaymentMethodChange,
     },
     ref,
   ) => {
     const [scale, setScale] = React.useState(1);
+
+    // ชำระโดย — เงินสด หรือ เช็ค/บัตร/เงินโอน (เลือกได้อย่างใดอย่างหนึ่ง).
+    // เมื่อเลือกเงินโอน ช่องธนาคาร/เลขที่/ลงวันที่/จำนวนเงิน จะเติมจากบัญชีลูกค้าให้อัตโนมัติ
+    // ค่าเริ่มต้นมาจากที่บันทึกไว้กับใบ — ใบที่เปิดดูภายหลังจึงยังติ๊กค้างไว้เหมือนตอนออกใบ
+    const [payMethod, setPayMethod] = React.useState<PayMethod>(
+      paymentMethod ?? null,
+    );
+    React.useEffect(() => {
+      setPayMethod(paymentMethod ?? null);
+    }, [paymentMethod]);
+
+    // อ่านอย่างเดียวเมื่อไม่มีใครรับค่าไปบันทึก — กันไม่ให้ติ๊กแล้วหายตอนปิดหน้า
+    const payReadOnly = !onPaymentMethodChange;
+    const choosePayMethod = (m: PayMethod) => {
+      if (payReadOnly) return;
+      setPayMethod(m);
+      onPaymentMethodChange?.(m);
+    };
+
+    const isCash = payMethod === "cash";
+    const isTransfer = payMethod === "transfer";
+    // ธนาคาร + ชื่อบัญชี รวมเป็นบรรทัดเดียว (ช่องบนใบมีช่องเดียว)
+    const bankLine = [bankName, bankAccountName].filter(Boolean).join(" · ");
 
     // Reference gold prices (ราคาทองคำแท่ง/ทองรูปพรรณ ของวันนี้) for the formal
     // ใบรับซื้อทองเก่า page — same /gold-prices/latest endpoint the item-entry
@@ -513,49 +603,8 @@ export const PreviewQuote = React.forwardRef<PreviewQuoteHandle, Props>(
               <div
                 className="print-page bg-white shadow-lg rounded-lg p-[20px] min-h-auto text-[10px]" // Explicit sizing to match A5 Print (210mm height, 20px padding)
               >
-                {/* Receipt header — from the store's saved info */}
-                {store && (store.name || store.address || store.tax_id) && (
-                  <div className="border-b-2 border-gray-700 pb-2 mb-3">
-                    {/* Top block — centered */}
-                    <div className="text-center py-0.5">
-                      {store.logo && (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img
-                          src={`${IMG_BASE}${store.logo}`}
-                          alt="logo"
-                          className="h-10 mx-auto mb-1 object-contain"
-                        />
-                      )}
-                      {store.name && (
-                        <h1 className="text-[13px] font-bold leading-tight">
-                          {store.name}
-                        </h1>
-                      )}
-                      {store.website && (
-                        <p className="text-[9px] font-bold">{store.website}</p>
-                      )}
-                      {store.branch && (
-                        <p className="text-[8px]">สาขา {store.branch}</p>
-                      )}
-                      {store.address && (
-                        <p className="text-[8px] leading-snug">
-                          {store.address}
-                        </p>
-                      )}
-                    </div>
-
-                    {/* Taxpayer block — left aligned */}
-                    {(store.tax_name || store.tax_id) && (
-                      <div className="flex flex-col text-[8px] mt-2.5 leading-snug">
-                        {store.tax_name && <p>{store.tax_name}</p>}
-                        {store.tax_id && <p>เลขประจำตัวผู้เสียภาษี</p>}
-                        {store.tax_id && (
-                          <p className="font-bold">{store.tax_id}</p>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                )}
+                {/* Receipt header — same block as page 2 */}
+                <StoreHeaderBlock store={store} />
 
                 {/* Document title + customer/date — always shown */}
                 <h2 className="text-[13px] font-bold text-center my-2">
@@ -803,16 +852,38 @@ export const PreviewQuote = React.forwardRef<PreviewQuoteHandle, Props>(
                         ชำระโดย
                       </div>
                       <div className=" flex flex-col gap-y-2">
-                        <Checkbox size="sm">
+                        <Checkbox
+                          size="sm"
+                          isSelected={isCash}
+                          isReadOnly={payReadOnly}
+                          onValueChange={(v) => choosePayMethod(v ? "cash" : null)}
+                        >
                           <div className=" text-black text-[8px]">
-                            เงินสด
-                            ......................................................................
+                            เงินสด{" "}
+                            <Blank
+                              value={
+                                isCash
+                                  ? calculateGrandTotal().toLocaleString()
+                                  : ""
+                              }
+                              dots="......................................................................"
+                            />
                           </div>
                         </Checkbox>
-                        <Checkbox size="sm">
+                        <Checkbox
+                          size="sm"
+                          isSelected={isTransfer}
+                          isReadOnly={payReadOnly}
+                          onValueChange={(v) =>
+                            choosePayMethod(v ? "transfer" : null)
+                          }
+                        >
                           <div className=" text-black text-[8px]">
-                            เช็ค / บัตร / เงินโอน ธนาคาร
-                            ......................................................................
+                            เช็ค / บัตร / เงินโอน ธนาคาร{" "}
+                            <Blank
+                              value={isTransfer ? bankLine : ""}
+                              dots="......................................................................"
+                            />
                           </div>
                         </Checkbox>
                       </div>
@@ -823,14 +894,22 @@ export const PreviewQuote = React.forwardRef<PreviewQuoteHandle, Props>(
                           เลขที่
                         </div>
                         <div className=" ">
-                          .......................................
+                          <Blank value={isTransfer ? bankAccountNo : ""} />
                         </div>
                       </div>
-                      <div className=" flex flex-row">
-                        ลงวันที่ .......................................
+                      <div className=" flex flex-row gap-x-1">
+                        ลงวันที่{" "}
+                        <Blank value={isTransfer ? thaiDate(date) : ""} />
                       </div>
-                      <div className=" flex flex-row">
-                        จำนวนเงิน .......................................
+                      <div className=" flex flex-row gap-x-1">
+                        จำนวนเงิน{" "}
+                        <Blank
+                          value={
+                            isTransfer
+                              ? calculateGrandTotal().toLocaleString()
+                              : ""
+                          }
+                        />
                       </div>
                     </div>
                     <div className=" flex flex-row indent-16">
@@ -923,35 +1002,7 @@ export const PreviewQuote = React.forwardRef<PreviewQuoteHandle, Props>(
 
               {/* ============ Page 2: ใบรับซื้อทองเก่า / ใบสำคัญจ่าย (แบบทางการ) ============ */}
               <div className="print-page bg-white shadow-lg rounded-lg p-[20px] text-[9px]">
-                <div className="text-center">
-                  {store?.logo && (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={`${IMG_BASE}${store.logo}`}
-                      alt="logo"
-                      className="h-8 mx-auto mb-1 object-contain"
-                    />
-                  )}
-                  {store?.name && (
-                    <h1 className="text-[13px] font-bold leading-tight">
-                      {store.name}
-                      {store.branch ? ` (${store.branch})` : " (สำนักงานใหญ่)"}
-                    </h1>
-                  )}
-                  {store?.address && (
-                    <p className="text-[9px] leading-snug">{store.address}</p>
-                  )}
-                  {store?.phone && (
-                    <p className="text-[9px] font-bold bg-yellow-300 inline-block px-3 mt-0.5">
-                      โทร {store.phone}
-                    </p>
-                  )}
-                  {store?.tax_id && (
-                    <p className="text-[9px] mt-0.5">
-                      เลขประจำตัวผู้เสียภาษีอากร (Tax ID) {store.tax_id}
-                    </p>
-                  )}
-                </div>
+                <StoreHeaderBlock store={store} />
 
                 <div className="flex justify-between items-start mt-2">
                   <span className="w-10 text-[9px]">&nbsp;</span>
@@ -1112,29 +1163,40 @@ export const PreviewQuote = React.forwardRef<PreviewQuoteHandle, Props>(
                   <div className="flex gap-x-2">
                     <span className="font-bold shrink-0">ชำระโดย :</span>
                     <div className="flex flex-col gap-y-1">
-                      <Checkbox size="sm">
-                        <span className="text-[8px]">เงินสด</span>
-                      </Checkbox>
                       <div className="flex items-center gap-x-1">
-                        <Checkbox size="sm">
-                          <span className="text-[8px]">เงินโอน ธนาคาร</span>
+                        <Checkbox
+                          size="sm"
+                          isSelected={isCash}
+                          isReadOnly={payReadOnly}
+                          onValueChange={(v) => choosePayMethod(v ? "cash" : null)}
+                        >
+                          <span className="text-[8px]">เงินสด</span>
                         </Checkbox>
-                        <span className="flex-1 border-b border-dotted border-gray-400">
-                          &nbsp;
+                        <span className="flex-1 border-b border-dotted border-gray-400 px-1 font-bold">
+                          {isCash ? calculateGrandTotal().toLocaleString() : " "}
                         </span>
                       </div>
+                      {/* เงินโอน / บัตร / เช็ค รวมเป็นตัวเลือกเดียว ใช้ช่องธนาคาร
+                          และเลขที่บัญชีชุดเดียวกัน — เหมือนใบที่ 1 */}
                       <div className="flex items-center gap-x-1">
-                        <Checkbox size="sm">
-                          <span className="text-[8px]">
-                            บัตรเครดิต/เดบิต/เช็ค ธนาคาร
+                        <Checkbox
+                          size="sm"
+                          isSelected={isTransfer}
+                          isReadOnly={payReadOnly}
+                          onValueChange={(v) =>
+                            choosePayMethod(v ? "transfer" : null)
+                          }
+                        >
+                          <span className="text-[8px] whitespace-nowrap">
+                            เงินโอน / บัตรเครดิต / เดบิต / เช็ค ธนาคาร
                           </span>
                         </Checkbox>
-                        <span className="border-b border-dotted border-gray-400 w-24 inline-block">
-                          &nbsp;
+                        <span className="flex-1 border-b border-dotted border-gray-400 px-1 font-bold">
+                          {isTransfer && bankLine ? bankLine : " "}
                         </span>
                         <span className="shrink-0">เลขที่</span>
-                        <span className="flex-1 border-b border-dotted border-gray-400">
-                          &nbsp;
+                        <span className="flex-1 border-b border-dotted border-gray-400 px-1 font-bold">
+                          {isTransfer && bankAccountNo ? bankAccountNo : " "}
                         </span>
                       </div>
                     </div>
@@ -1142,14 +1204,16 @@ export const PreviewQuote = React.forwardRef<PreviewQuoteHandle, Props>(
                   <div className="flex gap-x-6 pl-12">
                     <span className="flex items-center gap-x-1">
                       ลงวันที่
-                      <span className="border-b border-dotted border-gray-400 w-20 inline-block">
-                        &nbsp;
+                      <span className="border-b border-dotted border-gray-400 min-w-20 inline-block px-1 font-bold">
+                        {isTransfer ? shortThaiDate(date) : " "}
                       </span>
                     </span>
                     <span className="flex items-center gap-x-1">
                       จำนวนเงิน
-                      <span className="border-b border-dotted border-gray-400 w-20 inline-block">
-                        &nbsp;
+                      <span className="border-b border-dotted border-gray-400 min-w-20 inline-block px-1 font-bold">
+                        {isTransfer
+                          ? calculateGrandTotal().toLocaleString()
+                          : " "}
                       </span>
                     </span>
                   </div>

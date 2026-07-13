@@ -9,11 +9,11 @@ import { Spinner } from "@heroui/spinner";
 import { Modal, ModalContent, ModalHeader, ModalBody, ModalFooter, useDisclosure } from "@heroui/modal";
 import { Button } from "@heroui/button";
 import { Tabs, Tab } from "@heroui/tabs";
-import { DateRangePicker } from "@heroui/react";
+import { DateRangePicker } from "@heroui/date-picker";
 import { CalendarDate, today, getLocalTimeZone } from "@internationalized/date";
 import type { RangeValue } from "@react-types/shared";
 import { ShieldOff, Printer, CalendarDays, Layers } from "lucide-react";
-import { PreviewQuote, PreviewQuoteHandle } from "../../quotation/_component/previewQuote";
+import { PreviewQuote, PreviewQuoteHandle, type PayMethod } from "../../quotation/_component/previewQuote";
 import { QuotationProps } from "../../quotation/_component/quotation";
 import {
   buildStoreHeader,
@@ -40,6 +40,8 @@ const itemWeightUnit = (m?: string) => ((m || "gold") === "gold" ? "บาท" :
 interface IssuedQuotation extends QuotationStoreSnapshot {
   id: number;
   code: string;
+  created_at?: string;
+  payment_method?: string;
   total_amount: number;
   items?: BillItem[];
   // Detailed per-item lines captured at issue time (items above is consolidated).
@@ -59,7 +61,7 @@ interface BillData {
   items?: BillItem[];
   images?: { id: number; image_url: string; type?: string }[];
   issued_quotation?: IssuedQuotation | null;
-  creator?: { id: number; name: string; phone?: string; address?: string; tax_id?: string } | null;
+  creator?: { id: number; name: string; phone?: string; address?: string; tax_id?: string; bank?: { id: number; name: string } | null; bank_account_no?: string; bank_account_name?: string } | null;
   // Full store relation (preloaded on /bills/:id) — feeds the receipt header.
   store?: (StoreHeaderSnapshot & { id: number; name: string }) | null;
   branch?: { id: number; name: string } | null;
@@ -343,6 +345,9 @@ export default function IssuedBillsPage() {
                       ref={previewRef}
                       hidePrint
                       documentNo={detailB.issued_quotation?.code ?? detailB.code}
+                      date={
+                        detailB.issued_quotation?.created_at ?? detailB.created_at
+                      }
                       page1Items={
                         billPage1Items.length
                           ? billPage1Items
@@ -359,6 +364,10 @@ export default function IssuedBillsPage() {
                       customerPhone={detailB.issued_quotation?.signer_phone || detailB.creator?.phone}
                       customerAddress={detailB.creator?.address}
                       customerTaxId={detailB.creator?.tax_id}
+                      paymentMethod={(detailB.issued_quotation?.payment_method || null) as PayMethod}
+                      bankName={detailB.creator?.bank?.name}
+                      bankAccountNo={detailB.creator?.bank_account_no}
+                      bankAccountName={detailB.creator?.bank_account_name}
                       signerName={detailB.issued_quotation?.signer_name}
                     />
                   </div>

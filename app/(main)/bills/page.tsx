@@ -17,7 +17,7 @@ import { Select, SelectItem } from "@heroui/select";
 import { Input } from "@heroui/input";
 import { Tabs, Tab } from "@heroui/tabs";
 import { Table, TableHeader, TableColumn, TableBody, TableRow, TableCell } from "@heroui/table";
-import { PreviewQuote } from "../quotation/_component/previewQuote";
+import { PreviewQuote, type PayMethod } from "../quotation/_component/previewQuote";
 import { QuotationProps } from "../quotation/_component/quotation";
 import {
   buildStoreHeader,
@@ -54,7 +54,7 @@ interface BillData {
   // the receipt-header fields, not just id/name.
   store?: StoreHeaderSnapshot & { id: number; name: string } | null;
   branch?: { id: number; name: string } | null;
-  creator?: { id: number; name: string; phone?: string; address?: string; tax_id?: string } | null;
+  creator?: { id: number; name: string; phone?: string; address?: string; tax_id?: string; bank?: { id: number; name: string } | null; bank_account_no?: string; bank_account_name?: string } | null;
   issued_quotation_id?: number | null;
   items?: BillItem[];
   images?: { id: number; image_url: string; type?: string }[];
@@ -62,6 +62,8 @@ interface BillData {
   // real bill shown to the customer. Also carries the store-header snapshot taken
   // when it was issued.
   issued_quotation?: ({
+    created_at?: string;
+    payment_method?: string;
     total_amount?: number;
     items?: BillItem[];
     // Detailed per-item lines captured at issue time — used to itemise the
@@ -880,6 +882,9 @@ export default function BillsList() {
                 <PreviewQuote
                   hidePrint={isCustomer}
                   documentNo={detailB.code}
+                  date={
+                    detailB.issued_quotation?.created_at ?? detailB.created_at
+                  }
                   page1Items={
                     billPage1Items.length
                       ? billPage1Items
@@ -906,6 +911,10 @@ export default function BillsList() {
                   customerPhone={detailB.issued_quotation?.signer_phone || detailB.creator?.phone}
                   customerAddress={detailB.creator?.address}
                   customerTaxId={detailB.creator?.tax_id}
+                  paymentMethod={(detailB.issued_quotation?.payment_method || null) as PayMethod}
+                  bankName={detailB.creator?.bank?.name}
+                  bankAccountNo={detailB.creator?.bank_account_no}
+                  bankAccountName={detailB.creator?.bank_account_name}
                   signerName={detailB.issued_quotation?.signer_name}
                 />
               );

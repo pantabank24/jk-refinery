@@ -11,7 +11,7 @@ import { api } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
 import { CustomerCard } from "../_components/customerCard";
 import { DocumentList, DOC_ACCEPT, type CustomerDocument } from "../_components/documentList";
-import { PreviewQuote, PreviewQuoteHandle } from "../../../quotation/_component/previewQuote";
+import { PreviewQuote, PreviewQuoteHandle, type PayMethod } from "../../../quotation/_component/previewQuote";
 import { QuotationProps } from "../../../quotation/_component/quotation";
 import {
   buildStoreHeader,
@@ -26,6 +26,9 @@ interface Customer {
   phone: string;
   address?: string;
   tax_id?: string;
+  bank?: { id: number; name: string; code?: string } | null;
+  bank_account_no?: string;
+  bank_account_name?: string;
   avatar?: string;
   is_active: boolean;
   store_name?: string | null;
@@ -56,6 +59,8 @@ interface BillItem {
 interface IssuedQuotation extends QuotationStoreSnapshot {
   id: number;
   code: string;
+  created_at?: string;
+  payment_method?: string;
   total_amount: number;
   items?: BillItem[];
   // Detailed per-item lines captured at issue time (items above is consolidated).
@@ -373,6 +378,9 @@ export const CustomerDetail = ({ selfMode = false }: { selfMode?: boolean } = {}
             storeName={customer.store_name || customer.store?.name || ""}
             address={customer.address}
             taxId={customer.tax_id}
+            bankName={customer.bank?.name}
+            bankAccountNo={customer.bank_account_no}
+            bankAccountName={customer.bank_account_name}
             isActive={customer.is_active}
             canEdit={canUpdate}
             onImageUpload={handleAvatarUpload}
@@ -568,6 +576,9 @@ export const CustomerDetail = ({ selfMode = false }: { selfMode?: boolean } = {}
                       ref={previewRef}
                       hidePrint
                       documentNo={detailB.issued_quotation?.code ?? detailB.code}
+                      date={
+                        detailB.issued_quotation?.created_at ?? detailB.created_at
+                      }
                       page1Items={
                         billPage1Items.length
                           ? billPage1Items
@@ -584,6 +595,10 @@ export const CustomerDetail = ({ selfMode = false }: { selfMode?: boolean } = {}
                       customerPhone={detailB.issued_quotation?.signer_phone || customer?.phone}
                       customerAddress={customer?.address}
                       customerTaxId={customer?.tax_id}
+                      paymentMethod={(detailB.issued_quotation?.payment_method || null) as PayMethod}
+                      bankName={customer?.bank?.name}
+                      bankAccountNo={customer?.bank_account_no}
+                      bankAccountName={customer?.bank_account_name}
                       signerName={detailB.issued_quotation?.signer_name}
                     />
                   </div>

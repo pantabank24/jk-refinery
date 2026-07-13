@@ -11,7 +11,7 @@ import { Select, SelectItem } from "@heroui/select";
 import { Input } from "@heroui/input";
 import { Textarea } from "@heroui/input";
 import { Switch } from "@heroui/switch";
-import { PreviewQuote } from "../../quotation/_component/previewQuote";
+import { PreviewQuote, type PayMethod } from "../../quotation/_component/previewQuote";
 import { GoldType, computeItem } from "@/lib/gold-calc";
 import { QuotationProps } from "../../quotation/_component/quotation";
 import { QuotationData, QuotationItem, MemberOption } from "./types";
@@ -92,6 +92,20 @@ export function QuotationDetailPanel({ quotation, members, goldTypes, canUpdate,
     if (!quotation) return;
     const res = await api.get<QuotationData>(`/quotations/${quotation.id}`);
     onChanged(res.data as unknown as QuotationData);
+  };
+
+  // ชำระโดย — บันทึกทันทีที่ติ๊ก ผ่าน endpoint เฉพาะ (PATCH /quotations/:id จะเขียนทับ
+  // member/note/items ทั้งก้อน จึงไม่เหมาะกับการแก้แค่ช่องนี้)
+  const savePaymentMethod = async (m: PayMethod) => {
+    if (!quotation) return;
+    try {
+      await api.patch(`/quotations/${quotation.id}/payment-method`, {
+        payment_method: m ?? "",
+      });
+      await refresh();
+    } catch {
+      /* ignore — พรีวิวยังแสดงค่าที่เพิ่งติ๊กไว้ */
+    }
   };
 
   const handleDeleteQuotation = async () => {
@@ -249,7 +263,7 @@ export function QuotationDetailPanel({ quotation, members, goldTypes, canUpdate,
   const storeHeaderName = quotation.store_name || quotation.store?.name;
   const hasActions =
     canDelete ||
-    (canUpdate && quotation.status === 0) ||
+    (canUpdate && quotation.status !== 2) ||
     (isMaster && quotation.status !== 0);
 
   return (
@@ -305,6 +319,12 @@ export function QuotationDetailPanel({ quotation, members, goldTypes, canUpdate,
         customerPhone={quotation.signer_phone || quotation.member?.phone}
         customerAddress={quotation.member?.user?.address}
         customerTaxId={quotation.member?.user?.tax_id}
+        bankName={quotation.member?.user?.bank?.name}
+        bankAccountNo={quotation.member?.user?.bank_account_no}
+        bankAccountName={quotation.member?.user?.bank_account_name}
+        paymentMethod={(quotation.payment_method || null) as PayMethod}
+        // Staff may amend the tick after issuing; customers see it read-only.
+        onPaymentMethodChange={canUpdate ? savePaymentMethod : undefined}
         date={quotation.created_at}
         beforeImages={imgUrls(quotation.images, "before_melt")}
         afterImages={imgUrls(quotation.images, "after_melt")}
@@ -339,8 +359,10 @@ export function QuotationDetailPanel({ quotation, members, goldTypes, canUpdate,
             แก้ไข
           </Button>
         )}
-        {/* Master may cancel an approved quotation (with optional credit refund) */}
-        {isMaster && quotation.status === 1 && (
+        {/* Cancelling an approved quotation (with optional credit refund) — anyone
+            who may update quotations, since they are approved on creation and the
+            only other way to void one is deleting it. */}
+        {canUpdate && quotation.status === 1 && (
           <Button color="danger" variant="flat" startContent={<XCircle size={14} />} onPress={openReject}>
             ยกเลิก
           </Button>

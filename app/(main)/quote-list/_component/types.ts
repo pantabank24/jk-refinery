@@ -28,7 +28,7 @@ export interface QuotationData {
   bill_id?: number | null;
   // user carries the member's saved profile address/tax id (address lives on the
   // linked login user, not the member row) — used for the quotation preview header.
-  member?: { id: number; fname: string; lname: string; phone: string; code: string; user?: { address?: string; tax_id?: string } | null } | null;
+  member?: { id: number; fname: string; lname: string; phone: string; code: string; user?: { address?: string; tax_id?: string; bank?: { name: string } | null; bank_account_no?: string; bank_account_name?: string } | null } | null;
   store?: { id: number; name: string; address?: string; phone?: string; tax_id?: string; tax_name?: string; website?: string; logo?: string } | null;
   branch?: { id: number; name: string } | null;
   // Store header snapshot — taken at creation time, so reprinting later still
@@ -54,6 +54,8 @@ export interface QuotationData {
   images?: { id: number; image_url: string; type?: string }[];
   signer_name?: string;
   signer_phone?: string;
+  // ชำระโดย ที่ติ๊กไว้ตอนออกใบ: "" | "cash" | "transfer"
+  payment_method?: string;
   created_at: string;
 }
 

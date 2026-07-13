@@ -14,6 +14,7 @@ import { Textarea } from "@heroui/input";
 import { Modal, ModalContent, ModalHeader, ModalBody, ModalFooter, useDisclosure } from "@heroui/modal";
 import { ArrowUp, ArrowDown, FileText, Plus, ChevronDown, ShieldOff } from "lucide-react";
 import moment from "moment";
+import { BankManagement } from "./_component/bankManagement";
 
 interface CreditTransaction {
   id: number;
@@ -61,6 +62,9 @@ export default function CreditManagementPage() {
   const { hasPermission } = useAuth();
   const canRead = hasPermission("credits.read");
   const canUpdate = hasPermission("credits.update");
+  // Bank list management lives here as a second section rather than its own sidebar page.
+  const canReadBanks = hasPermission("banks.read");
+  const [section, setSection] = useState<"credits" | "banks">("credits");
 
   const [transactions, setTransactions] = useState<CreditTransaction[]>([]);
   const [loading, setLoading] = useState(true);
@@ -147,9 +151,9 @@ export default function CreditManagementPage() {
       {/* Header */}
       <div className="flex flex-row items-center justify-between shrink-0 px-1">
         <span className="font-bold text-2xl bg-gradient-to-l from-black/90 to-yellow-600 bg-clip-text text-transparent">
-          จัดการเครดิต
+          {section === "banks" ? "จัดการธนาคาร" : "จัดการเครดิต"}
         </span>
-        {canUpdate && (
+        {section === "credits" && canUpdate && (
           <Button
             className="bg-gradient-to-r from-[#c09c42] to-yellow-600 text-white font-bold"
             startContent={<Plus size={16} />}
@@ -160,6 +164,29 @@ export default function CreditManagementPage() {
         )}
       </div>
 
+      {/* Section menu — เครดิต / ธนาคาร */}
+      {canReadBanks && (
+        <div className="shrink-0">
+          <Tabs
+            selectedKey={section}
+            onSelectionChange={(k) => setSection(k as "credits" | "banks")}
+            color="warning"
+            variant="solid"
+            classNames={{
+              tabList: "border-1 border-black/10 bg-black/5 backdrop-blur-xl rounded-2xl",
+              tabContent: "font-bold",
+            }}
+          >
+            <Tab key="credits" title="เครดิต" />
+            <Tab key="banks" title="ธนาคาร" />
+          </Tabs>
+        </div>
+      )}
+
+      {section === "banks" ? (
+        <BankManagement />
+      ) : (
+      <>
       {/* Search */}
       <div className="shrink-0">
         <CmpInput
@@ -244,6 +271,8 @@ export default function CreditManagementPage() {
           </div>
         )}
       </div>
+      </>
+      )}
 
       {/* ════════════════════════════════
            ADD CREDIT MODAL

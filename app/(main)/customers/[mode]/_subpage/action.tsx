@@ -6,9 +6,11 @@ import Image from "next/image";
 import { Input, Textarea } from "@heroui/input";
 import { Button } from "@heroui/button";
 import { Switch } from "@heroui/switch";
+import { Select, SelectItem } from "@heroui/select";
 import { Spinner } from "@heroui/spinner";
 import { ArrowLeft, Camera, Eye, EyeOff, Save, Upload, X } from "lucide-react";
 import { api } from "@/lib/api";
+import type { BankDto } from "@/dtos/bank-dto";
 import {
   DocumentList, DOC_ACCEPT, fmtSize, type CustomerDocument,
 } from "../_components/documentList";
@@ -22,6 +24,9 @@ interface Customer {
   phone: string;
   address?: string;
   tax_id?: string;
+  bank_id?: number | null;
+  bank_account_no?: string;
+  bank_account_name?: string;
   avatar?: string;
   is_active: boolean;
   store_name?: string | null;
@@ -54,6 +59,12 @@ export const CustomerAction = () => {
   const [taxId, setTaxId] = useState("");
   const [isActive, setIsActive] = useState(true);
 
+  // Payout account. bankId is the Select's key — "" means ไม่ระบุ.
+  const [banks, setBanks] = useState<BankDto[]>([]);
+  const [bankId, setBankId] = useState("");
+  const [bankAccountNo, setBankAccountNo] = useState("");
+  const [bankAccountName, setBankAccountName] = useState("");
+
   // Documents: existing (edit) live-managed; pending (create) queued until save.
   const [docs, setDocs] = useState<CustomerDocument[]>([]);
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
@@ -62,6 +73,13 @@ export const CustomerAction = () => {
   const [initLoading, setInitLoading] = useState(isEdit);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+
+  useEffect(() => {
+    api
+      .get<BankDto[]>("/banks")
+      .then((res) => setBanks((res.data as unknown as BankDto[]) || []))
+      .catch(() => setBanks([]));
+  }, []);
 
   useEffect(() => {
     if (!isEdit || !customerId) return;
@@ -78,6 +96,9 @@ export const CustomerAction = () => {
         setStoreName(c.store_name || "");
         setAddress(c.address || "");
         setTaxId(c.tax_id || "");
+        setBankId(c.bank_id ? String(c.bank_id) : "");
+        setBankAccountNo(c.bank_account_no || "");
+        setBankAccountName(c.bank_account_name || "");
         setIsActive(c.is_active);
         setExistingAvatar(c.avatar || "");
         setDocs((dRes.data as unknown as CustomerDocument[]) || []);
@@ -89,6 +110,10 @@ export const CustomerAction = () => {
     };
     load();
   }, [isEdit, customerId, router]);
+
+  // Disabled banks stay out of the picker, except the one this customer is already
+  // on — otherwise editing them would silently drop their bank.
+  const bankOptions = banks.filter((b) => b.is_active || String(b.id) === bankId);
 
   const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -156,6 +181,10 @@ export const CustomerAction = () => {
           store_name: storeName,
           address,
           tax_id: taxId,
+          // 0 = ไม่ระบุ; the API maps it back to NULL so a bank can be cleared.
+          bank_id: bankId ? Number(bankId) : 0,
+          bank_account_no: bankAccountNo,
+          bank_account_name: bankAccountName,
           is_active: isActive,
         });
       } else {
@@ -164,6 +193,9 @@ export const CustomerAction = () => {
           store_name: storeName || undefined,
           address: address || undefined,
           tax_id: taxId || undefined,
+          bank_id: bankId ? Number(bankId) : undefined,
+          bank_account_no: bankAccountNo || undefined,
+          bank_account_name: bankAccountName || undefined,
         });
         targetId = String((res.data as unknown as { id: number })?.id);
         // Upload queued documents now that we have an id.
@@ -245,6 +277,45 @@ export const CustomerAction = () => {
                   <Switch isSelected={isActive} onValueChange={setIsActive} color="warning" />
                 </div>
               )}
+            </div>
+
+            {/* บัญชีธนาคาร */}
+            <div className="flex flex-col gap-y-3">
+              <span className="font-bold text-md bg-gradient-to-r from-black/90 to-yellow-400 bg-clip-text text-transparent">
+                บัญชีธนาคาร
+              </span>
+              <Select
+                label="ธนาคาร"
+                placeholder="เลือกธนาคาร"
+                selectedKeys={bankId ? new Set([bankId]) : new Set([])}
+                onSelectionChange={(keys) =>
+                  setBankId((Array.from(keys)[0] as string) ?? "")
+                }
+                classNames={{ trigger: inputStyle }}
+              >
+                {bankOptions.map((b) => (
+                  <SelectItem key={String(b.id)} textValue={b.name}>
+                    {b.name}
+                    {b.code ? ` (${b.code})` : ""}
+                    {b.is_active ? "" : " — ปิดใช้งาน"}
+                  </SelectItem>
+                ))}
+              </Select>
+              <Input
+                label="เลขที่บัญชี"
+                value={bankAccountNo}
+                onValueChange={(v) => setBankAccountNo(v.replace(/[^0-9-]/g, ""))}
+                inputMode="numeric"
+                classNames={{ inputWrapper: inputStyle }}
+                placeholder="เลขที่บัญชีธนาคาร"
+              />
+              <Input
+                label="ชื่อบัญชี"
+                value={bankAccountName}
+                onValueChange={setBankAccountName}
+                classNames={{ inputWrapper: inputStyle }}
+                placeholder="ชื่อเจ้าของบัญชี"
+              />
             </div>
 
             {/* บัญชีเข้าสู่ระบบ */}

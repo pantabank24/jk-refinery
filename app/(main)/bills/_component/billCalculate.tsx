@@ -122,9 +122,10 @@ export const BillCalculate = ({
   const [silverPriceTouched, setSilverPriceTouched] = useState(false);
   const [silverManualBase, setSilverManualBase] = useState(0);
   // Weight holds baht (gold) or grams (silver); reset on metal switch.
-  // Staff (free entry) start at 1 baht; customers start at the 5-baht step floor.
-  const goldDefaultWeight = staffMode ? 1 : WEIGHT_MIN;
   const [weight, setWeight] = useState(staffMode ? 1 : WEIGHT_MIN);
+  // Set once the weight stops being the untouched default, so the async
+  // custom-weight status can't overwrite a weight the customer picked.
+  const [weightTouched, setWeightTouched] = useState(false);
   // Silver purity % entered by the customer (prefilled from the type default).
   const [percent, setPercent] = useState(0);
 
@@ -135,6 +136,16 @@ export const BillCalculate = ({
   const { status: salesStatus } = useSalesStatus();
   // Whether the customer may type the weight directly right now (scheduled by master).
   const { status: customWeightStatus } = useCustomWeightStatus();
+  // Staff always get the free-entry stepper (type / +-1); customers only get it
+  // when the master's schedule allows it right now. (Gold only — silver is always typed.)
+  const canTypeWeight = staffMode || !!customWeightStatus?.allowed;
+  // Free entry steps by 1, so start at 1 baht; the +/-5 stepper starts at its floor.
+  const goldDefaultWeight = canTypeWeight ? 1 : WEIGHT_MIN;
+  // customWeightStatus resolves after mount, so the default can flip 5 -> 1 (or
+  // back) once it lands — but never over a weight the customer already set.
+  useEffect(() => {
+    if (!weightTouched && !isSilver) setWeight(goldDefaultWeight);
+  }, [goldDefaultWeight, weightTouched, isSilver]);
   const realtimeActive = !isSilver && salesStatus?.price_mode === "realtime";
   const { data: rt, dir: rtDir } = useRealtimeGold(!!realtimeActive);
 
@@ -272,12 +283,14 @@ export const BillCalculate = ({
   const handleMetalChange = (key: string) => {
     setMetal(key);
     setWeight(key === "silver" ? 0 : goldDefaultWeight);
+    setWeightTouched(false);
     // Back to feed price on metal switch.
     setPriceTouched(false);
     setSilverPriceTouched(false);
   };
 
   const stepWeight = (dir: 1 | -1) => {
+    setWeightTouched(true);
     setWeight((w) => {
       const next = w + dir * WEIGHT_STEP;
       if (next < WEIGHT_MIN) return WEIGHT_MIN;
@@ -286,16 +299,15 @@ export const BillCalculate = ({
     });
   };
 
-  // Staff always get the free-entry stepper (type / +-1); customers only get it
-  // when the master's schedule allows it right now. (Gold only — silver is always typed.)
-  const canTypeWeight = staffMode || !!customWeightStatus?.allowed;
   const handleWeightInput = (v: string) => {
+    setWeightTouched(true);
     const clean = v.replace(/[^0-9]/g, "");
     const n = parseInt(clean, 10);
     if (Number.isNaN(n)) return setWeight(0);
     setWeight(Math.min(WEIGHT_MAX, Math.max(0, n)));
   };
   const adjustWeight = (delta: number) => {
+    setWeightTouched(true);
     setWeight((w) => Math.min(WEIGHT_MAX, Math.max(0, w + delta)));
   };
 
@@ -314,6 +326,7 @@ export const BillCalculate = ({
       total,
     });
     setWeight(isSilver ? 0 : goldDefaultWeight);
+    setWeightTouched(false);
   };
 
   const changeColor = (v: number) =>

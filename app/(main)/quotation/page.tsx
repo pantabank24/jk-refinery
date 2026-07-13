@@ -3,7 +3,7 @@
 import { Calculate } from "./_component/calculate";
 import { useState, useEffect } from "react";
 import { Quotation, QuotationProps } from "./_component/quotation";
-import { PreviewQuote } from "./_component/previewQuote";
+import { PreviewQuote, type PayMethod } from "./_component/previewQuote";
 import { TermsForm } from "./_component/termsForm";
 import { api } from "@/lib/api";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -206,7 +206,12 @@ export default function QuotationPage() {
     store_name: string;
     address: string;
     tax_id: string;
+    bank_name: string;
+    bank_account_no: string;
+    bank_account_name: string;
   } | null>(null);
+  // ชำระโดย — ติ๊กในพรีวิว แล้วบันทึกไปกับใบเสนอราคา
+  const [paymentMethod, setPaymentMethod] = useState<PayMethod>(null);
   const [prevSignatureUrl, setPrevSignatureUrl] = useState<string | null>(null);
   const [usingPrevSig, setUsingPrevSig] = useState(false);
   // Which registered field to use as the signer name when applying the
@@ -255,6 +260,9 @@ export default function QuotationPage() {
       store_name?: string;
       address?: string;
       tax_id?: string;
+      bank?: { id: number; name: string } | null;
+      bank_account_no?: string;
+      bank_account_name?: string;
     };
   };
 
@@ -275,6 +283,9 @@ export default function QuotationPage() {
             store_name: clicked.creator.store_name || "",
             address: clicked.creator.address || "",
             tax_id: clicked.creator.tax_id || "",
+            bank_name: clicked.creator.bank?.name || "",
+            bank_account_no: clicked.creator.bank_account_no || "",
+            bank_account_name: clicked.creator.bank_account_name || "",
           });
           if (clicked.creator.phone) setSignerPhone(clicked.creator.phone);
         }
@@ -637,6 +648,8 @@ export default function QuotationPage() {
       const res = await api.post<{ id: number; code: string }>("/quotations", {
         signer_name: signerName,
         signer_phone: signerPhone,
+        // ชำระโดย ที่ติ๊กไว้ในพรีวิว — เก็บไว้กับใบ ไม่งั้นเปิดดูภายหลังจะว่างเปล่า
+        payment_method: paymentMethod ?? "",
         pdpa_consent: consent,
         store_id: selectedStore?.id, // used only for master; others derive from JWT
         // Which branch's receipt header to snapshot (master/owner choose; employees
@@ -732,7 +745,21 @@ export default function QuotationPage() {
 
   // Dismiss the post-save print preview: now it's safe to clear the form and
   // navigate away (deferred from doSave so the preview still had its data).
+  // ชำระโดย — ในพรีวิวก่อนบันทึก แค่เก็บลง state (POST พาไปด้วย); ในพรีวิวหลังบันทึก
+  // ใบถูกสร้างแล้ว จึงต้อง PATCH ตามไปทันที ไม่งั้นการติ๊กตอนพิมพ์จะไม่ถูกบันทึก
+  const handlePaymentMethodChange = (m: PayMethod) => {
+    setPaymentMethod(m);
+    if (savedQuotation?.id) {
+      api
+        .patch(`/quotations/${savedQuotation.id}/payment-method`, {
+          payment_method: m ?? "",
+        })
+        .catch(() => {});
+    }
+  };
+
   const handleFinishPostSave = () => {
+    setPaymentMethod(null);
     setQuotation([]);
     setBeforeFiles([]);
     setAfterFiles([]);
@@ -1294,6 +1321,11 @@ export default function QuotationPage() {
                   customerPhone={previewCustomerPhone}
                   customerAddress={customerProfile?.address}
                   customerTaxId={customerProfile?.tax_id}
+                  bankName={customerProfile?.bank_name}
+                  bankAccountNo={customerProfile?.bank_account_no}
+                  bankAccountName={customerProfile?.bank_account_name}
+                  paymentMethod={paymentMethod}
+                  onPaymentMethodChange={handlePaymentMethodChange}
                   date={quotationDate}
                   beforeImages={beforeImages}
                   afterImages={afterImages}
@@ -1397,6 +1429,11 @@ export default function QuotationPage() {
                   customerPhone={previewCustomerPhone}
                   customerAddress={customerProfile?.address}
                   customerTaxId={customerProfile?.tax_id}
+                  bankName={customerProfile?.bank_name}
+                  bankAccountNo={customerProfile?.bank_account_no}
+                  bankAccountName={customerProfile?.bank_account_name}
+                  paymentMethod={paymentMethod}
+                  onPaymentMethodChange={handlePaymentMethodChange}
                   date={quotationDate}
                   beforeImages={beforeImages}
                   afterImages={afterImages}

@@ -66,6 +66,7 @@ interface CreditResetPreview {
 
 interface QuotationItem {
   type_name: string;
+  metal?: string;
   weight: number;
   total?: number;
 }
@@ -80,15 +81,13 @@ interface Quotation {
   items?: QuotationItem[];
 }
 
-// Categorise an item's gold-type name into a metal bucket for the gram totals.
+// The metal bucket an item belongs to. Items carry the tag themselves; a missing
+// tag means gold (items created before the metal column existed).
 type Metal = "gold" | "silver" | "platinum" | "palladium";
-function metalOf(typeName: string): Metal | null {
-  const n = typeName || "";
-  if (/แพลเลเดียม|palladium/i.test(n)) return "palladium";
-  if (/แพลตินัม|แพลทินัม|platinum/i.test(n)) return "platinum";
-  if (/เงิน|silver/i.test(n)) return "silver";
-  if (/ทอง|gold/i.test(n)) return "gold";
-  return null;
+const METALS: Metal[] = ["gold", "silver", "platinum", "palladium"];
+function metalOf(item: QuotationItem): Metal {
+  const m = (item.metal || "gold") as Metal;
+  return METALS.includes(m) ? m : "gold";
 }
 
 const fmtMoney = (n: number) => n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -206,7 +205,9 @@ export const MemberDetail = () => {
   const fetchQuotations = async (userAccountId?: number) => {
     if (!userAccountId) { setQuotations([]); return; }
     try {
-      const res = await api.get<Quotation[]>(`/quotations?created_by=${userAccountId}&limit=100`);
+      // The overview totals are computed client-side over this list, so it must
+      // cover the member's whole history — not just the newest page.
+      const res = await api.get<Quotation[]>(`/quotations?created_by=${userAccountId}&limit=1000`);
       setQuotations((res.data as unknown as Quotation[]) || []);
     } catch {
       setQuotations([]);
@@ -352,22 +353,24 @@ export const MemberDetail = () => {
       return true;
     });
 
+    // Totals ignore cancelled quotations (status 2) — they never happened.
     const grams: Record<Metal, number> = { gold: 0, silver: 0, platinum: 0, palladium: 0 };
     const amounts: Record<Metal, number> = { gold: 0, silver: 0, platinum: 0, palladium: 0 };
+    let count = 0;
     let total = 0;
     let creditUsed = 0;
     for (const q of list) {
+      if (q.status === 2) continue;
+      count += 1;
       total += q.total_amount;
       if (q.status === 1) creditUsed += q.total_amount; // approved → credit deducted
       for (const it of q.items ?? []) {
-        const metal = metalOf(it.type_name);
-        if (metal) {
-          grams[metal] += it.weight || 0;
-          amounts[metal] += it.total || 0;
-        }
+        const metal = metalOf(it);
+        grams[metal] += it.weight || 0;
+        amounts[metal] += it.total || 0;
       }
     }
-    return { filteredQuotations: list, overview: { count: list.length, total, creditUsed, grams, amounts } };
+    return { filteredQuotations: list, overview: { count, total, creditUsed, grams, amounts } };
   }, [quotations, qSearch, qStatus, qRange]);
 
   if (loading) {

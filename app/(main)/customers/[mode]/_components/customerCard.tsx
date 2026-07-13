@@ -1,7 +1,7 @@
 import { useRef } from "react";
 import { Avatar } from "@heroui/avatar";
 import { Chip } from "@heroui/chip";
-import { Camera, Phone, Building2, MapPin, Mail, ReceiptText } from "lucide-react";
+import { Camera, Phone, Building2, MapPin, Mail, ReceiptText, Landmark } from "lucide-react";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL?.replace("/api/v1", "") || "http://localhost:8080";
 
@@ -13,13 +13,17 @@ interface Props {
   storeName?: string;
   address?: string;
   taxId?: string;
+  bankName?: string;
+  bankAccountNo?: string;
+  bankAccountName?: string;
   isActive: boolean;
   canEdit?: boolean;
   onImageUpload?: (file: File) => void;
 }
 
 export const CustomerCard = ({
-  name, email, avatar, phone, storeName, address, taxId, isActive, canEdit, onImageUpload,
+  name, email, avatar, phone, storeName, address, taxId,
+  bankName, bankAccountNo, bankAccountName, isActive, canEdit, onImageUpload,
 }: Props) => {
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -64,6 +68,14 @@ export const CustomerCard = ({
         <InfoRow icon={<Phone size={14} />} label="เบอร์โทร" value={phone || "-"} />
         <InfoRow icon={<MapPin size={14} />} label="ที่อยู่" value={address || "-"} multiline />
         <InfoRow icon={<ReceiptText size={14} />} label="เลขประจำตัวผู้เสียภาษี" value={taxId || "-"} />
+        {(bankName || bankAccountNo || bankAccountName) && (
+          <InfoRow
+            icon={<Landmark size={14} />}
+            label="บัญชีธนาคาร"
+            value={[bankName, bankAccountNo, bankAccountName].filter(Boolean).join("\n")}
+            multiline
+          />
+        )}
       </div>
     </div>
   );
