@@ -1,9 +1,10 @@
 "use client";
 
 import { BoxCard } from "@/components/boxcard";
-import { ArrowUp, ArrowDown, Minus, Plus, List } from "lucide-react";
+import { ArrowUp, ArrowDown, Minus, Plus, List, Pencil } from "lucide-react";
 import { DecimalInput } from "@/components/decimalInput";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
+import { useRouter } from "next/navigation";
 import { CmpSelect, Option } from "@/components/cmpSelect";
 import { QuotationProps } from "./quotation";
 import { api } from "@/lib/api";
@@ -67,6 +68,60 @@ interface SilverPrice {
   price_time: string;
 }
 
+// Which silver price feeds the calculation. "custom" = the shop's set price from
+// ตั้งค่าขายเงิน (silver_manual_price), "market" = the live feed. Defaults to custom.
+type SilverPriceMode = "custom" | "market";
+
+// Shop silver config (from ตั้งค่าขายเงิน). Mirrors billCalculate so bill mode can
+// price silver exactly like the customer did: base (feed|manual) + weight tier.
+interface SilverTier {
+  up_to_kg: number | null; // null = catch-all (largest weights)
+  add_per_kg: number;
+  blocked: boolean;
+}
+interface SilverCfg {
+  mode: "feed" | "manual";
+  manualPrice: number;
+  tiers: SilverTier[];
+}
+
+// Resolve the tier covering `kg` (first whose upper bound covers it; catch-all last).
+// null = exceeds every bound with no catch-all. No tiers = base price, any weight.
+const resolveSilverTier = (
+  tiers: SilverTier[],
+  kg: number,
+): SilverTier | null => {
+  if (!tiers || tiers.length === 0)
+    return { up_to_kg: null, add_per_kg: 0, blocked: false };
+  const sorted = [...tiers].sort((a, b) => {
+    if (a.up_to_kg == null) return 1;
+    if (b.up_to_kg == null) return -1;
+    return a.up_to_kg - b.up_to_kg;
+  });
+  for (const t of sorted) {
+    if (t.up_to_kg == null) return t;
+    if (kg <= t.up_to_kg) return t;
+  }
+  return null;
+};
+
+// รูปแบบวัน–เวลาไทยแบบสั้นสำหรับข้อความ "ราคานี้ถูกตั้งเมื่อ..."
+function thaiDateTime(iso?: string): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return "";
+  const date = d.toLocaleDateString("th-TH", {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  });
+  const time = d.toLocaleTimeString("th-TH", {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+  return `${date} เวลา ${time} น.`;
+}
+
 interface Props {
   onAdd: (item: QuotationProps) => void;
   onOpenList?: () => void;
@@ -87,10 +142,59 @@ export const Calculate = ({
   lockMeltType,
   forcedPrice,
 }: Props) => {
+  const router = useRouter();
   const [goldTypes, setGoldTypes] = useState<GoldType[]>([]);
   const [goldPrice, setGoldPrice] = useState<GoldPrice | null>(null);
-  const [silverPrice, setSilverPrice] = useState<SilverPrice | null>(null);
+  // ราคาตลาด (live feed) vs ราคากำหนดเอง (shop's silver_manual_price, baht/kg — same
+  // unit as the feed's "รับซื้อ", both ÷1000 in the type formula).
+  const [silverMarket, setSilverMarket] = useState<SilverPrice | null>(null);
+  const [silverCfg, setSilverCfg] = useState<SilverCfg>({
+    mode: "feed",
+    manualPrice: 0,
+    tiers: [],
+  });
+  const [silverManualSetAt, setSilverManualSetAt] = useState<string | undefined>(
+    undefined,
+  );
+  // Default to the shop's set price per requirement (walk-in toggle only).
+  const [silverMode, setSilverMode] = useState<SilverPriceMode>("custom");
   const [metal, setMetal] = useState<string>("gold");
+
+  // Bill mode (master issuing a customer's melted metal): price silver exactly like
+  // the customer did — shop config (feed|manual) + weight tiers, no market/custom toggle.
+  const billMode = !!lockMeltType;
+  // Whether a shop price is actually configured (>0) — else falls back to feed.
+  const hasCustomSilver = silverCfg.manualPrice > 0;
+  // The silver BASE price (buy/sell/spot). In bill mode it follows silver_price_mode;
+  // for walk-in quotes the market/custom toggle picks it. For a single manual value
+  // all three sources equal it, so resolvePrice + the header work for any price_source.
+  // Memoised so the reference stays stable — an auto-fill effect depends on it, and a
+  // fresh object each render would re-fire it and wipe the user's percent/plus.
+  const silverPrice: SilverPrice | null = useMemo(() => {
+    const manualObj = (p: number): SilverPrice => ({
+      buy: p,
+      sell: p,
+      spot: p,
+      change_today: 0,
+      price_date: "",
+      price_time: "",
+    });
+    if (billMode) {
+      return silverCfg.mode === "manual" && silverCfg.manualPrice > 0
+        ? manualObj(silverCfg.manualPrice)
+        : silverMarket;
+    }
+    return silverMode === "custom" && hasCustomSilver
+      ? manualObj(silverCfg.manualPrice)
+      : silverMarket;
+  }, [
+    billMode,
+    silverCfg.mode,
+    silverCfg.manualPrice,
+    silverMode,
+    hasCustomSilver,
+    silverMarket,
+  ]);
 
   const [price, setPrice] = useState(forcedPrice ?? 0);
   const [typeId, setTypeId] = useState("");
@@ -142,11 +246,32 @@ export const Calculate = ({
       .then((res) => setGoldPrice((res.data as unknown as GoldPrice) || null))
       .catch(() => {});
 
+    // ราคาตลาด — live silver feed.
     api
       .get<SilverPrice>("/metal-prices/latest?symbol=XAG")
       .then((res) =>
-        setSilverPrice((res.data as unknown as SilverPrice) || null),
+        setSilverMarket((res.data as unknown as SilverPrice) || null),
       )
+      .catch(() => {});
+    // Shop silver config: price mode (feed|manual), the set price + when it was set,
+    // and the weight tiers (bill mode applies them like the customer's sale).
+    api
+      .get("/configs/silver-sell-status")
+      .then((res) => {
+        const d =
+          (res.data as unknown as {
+            price_mode?: string;
+            manual_price?: number;
+            manual_price_set_at?: string | null;
+            tiers?: SilverTier[];
+          }) || {};
+        setSilverCfg({
+          mode: d.price_mode === "manual" ? "manual" : "feed",
+          manualPrice: d.manual_price ?? 0,
+          tiers: d.tiers ?? [],
+        });
+        setSilverManualSetAt(d.manual_price_set_at ?? undefined);
+      })
       .catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -235,10 +360,24 @@ export const Calculate = ({
       ? getUsedVars(selectedGoldType)
       : new Set(["percent", "plus"] as OperandType[]);
 
+  const isSilver = (selectedGoldType?.metal || "gold") === "silver";
+  // Bill mode prices silver like the customer's sale: base + weight-tier surcharge.
+  // Weight is grams; tiers key by kg. Never blocks here (issuing must go through even
+  // over a "ขายไม่ได้" tier) — a blocked tier just contributes no surcharge.
+  const silverTier =
+    billMode && isSilver
+      ? resolveSilverTier(silverCfg.tiers, weight / 1000)
+      : null;
+  const silverAddPerKg =
+    silverTier && !silverTier.blocked ? silverTier.add_per_kg : 0;
+  // Surcharge stacks onto the base only for the calculation; the shown/stored price
+  // stays the base (e.g. 60,000), matching billCalculate.
+  const silverEffPrice = price + silverAddPerKg;
+
   // Shared with the edit screen — single source of truth for per-gram/total.
   const { perGram, total } = computeItem({
     goldType: selectedGoldType,
-    price,
+    price: isSilver ? silverEffPrice : price,
     percent,
     plus,
     weight,
@@ -327,6 +466,56 @@ export const Calculate = ({
             ))}
           </Tabs>
         </div>
+
+        {/* Silver weight-tier surcharge notice (bill mode uses the customer's formula) */}
+        {metal === "silver" && billMode && silverAddPerKg > 0 && (
+          <div className="flex items-center gap-x-1 w-full border-1 border-amber-200 bg-amber-50 rounded-3xl px-3 py-2">
+            <span className="text-[11px] font-bold text-amber-700">
+              น้ำหนักช่วงนี้ บวกราคา {silverAddPerKg.toLocaleString()} บาท/กก.
+              (รวมในยอดแล้ว · ราคารับซื้อที่แสดงเป็นราคาฐาน)
+            </span>
+          </div>
+        )}
+
+        {/* Silver: choose which price to apply — market feed vs admin-set custom.
+            Hidden in bill mode, which follows the shop config like the customer. */}
+        {metal === "silver" && !billMode && (
+          <div className="flex flex-col gap-y-1.5 w-full bg-gradient-to-br from-black/10 to-transparent border-1 border-black/10 p-2 rounded-3xl">
+            <div className="grid grid-cols-2 gap-1.5">
+              <button
+                type="button"
+                onClick={() => setSilverMode("custom")}
+                className={`text-xs font-bold px-3 py-1.5 rounded-2xl border-1 transition-colors ${silverMode === "custom" ? "bg-yellow-600/70 text-white border-yellow-600/40" : "bg-white/40 text-black/60 border-black/10"}`}
+              >
+                ราคากำหนดเอง
+              </button>
+              <button
+                type="button"
+                onClick={() => setSilverMode("market")}
+                className={`text-xs font-bold px-3 py-1.5 rounded-2xl border-1 transition-colors ${silverMode === "market" ? "bg-yellow-600/70 text-white border-yellow-600/40" : "bg-white/40 text-black/60 border-black/10"}`}
+              >
+                ราคาตลาด
+              </button>
+            </div>
+
+            {silverMode === "custom" && (
+              <div className="flex items-center justify-between gap-x-2 pl-1">
+                <span className="text-[10px] font-bold text-black/50">
+                  {hasCustomSilver
+                    ? `ราคานี้ถูกตั้งเมื่อ ${thaiDateTime(silverManualSetAt)}`
+                    : "ยังไม่ได้ตั้งราคากำหนดเอง — ใช้ราคาตลาดแทน"}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => router.push("/settings/silver-sell")}
+                  className="shrink-0 flex items-center gap-x-1 text-[10px] font-bold text-[#c09c42] hover:text-yellow-700"
+                >
+                  <Pencil size={11} /> คลิกเพื่อเปลี่ยน
+                </button>
+              </div>
+            )}
+          </div>
+        )}
 
         {isManualPrice ? (
           <div className="flex flex-row w-full bg-gradient-to-br from-black/10 to-transparent border-1 border-black/10 p-2 rounded-3xl">

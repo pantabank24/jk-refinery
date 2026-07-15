@@ -588,6 +588,17 @@ export default function BillsList() {
           <span className="font-bold text-lg text-yellow-700">
             {overview.rawAmount.toLocaleString(undefined, { maximumFractionDigits: 0 })} บาท
           </span>
+          <div className="flex items-center gap-x-2 text-[11px] mt-0.5">
+            <span className="text-black/40">ทอง</span>
+            <span className="font-bold text-yellow-700">
+              {overview.goldAmount.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+            </span>
+            <span className="text-black/20">·</span>
+            <span className="text-black/40">เงิน</span>
+            <span className="font-bold text-slate-600">
+              {overview.silverAmount.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+            </span>
+          </div>
         </div>
         <div className="flex flex-col border-1 border-black/10 bg-black/5 backdrop-blur-xl rounded-2xl p-3 gap-y-1">
           <span className="text-xs text-black/50">จำนวนบิล</span>
@@ -608,23 +619,19 @@ export default function BillsList() {
           </span>
         </div>
 
-        {/* Silver: weight + average price (only when there's silver) */}
-        {overview.silverWeight > 0 && (
-          <>
-            <div className="flex flex-col border-1 border-black/10 bg-black/5 backdrop-blur-xl rounded-2xl p-3 gap-y-1">
-              <span className="text-xs text-black/50">น้ำหนักรวม (เงิน)</span>
-              <span className="font-bold text-lg">
-                {overview.silverWeight.toLocaleString(undefined, { maximumFractionDigits: 2 })} กรัม
-              </span>
-            </div>
-            <div className="flex flex-col border-1 border-slate-300/60 bg-slate-50/60 backdrop-blur-xl rounded-2xl p-3 gap-y-1">
-              <span className="text-xs text-black/50">ราคาเฉลี่ย (เงิน)</span>
-              <span className="font-bold text-lg text-slate-600">
-                {overview.silverAvgPrice.toLocaleString(undefined, { maximumFractionDigits: 2 })} บาท/กรัม
-              </span>
-            </div>
-          </>
-        )}
+        {/* Silver: weight + average price — always shown (0 is a valid value) */}
+        <div className="flex flex-col border-1 border-black/10 bg-black/5 backdrop-blur-xl rounded-2xl p-3 gap-y-1">
+          <span className="text-xs text-black/50">น้ำหนักรวม (เงิน)</span>
+          <span className="font-bold text-lg">
+            {overview.silverWeight.toLocaleString(undefined, { maximumFractionDigits: 2 })} กรัม
+          </span>
+        </div>
+        <div className="flex flex-col border-1 border-slate-300/60 bg-slate-50/60 backdrop-blur-xl rounded-2xl p-3 gap-y-1">
+          <span className="text-xs text-black/50">ราคาเฉลี่ย (เงิน)</span>
+          <span className="font-bold text-lg text-slate-600">
+            {overview.silverAvgPrice.toLocaleString(undefined, { maximumFractionDigits: 2 })} บาท/กรัม
+          </span>
+        </div>
         {!isCustomer && (overview.pendingClearGold > 0 || overview.pendingClearSilver > 0) && (
           <div className="col-span-2 flex flex-col border-1 border-purple-300/60 bg-purple-50/60 backdrop-blur-xl rounded-2xl p-3 gap-y-1">
             <span className="text-xs text-black/50">น้ำหนักรวม (รอเคลียร์)</span>

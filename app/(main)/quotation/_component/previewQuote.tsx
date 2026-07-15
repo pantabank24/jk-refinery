@@ -115,6 +115,94 @@ function StoreHeaderBlock({ store }: { store?: StoreHeader }) {
   );
 }
 
+// ราคาอ้างอิงประจำวัน (ทองคำแท่งซื้อเข้า/ขายออก + ทองรูปพรรณรับซื้อคืนต่อบาท/ต่อกรัม)
+// — ใช้ร่วมกันทั้งใบที่ 1 และใบที่ 2 เพื่อให้ตัวเลขตรงกันเสมอ
+function GoldPriceBlock({ goldPrices }: { goldPrices: GoldRefPrices | null }) {
+  const fmt = (v: number) => v.toLocaleString();
+  // รับซื้อคืนต่อกรัม = (ราคาทองคำแท่งซื้อเข้า หัก 2%) ÷ 15.244 (กรัม/บาททอง)
+  const ornamentPerGram = goldPrices
+    ? ((goldPrices.bar_buy - goldPrices.bar_buy * 0.02) / 15.244).toLocaleString(
+        undefined,
+        { maximumFractionDigits: 2 },
+      )
+    : "-";
+  const rows: [string, string][] = [
+    ["ราคาทองคำแท่งซื้อเข้าบาทละ", goldPrices ? fmt(goldPrices.bar_buy) : "-"],
+    ["ราคาทองคำแท่งขายออกบาทละ", goldPrices ? fmt(goldPrices.bar_sell) : "-"],
+    ["ราคาทองรูปพรรณรับซื้อคืนต่อบาท", goldPrices ? fmt(goldPrices.ornament_buy) : "-"],
+    ["ราคาทองรูปพรรณรับซื้อคืนต่อกรัม", ornamentPerGram],
+  ];
+  return (
+    <div className="flex flex-col gap-y-0.5">
+      {rows.map(([label, value]) => (
+        <div key={label} className="flex gap-x-2">
+          <span>{label}</span>
+          <span className="font-semibold">{value}</span>
+          <span>บาท</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ส่วนหัวเหนือตาราง (แบบใบที่ 2 ทางการ) — หัวร้าน + ชื่อเอกสาร + ราคาทองอ้างอิง +
+// เลขที่/วันที่ + ข้อมูลลูกค้า. ใช้ร่วมกันทั้งสองใบเพื่อให้เหมือนกันทุกจุด
+function DocumentTopSection({
+  store,
+  title,
+  goldPrices,
+  documentNo,
+  date,
+  customerName,
+  customerAddress,
+  customerTaxId,
+}: {
+  store?: StoreHeader;
+  title: string;
+  goldPrices: GoldRefPrices | null;
+  documentNo?: string;
+  date?: string | Date;
+  customerName?: string;
+  customerAddress?: string;
+  customerTaxId?: string;
+}) {
+  return (
+    <>
+      <StoreHeaderBlock store={store} />
+
+      <div className="flex justify-between items-start mt-2">
+        <span className="w-10 text-[9px]">&nbsp;</span>
+        <h2 className="text-[14px] font-bold text-center flex-1">{title}</h2>
+        <span className="w-10 text-[9px] font-bold text-right">ต้นฉบับ</span>
+      </div>
+
+      <div className="flex justify-between text-[9px] mt-3">
+        <GoldPriceBlock goldPrices={goldPrices} />
+        <div className="flex flex-col gap-y-0.5 text-right">
+          <span>เลขที่ {documentNo ?? ""}</span>
+          <span>วันที่ {shortThaiDate(date)}</span>
+        </div>
+      </div>
+
+      <div className="flex flex-col gap-y-1.5 text-[9px] mt-3">
+        <div>ชื่อลูกค้า : {customerName ?? ""}</div>
+        <div className="flex items-center">
+          <span className="shrink-0">ที่อยู่ :</span>
+          <span className="flex-1 border-b border-dotted border-gray-400 ml-1 px-1">
+            {customerAddress || " "}
+          </span>
+        </div>
+        <div className="flex items-center">
+          <span className="shrink-0">เลขประจำตัวผู้เสียภาษี :</span>
+          <span className="flex-1 border-b border-dotted border-gray-400 ml-1 px-1">
+            {customerTaxId || " "}
+          </span>
+        </div>
+      </div>
+    </>
+  );
+}
+
 interface Props {
   items: QuotationProps[];
   // Page 1 (detailed quote) itemises these instead of `items` when provided —
@@ -127,7 +215,7 @@ interface Props {
   title?: string; // ชื่อเอกสาร (default: ใบรับซื้อทองคำเก่า/ใบสำคัญรับจ่าย)
   documentNo?: string; // เลขที่เอกสาร (quotation.code) — แสดงในหน้าใบรับซื้อทองเก่าทางการ
   customerName?: string;
-  customerPhone?: string;
+  customerPhone?: string; // ไม่ได้แสดงบนเอกสารแล้ว (หัวทั้งสองใบเป็นแบบทางการที่ไม่มีเบอร์โทร) — คงไว้เผื่อผู้เรียกส่งมา
   customerAddress?: string; // ที่อยู่ลูกค้า (ผู้ขาย)
   customerTaxId?: string; // เลขประจำตัวผู้เสียภาษีของลูกค้า
   date?: string | Date; // วันที่บนเอกสาร (default: วันนี้)
@@ -163,7 +251,6 @@ export const PreviewQuote = React.forwardRef<PreviewQuoteHandle, Props>(
       title,
       documentNo,
       customerName,
-      customerPhone,
       customerAddress,
       customerTaxId,
       date,
@@ -603,31 +690,17 @@ export const PreviewQuote = React.forwardRef<PreviewQuoteHandle, Props>(
               <div
                 className="print-page bg-white shadow-lg rounded-lg p-[20px] min-h-auto text-[10px]" // Explicit sizing to match A5 Print (210mm height, 20px padding)
               >
-                {/* Receipt header — same block as page 2 */}
-                <StoreHeaderBlock store={store} />
-
-                {/* Document title + customer/date — always shown */}
-                <h2 className="text-[13px] font-bold text-center my-2">
-                  {title ?? "ใบรับซื้อทองคำเก่า/ใบสำคัญรับจ่าย"}
-                </h2>
-                <div className="flex justify-between items-end text-[9px] mb-2">
-                  <div className="flex flex-col">
-                    <span className="font-bold">
-                      ชื่อลูกค้า: {customerName ?? ""}
-                    </span>
-                    <span>เบอร์โทร: {customerPhone ?? ""}</span>
-                    {customerAddress && <span>ที่อยู่: {customerAddress}</span>}
-                    {customerTaxId && (
-                      <span>เลขประจำตัวผู้เสียภาษี: {customerTaxId}</span>
-                    )}
-                  </div>
-                  <div className="flex flex-col items-end">
-                    {documentNo && (
-                      <span className="font-bold">เลขที่: {documentNo}</span>
-                    )}
-                    <span className="font-bold">วันที่: {thaiDate(date)}</span>
-                  </div>
-                </div>
+                {/* ส่วนหัวเหนือตาราง — แบบเดียวกับใบที่ 2 ทั้งหมด */}
+                <DocumentTopSection
+                  store={store}
+                  title={title ?? "ใบรับซื้อทองเก่า / ใบสำคัญจ่าย"}
+                  goldPrices={goldPrices}
+                  documentNo={documentNo}
+                  date={date}
+                  customerName={customerName}
+                  customerAddress={customerAddress}
+                  customerTaxId={customerTaxId}
+                />
 
                 {/* Table */}
                 <div className="overflow-x-auto scrollbar-hide">
@@ -1002,83 +1075,16 @@ export const PreviewQuote = React.forwardRef<PreviewQuoteHandle, Props>(
 
               {/* ============ Page 2: ใบรับซื้อทองเก่า / ใบสำคัญจ่าย (แบบทางการ) ============ */}
               <div className="print-page bg-white shadow-lg rounded-lg p-[20px] text-[9px]">
-                <StoreHeaderBlock store={store} />
-
-                <div className="flex justify-between items-start mt-2">
-                  <span className="w-10 text-[9px]">&nbsp;</span>
-                  <h2 className="text-[14px] font-bold text-center flex-1">
-                    ใบรับซื้อทองเก่า / ใบสำคัญจ่าย
-                  </h2>
-                  <span className="w-10 text-[9px] font-bold text-right">
-                    ต้นฉบับ
-                  </span>
-                </div>
-
-                <div className="flex justify-between text-[9px] mt-3">
-                  <div className="flex flex-col gap-y-0.5">
-                    <div className="flex gap-x-2">
-                      <span>ราคาทองคำแท่งซื้อเข้าบาทละ</span>
-                      <span className="font-semibold">
-                        {goldPrices ? goldPrices.bar_buy.toLocaleString() : "-"}
-                      </span>
-                      <span>บาท</span>
-                    </div>
-                    <div className="flex gap-x-2">
-                      <span>ราคาทองคำแท่งขายออกบาทละ</span>
-                      <span className="font-semibold">
-                        {goldPrices
-                          ? goldPrices.bar_sell.toLocaleString()
-                          : "-"}
-                      </span>
-                      <span>บาท</span>
-                    </div>
-                    <div className="flex gap-x-2">
-                      <span>ราคาทองรูปพรรณรับซื้อคืนต่อบาท</span>
-                      <span className="font-semibold">
-                        {goldPrices
-                          ? goldPrices.ornament_buy.toLocaleString()
-                          : "-"}
-                      </span>
-                      <span>บาท</span>
-                    </div>
-                    <div className="flex gap-x-2">
-                      <span>ราคาทองรูปพรรณรับซื้อคืนต่อกรัม</span>
-                      <span className="font-semibold">
-                        {/* รับซื้อคืนต่อกรัม = (ราคาทองคำแท่งซื้อเข้า หัก 2%) ÷ 15.244 (กรัม/บาททอง) */}
-                        {goldPrices
-                          ? (
-                              (goldPrices.bar_buy -
-                                goldPrices.bar_buy * 0.02) /
-                              15.244
-                            ).toLocaleString(undefined, {
-                              maximumFractionDigits: 2,
-                            })
-                          : "-"}
-                      </span>
-                      <span>บาท</span>
-                    </div>
-                  </div>
-                  <div className="flex flex-col gap-y-0.5 text-right">
-                    <span>เลขที่ {documentNo ?? ""}</span>
-                    <span>วันที่ {shortThaiDate(date)}</span>
-                  </div>
-                </div>
-
-                <div className="flex flex-col gap-y-1.5 text-[9px] mt-3">
-                  <div>ชื่อลูกค้า : {customerName ?? ""}</div>
-                  <div className="flex items-center">
-                    <span className="shrink-0">ที่อยู่ :</span>
-                    <span className="flex-1 border-b border-dotted border-gray-400 ml-1 px-1">
-                      {customerAddress || " "}
-                    </span>
-                  </div>
-                  <div className="flex items-center">
-                    <span className="shrink-0">เลขประจำตัวผู้เสียภาษี :</span>
-                    <span className="flex-1 border-b border-dotted border-gray-400 ml-1 px-1">
-                      {customerTaxId || " "}
-                    </span>
-                  </div>
-                </div>
+                <DocumentTopSection
+                  store={store}
+                  title="ใบรับซื้อทองเก่า / ใบสำคัญจ่าย"
+                  goldPrices={goldPrices}
+                  documentNo={documentNo}
+                  date={date}
+                  customerName={customerName}
+                  customerAddress={customerAddress}
+                  customerTaxId={customerTaxId}
+                />
 
                 <table className="w-full border-collapse border border-gray-400 mt-3">
                   <thead>

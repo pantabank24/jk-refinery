@@ -60,6 +60,8 @@ const WEIGHT_MAX = 1000;
 
 // Silver weight is in grams (typed freely by the customer).
 const SILVER_WEIGHT_MAX = 100000;
+// Silver cannot be sold below 1 kilogram (1000 grams).
+const SILVER_WEIGHT_MIN = 1000;
 
 // Bills only deal with gold bars 96.5% — match the gold type by name rather than
 // hardcoding an id (ids vary across environments / reseeds).
@@ -255,6 +257,8 @@ export const BillCalculate = ({
   const weightKg = weight / 1000;
   const silverTier = resolveSilverTier(silverCfg.tiers, weightKg);
   const silverBlocked = isSilver && (silverTier === null || silverTier.blocked);
+  // Silver must be at least 1 kg — below that, the sale can't be submitted.
+  const silverBelowMin = isSilver && weight > 0 && weight < SILVER_WEIGHT_MIN;
   const silverAddPerKg =
     silverTier && !silverTier.blocked ? silverTier.add_per_kg : 0;
   const silverEffPrice = silverBase + silverAddPerKg;
@@ -277,8 +281,10 @@ export const BillCalculate = ({
   });
   const perGram = isSilver ? silverCalc.perGram : goldPerGram;
   const total = isSilver ? (silverBlocked ? 0 : silverCalc.total) : price * weight;
-  // Price shown on the type card (silver reflects base + tier surcharge).
-  const displayPrice = isSilver ? silverEffPrice : price;
+  // Price shown on the type card: the BASE buy price (e.g. 60,000). The weight-tier
+  // surcharge is real but shown separately (the amber notice + staff breakdown) and
+  // baked into the total — it must not inflate the displayed รับซื้อ figure.
+  const displayPrice = isSilver ? silverBase : price;
 
   const handleMetalChange = (key: string) => {
     setMetal(key);
@@ -311,14 +317,18 @@ export const BillCalculate = ({
     setWeight((w) => Math.min(WEIGHT_MAX, Math.max(0, w + delta)));
   };
 
-  const canSubmit = !!activeType && weight > 0 && !silverBlocked;
+  const canSubmit =
+    !!activeType && weight > 0 && !silverBlocked && !silverBelowMin;
   const handleAdd = () => {
     if (!canSubmit) return;
     onAdd({
       typeId: String(activeType!.id),
       typeName: activeType!.name,
       metal: activeType!.metal || "gold",
-      price: isSilver ? silverEffPrice : price,
+      // Store the BASE buy price for display (e.g. 60,000). The weight-tier surcharge
+      // is already baked into perGram/total, so the amount stays correct without the
+      // displayed รับซื้อ price showing the inflated 61,000.
+      price: isSilver ? silverBase : price,
       plus: 0,
       percent: isSilver ? percent : 0,
       weight,
@@ -594,6 +604,11 @@ export const BillCalculate = ({
                 }
               />
             </div>
+            {silverBelowMin && (
+              <span className="text-[11px] font-bold text-red-500 pl-1">
+                น้ำหนักขั้นต่ำ 1 กิโลกรัม (1,000 กรัม)
+              </span>
+            )}
           </div>
         ) : (
           /* Gold weight (baht) — typed when scheduled, stepped by 5 otherwise */
