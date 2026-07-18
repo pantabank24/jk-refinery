@@ -15,7 +15,7 @@ import {
 } from "@heroui/react";
 import { CalendarDate, today, getLocalTimeZone } from "@internationalized/date";
 import type { RangeValue } from "@react-types/shared";
-import { ArrowLeft, Coins, Pencil, Plus, Filter, Trash2, RotateCcw, Settings } from "lucide-react";
+import { ArrowLeft, Coins, Pencil, Plus, Filter, Trash2, RotateCcw, Settings, ChevronLeft, ChevronRight } from "lucide-react";
 import { QuotationData, MemberOption as QuoteMemberOption } from "@/app/(main)/quote-list/_component/types";
 import { GoldType } from "@/lib/gold-calc";
 import { QuotationDetailPanel } from "@/app/(main)/quote-list/_component/quotationDetailPanel";
@@ -107,6 +107,8 @@ function StatCard({ title, value, unit, highlight, sub }: { title: string; value
   );
 }
 
+const PAGE_SIZE = 10;
+
 const quotationStatusMap: Record<string, string> = {
   "0": "รอการอนุมัติ",
   "1": "อนุมัติแล้ว",
@@ -130,6 +132,10 @@ export const MemberDetail = () => {
   const [quotations, setQuotations] = useState<Quotation[]>([]);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState("quote");
+
+  // Pagination (client-side) for the quotation list and credit-history tables.
+  const [qPage, setQPage] = useState(1);
+  const [cPage, setCPage] = useState(1);
 
   // Quotation list filters (applied client-side over the fetched list).
   // Defaults to today only — empty range (qRange=null) means "every date".
@@ -373,6 +379,21 @@ export const MemberDetail = () => {
     return { filteredQuotations: list, overview: { count, total, creditUsed, grams, amounts } };
   }, [quotations, qSearch, qStatus, qRange]);
 
+  // Reset to the first page whenever the filtered result set changes.
+  useEffect(() => { setQPage(1); }, [qSearch, qStatus, qRange]);
+
+  const qTotalPages = Math.max(1, Math.ceil(filteredQuotations.length / PAGE_SIZE));
+  const pagedQuotations = useMemo(
+    () => filteredQuotations.slice((qPage - 1) * PAGE_SIZE, qPage * PAGE_SIZE),
+    [filteredQuotations, qPage],
+  );
+
+  const cTotalPages = Math.max(1, Math.ceil(transactions.length / PAGE_SIZE));
+  const pagedTransactions = useMemo(
+    () => transactions.slice((cPage - 1) * PAGE_SIZE, cPage * PAGE_SIZE),
+    [transactions, cPage],
+  );
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-full">
@@ -582,7 +603,7 @@ export const MemberDetail = () => {
                     <TableColumn>วันที่/เวลา</TableColumn>
                   </TableHeader>
                   <TableBody emptyContent={isTodayOnly ? "ไม่มีรายการในวันนี้ กดปุ่ม ตัวกรอง เพื่อดูวันอื่น" : "ไม่พบใบเสนอราคา"}>
-                    {filteredQuotations.map((q) => (
+                    {pagedQuotations.map((q) => (
                       <TableRow key={q.id} className="hover:bg-white/50 cursor-pointer" onClick={() => handleQuoteRowClick(q)}>
                         <TableCell>{q.code}</TableCell>
                         <TableCell>
@@ -622,6 +643,23 @@ export const MemberDetail = () => {
                   </TableBody>
                 </Table>
               </div>
+
+              {/* Pagination */}
+              {qTotalPages > 1 && (
+                <div className="flex flex-row items-center justify-center gap-x-3 shrink-0 pt-1">
+                  <Button isIconOnly size="sm" variant="light" isDisabled={qPage <= 1}
+                    onPress={() => setQPage((p) => p - 1)}>
+                    <ChevronLeft size={16} />
+                  </Button>
+                  <span className="text-sm text-black/60">
+                    {qPage} / {qTotalPages}
+                  </span>
+                  <Button isIconOnly size="sm" variant="light" isDisabled={qPage >= qTotalPages}
+                    onPress={() => setQPage((p) => p + 1)}>
+                    <ChevronRight size={16} />
+                  </Button>
+                </div>
+              )}
             </div>
           ) : (
             <div className="flex flex-col md:flex-1 md:min-h-0 border-1 border-black/10 bg-white/20 backdrop-blur-xl rounded-xl p-2 shadow-xl md:overflow-hidden">
@@ -655,7 +693,7 @@ export const MemberDetail = () => {
                   <TableColumn>หมายเหตุ</TableColumn>
                 </TableHeader>
                 <TableBody emptyContent="ยังไม่มีรายการ">
-                  {transactions.map((tx) => (
+                  {pagedTransactions.map((tx) => (
                     <TableRow key={tx.id}>
                       <TableCell>
                         {new Date(tx.created_at).toLocaleDateString("th-TH")}
@@ -689,6 +727,23 @@ export const MemberDetail = () => {
                   ))}
                 </TableBody>
               </Table>
+
+              {/* Pagination */}
+              {cTotalPages > 1 && (
+                <div className="flex flex-row items-center justify-center gap-x-3 shrink-0 pt-2">
+                  <Button isIconOnly size="sm" variant="light" isDisabled={cPage <= 1}
+                    onPress={() => setCPage((p) => p - 1)}>
+                    <ChevronLeft size={16} />
+                  </Button>
+                  <span className="text-sm text-black/60">
+                    {cPage} / {cTotalPages}
+                  </span>
+                  <Button isIconOnly size="sm" variant="light" isDisabled={cPage >= cTotalPages}
+                    onPress={() => setCPage((p) => p + 1)}>
+                    <ChevronRight size={16} />
+                  </Button>
+                </div>
+              )}
             </div>
           )}
         </div>
