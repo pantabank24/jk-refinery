@@ -201,8 +201,25 @@ export const MemberDetail = () => {
   const fetchTransactions = async () => {
     if (!memberId) return;
     try {
-      const res = await api.get<CreditTx[]>(`/members/${memberId}/transactions?limit=50`);
-      setTransactions((res.data as unknown as CreditTx[]) || []);
+      // Like the quotation list, the credit history must be complete. The API
+      // caps `limit` at 100, so we page through every page instead of one big page.
+      const PER_PAGE = 100;
+      const first = await api.get<CreditTx[]>(
+        `/members/${memberId}/transactions?limit=${PER_PAGE}&page=1`,
+      );
+      let all = (first.data as unknown as CreditTx[]) || [];
+      const totalPages = first.total_pages ?? 1;
+      if (totalPages > 1) {
+        const rest = await Promise.all(
+          Array.from({ length: totalPages - 1 }, (_, i) =>
+            api.get<CreditTx[]>(
+              `/members/${memberId}/transactions?limit=${PER_PAGE}&page=${i + 2}`,
+            ),
+          ),
+        );
+        all = all.concat(...rest.map((r) => (r.data as unknown as CreditTx[]) || []));
+      }
+      setTransactions(all);
     } catch {
       setTransactions([]);
     }
@@ -212,9 +229,26 @@ export const MemberDetail = () => {
     if (!userAccountId) { setQuotations([]); return; }
     try {
       // The overview totals are computed client-side over this list, so it must
-      // cover the member's whole history — not just the newest page.
-      const res = await api.get<Quotation[]>(`/quotations?created_by=${userAccountId}&limit=1000`);
-      setQuotations((res.data as unknown as Quotation[]) || []);
+      // cover the member's whole history — not just the newest page. The API caps
+      // `limit` at 100 (anything larger silently falls back to 10), so we page
+      // through every page instead of asking for one huge page.
+      const PER_PAGE = 100;
+      const first = await api.get<Quotation[]>(
+        `/quotations?created_by=${userAccountId}&limit=${PER_PAGE}&page=1`,
+      );
+      let all = (first.data as unknown as Quotation[]) || [];
+      const totalPages = first.total_pages ?? 1;
+      if (totalPages > 1) {
+        const rest = await Promise.all(
+          Array.from({ length: totalPages - 1 }, (_, i) =>
+            api.get<Quotation[]>(
+              `/quotations?created_by=${userAccountId}&limit=${PER_PAGE}&page=${i + 2}`,
+            ),
+          ),
+        );
+        all = all.concat(...rest.map((r) => (r.data as unknown as Quotation[]) || []));
+      }
+      setQuotations(all);
     } catch {
       setQuotations([]);
     }
