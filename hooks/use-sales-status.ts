@@ -13,6 +13,7 @@ export interface SalesStatus {
   close_time: string;
   realtime_after_hours: boolean;
   realtime_until: string; // HH:MM realtime cutoff, "" = no limit
+  realtime_only: boolean; // realtime price 24h, association window ignored
   rule_source: string; // date|weekday|default
   now: string;
 }

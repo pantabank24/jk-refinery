@@ -40,11 +40,17 @@ export function SalesStatusBanner({
       <div className="flex items-center gap-x-2 bg-sky-50 border-1 border-sky-300 rounded-2xl p-3">
         <Radio size={16} className="text-sky-600 shrink-0" />
         <span className="text-sm font-bold text-sky-700">
-          ราคาเรียลไทม์ · นอกเวลาสมาคม ({status.open_time} - {status.close_time}{" "}
-          น.) — ราคาอัปเดตสด
-          {status.realtime_until
-            ? ` · ขายได้ถึง ${status.realtime_until} น.`
-            : ""}
+          {status.realtime_only ? (
+            <>ราคาเรียลไทม์ · ขายได้ตลอด 24 ชม. — ราคาอัปเดตสด</>
+          ) : (
+            <>
+              ราคาเรียลไทม์ · นอกเวลาสมาคม ({status.open_time} -{" "}
+              {status.close_time} น.) — ราคาอัปเดตสด
+              {status.realtime_until
+                ? ` · ขายได้ถึง ${status.realtime_until} น.`
+                : ""}
+            </>
+          )}
         </span>
       </div>
     );

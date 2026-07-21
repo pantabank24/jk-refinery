@@ -23,21 +23,34 @@ interface Schedule {
   close_time: string;
   realtime_after_hours: boolean;
   realtime_until: string; // HH:MM realtime cutoff, "" = no limit
+  realtime_only: boolean; // realtime price 24h, association window ignored
   note: string;
 }
 
 const WEEKDAYS = ["อา.", "จ.", "อ.", "พ.", "พฤ.", "ศ.", "ส."];
 const MONTHS = ["มกราคม", "กุมภาพันธ์", "มีนาคม", "เมษายน", "พฤษภาคม", "มิถุนายน", "กรกฎาคม", "สิงหาคม", "กันยายน", "ตุลาคม", "พฤศจิกายน", "ธันวาคม"];
 
-type ModeTag = "closed" | "association" | "realtime";
-const modeOf = (r: Schedule): ModeTag => (!r.enabled ? "closed" : r.realtime_after_hours ? "realtime" : "association");
-const MODE_LABEL: Record<ModeTag, string> = { closed: "ปิดการขาย", association: "สมาคมอย่างเดียว", realtime: "สมาคม + เรียลไทม์" };
+type ModeTag = "closed" | "association" | "realtime" | "realtime_only";
+const modeOf = (r: Schedule): ModeTag =>
+  !r.enabled ? "closed" : r.realtime_only ? "realtime_only" : r.realtime_after_hours ? "realtime" : "association";
+const MODE_LABEL: Record<ModeTag, string> = {
+  closed: "ปิดการขาย",
+  association: "สมาคมอย่างเดียว",
+  realtime: "สมาคม + เรียลไทม์",
+  realtime_only: "เรียลไทม์ 24 ชม.",
+};
 const MODE_CELL: Record<ModeTag, string> = {
   closed: "bg-amber-200/70 text-amber-800",
   association: "bg-green-200/60 text-green-800",
   realtime: "bg-sky-200/70 text-sky-800",
+  realtime_only: "bg-violet-200/70 text-violet-800",
 };
-const MODE_DOT: Record<ModeTag, string> = { closed: "bg-amber-500", association: "bg-green-500", realtime: "bg-sky-500" };
+const MODE_DOT: Record<ModeTag, string> = {
+  closed: "bg-amber-500",
+  association: "bg-green-500",
+  realtime: "bg-sky-500",
+  realtime_only: "bg-violet-500",
+};
 
 // "YYYY-MM-DDTHH:MM" (local) for <input type="datetime-local">.
 function toLocalInput(iso: string | null): string {
@@ -53,7 +66,7 @@ const dayKey = (d: Date) => `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
 
 const blankWeekday = (): Schedule => ({
   id: 0, scope: "weekday", weekday: 1, start_at: null, end_at: null,
-  enabled: true, open_time: "09:30", close_time: "16:30", realtime_after_hours: false, realtime_until: "", note: "",
+  enabled: true, open_time: "09:30", close_time: "16:30", realtime_after_hours: false, realtime_until: "", realtime_only: false, note: "",
 });
 const blankRange = (day: Date): Schedule => {
   const start = new Date(day); start.setHours(0, 0, 0, 0);
@@ -61,7 +74,7 @@ const blankRange = (day: Date): Schedule => {
   return {
     id: 0, scope: "range", weekday: null,
     start_at: start.toISOString(), end_at: end.toISOString(),
-    enabled: false, open_time: "09:30", close_time: "16:30", realtime_after_hours: false, realtime_until: "", note: "",
+    enabled: false, open_time: "09:30", close_time: "16:30", realtime_after_hours: false, realtime_until: "", realtime_only: false, note: "",
   };
 };
 
@@ -72,6 +85,9 @@ export default function SalesPricePage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  // Message from a rejected save. The pricing fields are range-checked by the
+  // API, and silently doing nothing would read as "saved" to the user.
+  const [saveError, setSaveError] = useState("");
   const [cfg, setCfg] = useState<Record<string, string>>({});
   const [rules, setRules] = useState<Schedule[]>([]);
   const [form, setForm] = useState<Schedule | null>(null);
@@ -95,19 +111,26 @@ export default function SalesPricePage() {
   const setC = (k: string, v: string) => setCfg((p) => ({ ...p, [k]: v }));
   const masterOn = cfg["sales_enabled"] === "true";
   const defaultRealtime = cfg["sales_realtime_after_hours"] === "true";
+  const defaultRealtimeOnly = cfg["sales_realtime_only"] === "true";
 
   const weekdayRules = rules.filter((r) => r.scope === "weekday");
   const rangeRules = rules.filter((r) => r.scope === "range");
 
   const saveConfig = async () => {
-    setSaving(true); setSaved(false);
+    setSaving(true); setSaved(false); setSaveError("");
     try {
       await Promise.all(
-        ["sales_enabled", "sales_open_time", "sales_close_time", "sales_realtime_after_hours", "sales_realtime_until"]
+        ["sales_enabled", "sales_open_time", "sales_close_time", "sales_realtime_after_hours", "sales_realtime_until", "sales_realtime_only",
+          "realtime_premium_thb", "realtime_spread_thb"]
           .map((k) => api.put("/configs", { key: k, value: cfg[k] ?? "" }))
       );
       setSaved(true); setTimeout(() => setSaved(false), 2000);
-    } catch { /* ignore */ } finally { setSaving(false); }
+    } catch (e) {
+      // Surface the API's reason (out-of-range price, etc.) instead of leaving
+      // the button looking like nothing happened.
+      const msg = (e as { response?: { data?: { message?: string } } })?.response?.data?.message;
+      setSaveError(msg || "บันทึกไม่สำเร็จ กรุณาลองใหม่");
+    } finally { setSaving(false); }
   };
 
   const saveRule = async () => {
@@ -121,8 +144,9 @@ export default function SalesPricePage() {
       enabled: form.enabled,
       open_time: form.open_time,
       close_time: form.close_time,
-      realtime_after_hours: form.realtime_after_hours,
-      realtime_until: form.realtime_after_hours ? form.realtime_until : "",
+      realtime_after_hours: form.realtime_only ? false : form.realtime_after_hours,
+      realtime_until: !form.realtime_only && form.realtime_after_hours ? form.realtime_until : "",
+      realtime_only: form.realtime_only,
       note: form.note,
     });
     setForm(null);
@@ -182,6 +206,12 @@ export default function SalesPricePage() {
         )}
       </div>
 
+      {saveError && (
+        <div className="shrink-0 text-sm font-bold text-red-700 bg-red-500/10 border-1 border-red-500/20 rounded-2xl px-4 py-3">
+          {saveError}
+        </div>
+      )}
+
       <div className="flex flex-col gap-y-4 overflow-y-auto pb-6">
         {/* Master toggle */}
         <div className="flex flex-col border-1 border-black/10 bg-black/5 backdrop-blur-xl rounded-3xl p-5 gap-y-1">
@@ -202,27 +232,91 @@ export default function SalesPricePage() {
               <span className="font-bold text-md flex items-center gap-x-2">
                 <Building2 size={16} className="text-[#c09c42]" /> ค่าเริ่มต้น (วันที่ไม่ได้ตั้งกฎเฉพาะ)
               </span>
-              <div className="grid grid-cols-2 gap-3">
-                <Input type="time" label="เวลาสมาคมเปิด" value={cfg["sales_open_time"] || ""} isDisabled={!canEdit}
-                  onValueChange={(v) => setC("sales_open_time", v)}
-                  classNames={{ inputWrapper: "bg-gradient-to-br from-black/10 to-transparent border-1 border-black/10 rounded-2xl" }} />
-                <Input type="time" label="เวลาสมาคมปิด" value={cfg["sales_close_time"] || ""} isDisabled={!canEdit}
-                  onValueChange={(v) => setC("sales_close_time", v)}
-                  classNames={{ inputWrapper: "bg-gradient-to-br from-black/10 to-transparent border-1 border-black/10 rounded-2xl" }} />
-              </div>
+
+              {/* Realtime-only overrides the whole association window below. */}
               <div className="flex flex-row items-center justify-between">
                 <div className="flex flex-col">
-                  <span className="font-bold text-sm flex items-center gap-x-1"><Radio size={14} className="text-sky-600" /> ใช้ราคาเรียลไทม์เมื่อหมดเวลาสมาคม</span>
-                  <span className="text-xs text-black/50">นอกเวลาสมาคมจะใช้ราคาเรียลไทม์แทน (แทนการปิดการขาย)</span>
+                  <span className="font-bold text-sm flex items-center gap-x-1"><Radio size={14} className="text-violet-600" /> ขายราคาเรียลไทม์อย่างเดียว 24 ชม.</span>
+                  <span className="text-xs text-black/50">ใช้ราคาเรียลไทม์ตลอดเวลา ไม่สนเวลาสมาคม และไม่มีปิดทำการ</span>
                 </div>
-                <Switch isDisabled={!canEdit} isSelected={defaultRealtime} color="primary"
-                  onValueChange={(v) => setC("sales_realtime_after_hours", v ? "true" : "false")} />
+                <Switch isDisabled={!canEdit} isSelected={defaultRealtimeOnly} color="secondary"
+                  onValueChange={(v) => setC("sales_realtime_only", v ? "true" : "false")} />
               </div>
-              {defaultRealtime && (
-                <Input type="time" label="ขายเรียลไทม์ได้ถึงเวลา (ว่าง = ไม่จำกัด)" value={cfg["sales_realtime_until"] || ""} isDisabled={!canEdit}
-                  onValueChange={(v) => setC("sales_realtime_until", v)}
-                  classNames={{ inputWrapper: "bg-gradient-to-br from-black/10 to-transparent border-1 border-black/10 rounded-2xl" }} />
+
+              {!defaultRealtimeOnly && (
+                <>
+                  <div className="grid grid-cols-2 gap-3">
+                    <Input type="time" label="เวลาสมาคมเปิด" value={cfg["sales_open_time"] || ""} isDisabled={!canEdit}
+                      onValueChange={(v) => setC("sales_open_time", v)}
+                      classNames={{ inputWrapper: "bg-gradient-to-br from-black/10 to-transparent border-1 border-black/10 rounded-2xl" }} />
+                    <Input type="time" label="เวลาสมาคมปิด" value={cfg["sales_close_time"] || ""} isDisabled={!canEdit}
+                      onValueChange={(v) => setC("sales_close_time", v)}
+                      classNames={{ inputWrapper: "bg-gradient-to-br from-black/10 to-transparent border-1 border-black/10 rounded-2xl" }} />
+                  </div>
+                  <div className="flex flex-row items-center justify-between">
+                    <div className="flex flex-col">
+                      <span className="font-bold text-sm flex items-center gap-x-1"><Radio size={14} className="text-sky-600" /> ใช้ราคาเรียลไทม์เมื่อหมดเวลาสมาคม</span>
+                      <span className="text-xs text-black/50">นอกเวลาสมาคมจะใช้ราคาเรียลไทม์แทน (แทนการปิดการขาย)</span>
+                    </div>
+                    <Switch isDisabled={!canEdit} isSelected={defaultRealtime} color="primary"
+                      onValueChange={(v) => setC("sales_realtime_after_hours", v ? "true" : "false")} />
+                  </div>
+                  {defaultRealtime && (
+                    <Input type="time" label="ขายเรียลไทม์ได้ถึงเวลา (ว่าง = ไม่จำกัด)" value={cfg["sales_realtime_until"] || ""} isDisabled={!canEdit}
+                      onValueChange={(v) => setC("sales_realtime_until", v)}
+                      classNames={{ inputWrapper: "bg-gradient-to-br from-black/10 to-transparent border-1 border-black/10 rounded-2xl" }} />
+                  )}
+                </>
               )}
+            </div>
+
+            {/* Real-time price positioning. Applies wherever the realtime price
+                is used — the live screen, quotations and bills. */}
+            <div className="flex flex-col border-1 border-black/10 bg-black/5 backdrop-blur-xl rounded-3xl p-5 gap-y-4">
+              <div className="flex flex-col">
+                <span className="font-bold text-md flex items-center gap-x-2">
+                  <Radio size={16} className="text-sky-600" /> ตั้งราคาเรียลไทม์
+                </span>
+                <span className="text-xs text-black/50">
+                  ปรับว่าราคาของร้านจะอยู่สูงหรือต่ำกว่าราคาตลาดเท่าไหร่ ใช้เฉพาะตอนที่ขายด้วยราคาเรียลไทม์
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <Input
+                  type="number" label="ปรับราคาขึ้น/ลง (บาท)" value={cfg["realtime_premium_thb"] ?? ""}
+                  isDisabled={!canEdit} onValueChange={(v) => setC("realtime_premium_thb", v)}
+                  description="ใส่ค่าติดลบ = ตั้งราคาต่ำกว่าราคาตลาด เช่น -20"
+                  classNames={{ inputWrapper: "bg-gradient-to-br from-black/10 to-transparent border-1 border-black/10 rounded-2xl" }}
+                />
+                <Input
+                  type="number" label="ส่วนต่างรับซื้อ-ขายออก (บาท)" value={cfg["realtime_spread_thb"] ?? ""}
+                  isDisabled={!canEdit} onValueChange={(v) => setC("realtime_spread_thb", v)}
+                  description="ยิ่งกว้าง กำไรต่อรอบยิ่งมาก แต่ราคาสู้ร้านอื่นได้น้อยลง"
+                  classNames={{ inputWrapper: "bg-gradient-to-br from-black/10 to-transparent border-1 border-black/10 rounded-2xl" }}
+                />
+              </div>
+
+              {/* Worked example — cheaper to read than the formula. */}
+              <div className="text-xs text-black/60 bg-black/5 rounded-2xl px-4 py-3 leading-relaxed">
+                <span className="font-bold">ตัวอย่าง</span> ถ้าราคาตลาดอยู่ที่ 64,600 บาท
+                ปรับราคา {cfg["realtime_premium_thb"] || "0"} และส่วนต่าง {cfg["realtime_spread_thb"] || "0"} บาท
+                {(() => {
+                  const prem = Number(cfg["realtime_premium_thb"]);
+                  const spr = Number(cfg["realtime_spread_thb"]);
+                  if (!Number.isFinite(prem) || !Number.isFinite(spr)) return " — กรอกตัวเลขให้ครบเพื่อดูตัวอย่าง";
+                  const mid = 64600 + prem;
+                  const fmt = (n: number) => Math.round(n).toLocaleString("th-TH");
+                  return ` ร้านจะรับซื้อที่ ${fmt(mid - spr / 2)} และขายออกที่ ${fmt(mid + spr / 2)} บาท`;
+                })()}
+              </div>
+
+              <div className="text-xs text-sky-800 bg-sky-500/10 border-1 border-sky-500/20 rounded-2xl px-4 py-3 leading-relaxed">
+                <span className="font-bold">กดบันทึกแล้วราคาใหม่จะเริ่มใช้ภายใน 10 วินาที</span>{" "}
+                หน้าจอที่เปิดค้างไว้จะเปลี่ยนเอง ไม่ต้องรีเฟรชหน้า
+                <br />
+                ใบเสนอราคาและบิลที่ออกไปแล้วจะไม่เปลี่ยนตาม เพราะระบบล็อกราคาไว้ตั้งแต่ตอนออกเอกสาร
+              </div>
             </div>
 
             {/* Weekday rules (recurring) */}
@@ -241,7 +335,9 @@ export default function SalesPricePage() {
                     className={`flex items-center gap-x-2 px-3 py-2 rounded-2xl border-1 border-black/10 ${MODE_CELL[modeOf(r)]}`}>
                     <span className="font-bold text-sm">ทุกวัน{WEEKDAYS[r.weekday ?? 0]}</span>
                     <span className="text-[11px] opacity-80">
-                      {r.enabled ? `${r.open_time}-${r.close_time}${r.realtime_after_hours && r.realtime_until ? ` · RT ถึง ${r.realtime_until}` : ""}` : "ปิด"}
+                      {!r.enabled ? "ปิด"
+                        : r.realtime_only ? "เรียลไทม์ 24 ชม."
+                        : `${r.open_time}-${r.close_time}${r.realtime_after_hours && r.realtime_until ? ` · RT ถึง ${r.realtime_until}` : ""}`}
                     </span>
                   </button>
                 ))}
@@ -269,7 +365,7 @@ export default function SalesPricePage() {
 
               {/* Legend */}
               <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] font-bold text-black/50">
-                {(["closed", "association", "realtime"] as ModeTag[]).map((m) => (
+                {(["closed", "association", "realtime", "realtime_only"] as ModeTag[]).map((m) => (
                   <span key={m} className="flex items-center gap-x-1"><span className={`w-3 h-3 rounded-full ${MODE_DOT[m]}`} /> {MODE_LABEL[m]}</span>
                 ))}
                 <span className="text-black/30">· คลิกวันเพื่อเพิ่ม/แก้กฎช่วงนั้น</span>
@@ -322,7 +418,7 @@ export default function SalesPricePage() {
                           <span className="font-bold text-sm">
                             {toLocalInput(r.start_at).replace("T", " ")} → {toLocalInput(r.end_at).replace("T", " ")}
                           </span>
-                          <span className="text-xs text-black/50">{MODE_LABEL[modeOf(r)]}{r.enabled ? ` · ${r.open_time}-${r.close_time}` : ""}{r.enabled && r.realtime_after_hours && r.realtime_until ? ` · RT ถึง ${r.realtime_until}` : ""}{r.note ? ` · ${r.note}` : ""}</span>
+                          <span className="text-xs text-black/50">{MODE_LABEL[modeOf(r)]}{r.enabled && !r.realtime_only ? ` · ${r.open_time}-${r.close_time}` : ""}{r.enabled && !r.realtime_only && r.realtime_after_hours && r.realtime_until ? ` · RT ถึง ${r.realtime_until}` : ""}{r.note ? ` · ${r.note}` : ""}</span>
                         </div>
                       </div>
                       {canEdit && (
@@ -377,23 +473,36 @@ export default function SalesPricePage() {
 
             {form.enabled && (
               <>
-                <div className="grid grid-cols-2 gap-3">
-                  <Input type="time" label="สมาคมเปิด" value={form.open_time}
-                    onValueChange={(v) => setForm({ ...form, open_time: v })}
-                    classNames={{ inputWrapper: "bg-black/5 border-1 border-black/10 rounded-2xl" }} />
-                  <Input type="time" label="สมาคมปิด" value={form.close_time}
-                    onValueChange={(v) => setForm({ ...form, close_time: v })}
-                    classNames={{ inputWrapper: "bg-black/5 border-1 border-black/10 rounded-2xl" }} />
-                </div>
                 <div className="flex flex-row items-center justify-between">
-                  <span className="font-bold text-sm flex items-center gap-x-1"><Radio size={14} className="text-sky-600" /> ใช้ราคาเรียลไทม์นอกเวลา</span>
-                  <Switch isSelected={form.realtime_after_hours} color="primary"
-                    onValueChange={(v) => setForm({ ...form, realtime_after_hours: v })} />
+                  <div className="flex flex-col">
+                    <span className="font-bold text-sm flex items-center gap-x-1"><Radio size={14} className="text-violet-600" /> เรียลไทม์อย่างเดียว 24 ชม.</span>
+                    <span className="text-xs text-black/50">ไม่สนเวลาสมาคม ขายได้ตลอด</span>
+                  </div>
+                  <Switch isSelected={form.realtime_only} color="secondary"
+                    onValueChange={(v) => setForm({ ...form, realtime_only: v })} />
                 </div>
-                {form.realtime_after_hours && (
-                  <Input type="time" label="ขายเรียลไทม์ได้ถึงเวลา (ว่าง = ไม่จำกัด)" value={form.realtime_until}
-                    onValueChange={(v) => setForm({ ...form, realtime_until: v })}
-                    classNames={{ inputWrapper: "bg-black/5 border-1 border-black/10 rounded-2xl" }} />
+
+                {!form.realtime_only && (
+                  <>
+                    <div className="grid grid-cols-2 gap-3">
+                      <Input type="time" label="สมาคมเปิด" value={form.open_time}
+                        onValueChange={(v) => setForm({ ...form, open_time: v })}
+                        classNames={{ inputWrapper: "bg-black/5 border-1 border-black/10 rounded-2xl" }} />
+                      <Input type="time" label="สมาคมปิด" value={form.close_time}
+                        onValueChange={(v) => setForm({ ...form, close_time: v })}
+                        classNames={{ inputWrapper: "bg-black/5 border-1 border-black/10 rounded-2xl" }} />
+                    </div>
+                    <div className="flex flex-row items-center justify-between">
+                      <span className="font-bold text-sm flex items-center gap-x-1"><Radio size={14} className="text-sky-600" /> ใช้ราคาเรียลไทม์นอกเวลา</span>
+                      <Switch isSelected={form.realtime_after_hours} color="primary"
+                        onValueChange={(v) => setForm({ ...form, realtime_after_hours: v })} />
+                    </div>
+                    {form.realtime_after_hours && (
+                      <Input type="time" label="ขายเรียลไทม์ได้ถึงเวลา (ว่าง = ไม่จำกัด)" value={form.realtime_until}
+                        onValueChange={(v) => setForm({ ...form, realtime_until: v })}
+                        classNames={{ inputWrapper: "bg-black/5 border-1 border-black/10 rounded-2xl" }} />
+                    )}
+                  </>
                 )}
               </>
             )}
