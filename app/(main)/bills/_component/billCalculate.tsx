@@ -10,6 +10,11 @@ import { useSalesStatus } from "@/hooks/use-sales-status";
 import { useCustomWeightStatus } from "@/hooks/use-custom-weight-status";
 import { useRealtimeGold } from "@/hooks/use-realtime-gold";
 import { PriceModeChip } from "@/components/sales-status-banner";
+import {
+  GoldPriceSourceToggle,
+  resolveGoldSource,
+  type GoldPriceSource,
+} from "@/components/gold-price-source-toggle";
 import { DecimalInput } from "@/components/decimalInput";
 import { Input } from "@heroui/input";
 import { Tabs, Tab } from "@heroui/tabs";
@@ -148,7 +153,14 @@ export const BillCalculate = ({
   useEffect(() => {
     if (!weightTouched && !isSilver) setWeight(goldDefaultWeight);
   }, [goldDefaultWeight, weightTouched, isSilver]);
-  const realtimeActive = !isSilver && salesStatus?.price_mode === "realtime";
+  // Staff may pick the feed by hand (null = follow the shop's schedule); the
+  // customer screen has no toggle and always follows the schedule.
+  const [goldSource, setGoldSource] = useState<GoldPriceSource | null>(null);
+  const effGoldSource = resolveGoldSource(
+    staffMode ? goldSource : null,
+    salesStatus,
+  );
+  const realtimeActive = !isSilver && effGoldSource === "realtime";
   const { data: rt, dir: rtDir } = useRealtimeGold(!!realtimeActive);
 
   const effGold: GoldPrice | null =
@@ -350,7 +362,10 @@ export const BillCalculate = ({
   const headerSell = isSilver ? silverPrice?.sell : effGold?.bar_sell;
   const headerChange =
     (isSilver ? silverPrice?.change_today : effGold?.change_today) ?? 0;
-  const headerDate = realtimeActive
+  // Only claim "เรียลไทม์" once a live price has actually arrived — until then
+  // effGold is still the association price.
+  const realtimeLive = realtimeActive && !!rt && rt.bar_buy != null;
+  const headerDate = realtimeLive
     ? `เรียลไทม์ ${salesStatus?.now ?? ""}`.trim()
     : isSilver
       ? `${silverPrice?.price_date ?? ""} ${silverPrice?.price_time ?? ""}`.trim()
@@ -445,8 +460,24 @@ export const BillCalculate = ({
 
         <span className="font-bold text-2xl bg-gradient-to-l from-black/90 to-yellow-600 bg-clip-text text-transparent pl-2 flex flex-row justify-between">
           ขาย{metalLabel}
-          {/* Gold sales-mode chip — gold tab only; silver has its own schedule. */}
-          {!isSilver && salesStatus && <PriceModeChip status={salesStatus} />}
+          {/* Gold tab only (silver has its own schedule). Staff (ขายแทนลูกค้า) get
+              the price-source toggle in place of the chip — it names the price in
+              use and switches it for this sale; customers just get the chip. */}
+          {!isSilver &&
+            (staffMode ? (
+              <GoldPriceSourceToggle
+                value={effGoldSource}
+                onChange={(v) => {
+                  setGoldSource(v);
+                  // Take the newly-picked feed's price (drops a manual override).
+                  setPriceTouched(false);
+                }}
+                status={salesStatus}
+                waitingRealtime={realtimeActive && (!rt || rt.bar_buy == null)}
+              />
+            ) : (
+              salesStatus && <PriceModeChip status={salesStatus} />
+            ))}
         </span>
 
         {/* Locked product type */}

@@ -13,6 +13,11 @@ import { useSalesStatus } from "@/hooks/use-sales-status";
 import { useRealtimeGold } from "@/hooks/use-realtime-gold";
 import { PriceModeChip } from "@/components/sales-status-banner";
 import {
+  GoldPriceSourceToggle,
+  resolveGoldSource,
+  type GoldPriceSource,
+} from "@/components/gold-price-source-toggle";
+import {
   OperandType,
   GoldType,
   parseSteps,
@@ -206,8 +211,11 @@ export const Calculate = ({
   // Real-time pricing: when the shop is outside association hours and real-time
   // mode is on, gold prices stream live. Only applies to the gold tab.
   const { status: salesStatus } = useSalesStatus();
-  const realtimeActive =
-    salesStatus?.price_mode === "realtime" && metal === "gold";
+  // The shop's schedule picks the default feed; the user can override it per
+  // quotation (null = still following the schedule).
+  const [goldSource, setGoldSource] = useState<GoldPriceSource | null>(null);
+  const effGoldSource = resolveGoldSource(goldSource, salesStatus);
+  const realtimeActive = effGoldSource === "realtime" && metal === "gold";
   // อัปเดตทุก 10 วินาที — ตอนออกใบเสนอราคาไม่ต้องรัวเท่าหน้าดูราคาสด
   const { data: rt, dir: rtDir } = useRealtimeGold(!!realtimeActive, 10000);
   // The forced (blended-avg) price only applies to melted GOLD. Silver / platinum
@@ -322,10 +330,11 @@ export const Calculate = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [typeId, goldTypes, goldPrice, silverPrice, forcedPrice, metal]);
 
-  // Real-time tick: live-update ONLY the base price (leave percent/plus/weight
-  // untouched so the user's inputs survive each refresh).
+  // Real-time tick / price-source switch: live-update ONLY the base price (leave
+  // percent/plus/weight untouched so the user's inputs survive each refresh and
+  // each toggle between the association and real-time feeds).
   useEffect(() => {
-    if (!realtimeActive || !rt || priceForced) return;
+    if (priceForced) return;
     const gt = goldTypes.find((t) => String(t.id) === typeId);
     if (!gt) return;
     const p = resolvePrice(gt);
@@ -426,7 +435,10 @@ export const Calculate = ({
       : metal === "silver"
         ? silverPrice?.change_today
         : 0) ?? 0;
-  const headerDate = realtimeActive
+  // Only claim "เรียลไทม์" once a live price has actually arrived — until then
+  // effGold is still the association price.
+  const realtimeLive = realtimeActive && !!rt && rt.bar_buy != null;
+  const headerDate = realtimeLive
     ? `เรียลไทม์ ${salesStatus?.now ?? ""}`.trim()
     : metal === "gold"
       ? `${goldPrice?.gold_date ?? ""} ${goldPrice?.gold_time ?? ""}`.trim()
@@ -592,7 +604,19 @@ export const Calculate = ({
 
         <span className=" font-bold text-2xl bg-gradient-to-l from-black/90 to-yellow-600 bg-clip-text text-transparent pl-2 flex flex-row justify-between">
           <div className=" truncate">คำนวณราคา{metalLabel}</div>
-          {salesStatus && <PriceModeChip status={salesStatus} />}
+          {/* Gold: the price-source toggle stands in for the mode chip (it says
+              which price is in use AND lets it be switched for this document).
+              A forced price (bill mode) ignores the feed, so the chip is kept. */}
+          {metal === "gold" && !priceForced ? (
+            <GoldPriceSourceToggle
+              value={effGoldSource}
+              onChange={setGoldSource}
+              status={salesStatus}
+              waitingRealtime={realtimeActive && (!rt || rt.bar_buy == null)}
+            />
+          ) : (
+            salesStatus && <PriceModeChip status={salesStatus} />
+          )}
         </span>
 
         {/* Formula badge */}
