@@ -22,7 +22,7 @@ interface MenuItem {
 
 export const Sidebar = ({ isOpen = false, onClose }: SidebarProps) => {
   const currentPath = usePathname();
-  const { hasPermission, permissions, unfinishedBills, isMaster, isCustomer } = useAuth();
+  const { hasPermission, permissions, unfinishedGoldBills, unfinishedSilverBills, isMaster, isCustomer } = useAuth();
   // Bill creation is customer-only. Use the raw permission list (NOT hasPermission,
   // which auto-grants master) so "สร้างบิล" hides from master/owner/employee.
   const canCreateBill = permissions.includes("bills.create");
@@ -49,7 +49,9 @@ export const Sidebar = ({ isOpen = false, onClose }: SidebarProps) => {
     { id: 3, name: "ใบเสนอราคาทั้งหมด", href: "/quote-list", icon: <List size={18} />, show: hasPermission("quotations.read") },
     { id: 14, name: "ขาย", href: "/bills/create", icon: <FileText size={18} />, show: canCreateBill },
     { id: 22, name: "ขายแทนลูกค้า", href: "/bills/sell", icon: <ShoppingBag size={18} />, show: hasPermission("bills.sell") },
-    { id: 15, name: "รายการขาย", href: "/bills", icon: <Receipt size={18} />, show: hasPermission("bills.read"), badge: unfinishedBills },
+    // Bills are single-metal, so gold and silver sells get a list (and badge) each.
+    { id: 15, name: "รายการขายทอง", href: "/bills", icon: <Receipt size={18} />, show: hasPermission("bills.read"), badge: unfinishedGoldBills },
+    { id: 23, name: "รายการขายเงิน", href: "/bills/silver", icon: <Coins size={18} />, show: hasPermission("bills.read"), badge: unfinishedSilverBills },
     { id: 17, name: "บิลทั้งหมด", href: "/bills/issued", icon: <FileCheck size={18} />, show: isCustomer },
     { id: 21, name: "โปรไฟล์", href: "/account", icon: <UserCircle size={18} />, show: isCustomer },
     { id: 16, name: "ลูกค้า", href: "/customers", icon: <UserCircle size={18} />, show: hasPermission("customers.read") },

@@ -198,6 +198,9 @@ export default function QuotationPage() {
   // stays "รอตรวจบิล"; the old issuance is reversed at save time (see doSave), not now.
   const editIssued = searchParams.get("editIssued") === "1";
   const [billCustomer, setBillCustomer] = useState("");
+  // The bill's metal decides which list page to return to (รายการขายทอง/เงิน).
+  const [billMetal, setBillMetal] = useState("gold");
+  const billsListHref = billMetal === "gold" ? "/bills" : "/bills/silver";
   // The customer's registered profile (suggested for the signer fields) + their
   // most recent signature (offered for reuse), loaded in bill mode.
   const [customerProfile, setCustomerProfile] = useState<{
@@ -249,6 +252,8 @@ export default function QuotationPage() {
   };
   type BillLite = {
     id: number;
+    // Which list the bill belongs to (gold|silver); bills are single-metal.
+    metal?: string;
     total_amount: number;
     processed_weight: number;
     processed_amount: number;
@@ -272,6 +277,7 @@ export default function QuotationPage() {
       try {
         const res = await api.get(`/bills/${billId}`);
         const clicked = res.data as unknown as BillLite;
+        setBillMetal(clicked?.metal || "gold");
         if (clicked?.creator?.name) {
           setBillCustomer(clicked.creator.name);
           setSignerName(clicked.creator.name);
@@ -375,10 +381,11 @@ export default function QuotationPage() {
 
         // Combine ALL of this customer's pending (รอออกบิล) bills' submitted items
         // as reference (their gold was melted; the master re-assesses from scratch).
+        // Same metal only — a gold issuance must never pull in their silver bill.
         let bills: BillLite[] = [];
         if (clicked?.creator?.id) {
           const listRes = await api.get(
-            `/bills?created_by=${clicked.creator.id}&status=10&limit=100`,
+            `/bills?created_by=${clicked.creator.id}&status=10&limit=100&metal=${clicked.metal || "gold"}`,
           );
           bills = (listRes.data as unknown as { data: BillLite[] }).data || [];
         }
@@ -458,7 +465,7 @@ export default function QuotationPage() {
         setBillIds((prev) => prev.filter((id) => id !== ref.billId));
         // Editing a bill that just emptied out → nothing left to re-issue.
         if (editIssued && Number(billId) === ref.billId) {
-          router.push("/bills");
+          router.push(billsListHref);
           return;
         }
       }
@@ -492,7 +499,7 @@ export default function QuotationPage() {
     try {
       await api.delete(`/bills/${billId}`);
       deleteBillDisc.onClose();
-      router.push("/bills");
+      router.push(billsListHref);
     } catch {
       /* ignore */
     } finally {
@@ -808,7 +815,7 @@ export default function QuotationPage() {
     setConsent(false);
     setShowPostSavePreview(false);
     setSavedQuotation(null);
-    router.push(billId ? "/bills" : "/quote-list");
+    router.push(billId ? billsListHref : "/quote-list");
   };
 
   // Reference card listing the customer's submitted items — shared between the
@@ -973,6 +980,8 @@ export default function QuotationPage() {
             onOpenList={() => setListOpen(true)}
             quotationCount={quotation.length}
             lockMeltType={!!billId}
+            // Issuing a bill opens on that bill's metal (bills are single-metal).
+            initialMetal={billId ? billMetal : "gold"}
             forcedPrice={
               effectiveForcedPrice > 0 ? effectiveForcedPrice : undefined
             }

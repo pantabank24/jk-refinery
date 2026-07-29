@@ -115,9 +115,15 @@ function StoreHeaderBlock({ store }: { store?: StoreHeader }) {
   );
 }
 
-// ราคาอ้างอิงประจำวัน (ทองคำแท่งซื้อเข้า/ขายออก + ทองรูปพรรณรับซื้อคืนต่อบาท/ต่อกรัม)
-// — ใช้ร่วมกันทั้งใบที่ 1 และใบที่ 2 เพื่อให้ตัวเลขตรงกันเสมอ
-function GoldPriceBlock({ goldPrices }: { goldPrices: GoldRefPrices | null }) {
+// ราคาอ้างอิงประจำวัน (ทองคำแท่งซื้อเข้า/ขายออก + ทองรูปพรรณรับซื้อคืนต่อบาท/ต่อกรัม
+// + ราคาตัดล็อกของเอกสารใบนี้) — ใช้ร่วมกันทั้งใบที่ 1 และใบที่ 2 เพื่อให้ตัวเลขตรงกันเสมอ
+function GoldPriceBlock({
+  goldPrices,
+  lockPrice,
+}: {
+  goldPrices: GoldRefPrices | null;
+  lockPrice: number | null;
+}) {
   const fmt = (v: number) => v.toLocaleString();
   // รับซื้อคืนต่อกรัม = (ราคาทองคำแท่งซื้อเข้า หัก 2%) ÷ 15.244 (กรัม/บาททอง)
   const ornamentPerGram = goldPrices
@@ -131,6 +137,12 @@ function GoldPriceBlock({ goldPrices }: { goldPrices: GoldRefPrices | null }) {
     ["ราคาทองคำแท่งขายออกบาทละ", goldPrices ? fmt(goldPrices.bar_sell) : "-"],
     ["ราคาทองรูปพรรณรับซื้อคืนต่อบาท", goldPrices ? fmt(goldPrices.ornament_buy) : "-"],
     ["ราคาทองรูปพรรณรับซื้อคืนต่อกรัม", ornamentPerGram],
+    [
+      "ราคาตัดล็อก",
+      lockPrice !== null
+        ? lockPrice.toLocaleString(undefined, { maximumFractionDigits: 2 })
+        : "-",
+    ],
   ];
   return (
     <div className="flex flex-col gap-y-0.5">
@@ -151,18 +163,22 @@ function DocumentTopSection({
   store,
   title,
   goldPrices,
+  lockPrice,
   documentNo,
   date,
   customerName,
+  customerPhone,
   customerAddress,
   customerTaxId,
 }: {
   store?: StoreHeader;
   title: string;
   goldPrices: GoldRefPrices | null;
+  lockPrice: number | null;
   documentNo?: string;
   date?: string | Date;
   customerName?: string;
+  customerPhone?: string;
   customerAddress?: string;
   customerTaxId?: string;
 }) {
@@ -177,7 +193,7 @@ function DocumentTopSection({
       </div>
 
       <div className="flex justify-between text-[9px] mt-3">
-        <GoldPriceBlock goldPrices={goldPrices} />
+        <GoldPriceBlock goldPrices={goldPrices} lockPrice={lockPrice} />
         <div className="flex flex-col gap-y-0.5 text-right">
           <span>เลขที่ {documentNo ?? ""}</span>
           <span>วันที่ {shortThaiDate(date)}</span>
@@ -186,6 +202,12 @@ function DocumentTopSection({
 
       <div className="flex flex-col gap-y-1.5 text-[9px] mt-3">
         <div>ชื่อลูกค้า : {customerName ?? ""}</div>
+        <div className="flex items-center">
+          <span className="shrink-0">เบอร์โทร :</span>
+          <span className="flex-1 border-b border-dotted border-gray-400 ml-1 px-1">
+            {customerPhone || " "}
+          </span>
+        </div>
         <div className="flex items-center">
           <span className="shrink-0">ที่อยู่ :</span>
           <span className="flex-1 border-b border-dotted border-gray-400 ml-1 px-1">
@@ -215,7 +237,7 @@ interface Props {
   title?: string; // ชื่อเอกสาร (default: ใบรับซื้อทองคำเก่า/ใบสำคัญรับจ่าย)
   documentNo?: string; // เลขที่เอกสาร (quotation.code) — แสดงในหน้าใบรับซื้อทองเก่าทางการ
   customerName?: string;
-  customerPhone?: string; // ไม่ได้แสดงบนเอกสารแล้ว (หัวทั้งสองใบเป็นแบบทางการที่ไม่มีเบอร์โทร) — คงไว้เผื่อผู้เรียกส่งมา
+  customerPhone?: string; // เบอร์โทรลูกค้า — แสดงต่อท้ายชื่อลูกค้าบนหัวเอกสารทั้งสองใบ
   customerAddress?: string; // ที่อยู่ลูกค้า (ผู้ขาย)
   customerTaxId?: string; // เลขประจำตัวผู้เสียภาษีของลูกค้า
   date?: string | Date; // วันที่บนเอกสาร (default: วันนี้)
@@ -237,7 +259,10 @@ interface Props {
 export type PayMethod = "cash" | "transfer" | null;
 
 export interface PreviewQuoteHandle {
-  print: () => void;
+  /** includePage2 overrides the in-component "พิมพ์ใบที่ 2" tick — for callers that
+   *  pass `hidePrint` (so the ตั้งค่า dropdown holding that tick isn't rendered) and
+   *  drive printing from their own button. Omit to use whatever the tick says. */
+  print: (opts?: { includePage2?: boolean }) => void;
 }
 
 export const PreviewQuote = React.forwardRef<PreviewQuoteHandle, Props>(
@@ -251,6 +276,7 @@ export const PreviewQuote = React.forwardRef<PreviewQuoteHandle, Props>(
       title,
       documentNo,
       customerName,
+      customerPhone,
       customerAddress,
       customerTaxId,
       date,
@@ -337,7 +363,7 @@ export const PreviewQuote = React.forwardRef<PreviewQuoteHandle, Props>(
     // Print by cloning the document to the <body> root so it prints in normal
     // flow (paginating onto page 2+) instead of being clipped inside the modal.
     const rootRef = React.useRef<HTMLDivElement>(null);
-    const handlePrint = () => {
+    const handlePrint = (opts?: { includePage2?: boolean }) => {
       const el = rootRef.current;
       if (!el) {
         onPrint?.();
@@ -345,8 +371,11 @@ export const PreviewQuote = React.forwardRef<PreviewQuoteHandle, Props>(
       }
       const clone = el.cloneNode(true) as HTMLElement;
       clone.classList.add("print-clone");
-      // Drop page 2 from the printout unless explicitly enabled (page 1 only by default).
-      if (!printPage2) {
+      // Drop page 2 from the printout unless explicitly enabled (page 1 only by
+      // default). A caller-supplied flag wins over the ตั้งค่า tick, since callers
+      // that hide that dropdown own the choice themselves.
+      const wantPage2 = opts?.includePage2 ?? printPage2;
+      if (!wantPage2) {
         const pages = clone.querySelectorAll(".print-page");
         if (pages.length > 1) pages[1].remove();
       }
@@ -452,6 +481,25 @@ export const PreviewQuote = React.forwardRef<PreviewQuoteHandle, Props>(
         });
       }
       return lines;
+    })();
+
+    // ราคาตัดล็อก — ราคาทองที่เอกสารใบนี้ล็อกไว้ คือค่าเดียวกับคอลัมน์ "ราคา" ในตาราง
+    // (โหมดบิลคือ forcedPrice ที่ถูกล็อกจากรอบนั้น). ปกติทุกรายการทองใช้ราคาเดียวกัน
+    // จึงแสดงตัวเลขนั้นตรง ๆ; ถ้าเป็นใบที่คีย์หลายราคา (เช่น walk-in หลายชนิด) จะถัว
+    // เฉลี่ยถ่วงน้ำหนักให้เป็นตัวแทนใบเดียว. เงิน/โลหะอื่นชั่งคนละหน่วยกับทอง จึงคิด
+    // เฉพาะส่วนทอง เว้นแต่ใบนั้นไม่มีทองเลย (ใบขายเงินล้วน) ค่อยใช้ทั้งใบแทน
+    const lockPrice: number | null = (() => {
+      const src = items.length > 0 ? items : (page1Items ?? []);
+      const gold = src.filter((i) => (i.metal || "gold") === "gold");
+      const pool = (gold.length > 0 ? gold : src).filter((i) => i.price > 0);
+      if (pool.length === 0) return null;
+      const distinct = Array.from(new Set(pool.map((i) => i.price)));
+      if (distinct.length === 1) return distinct[0];
+      const w = pool.reduce((s, i) => s + (i.weight || 0), 0);
+      if (w <= 0) {
+        return pool.reduce((s, i) => s + i.price, 0) / pool.length;
+      }
+      return pool.reduce((s, i) => s + i.price * (i.weight || 0), 0) / w;
     })();
 
     const calculateTotalWeight = (arr: QuotationProps[] = items) => {
@@ -662,7 +710,7 @@ export const PreviewQuote = React.forwardRef<PreviewQuoteHandle, Props>(
             </Dropdown>
             <button
               type="button"
-              onClick={handlePrint}
+              onClick={() => handlePrint()}
               className="flex items-center gap-x-1.5 text-xs font-bold text-[#c09c42] hover:text-yellow-700"
             >
               <Printer size={14} /> พิมพ์
@@ -695,9 +743,11 @@ export const PreviewQuote = React.forwardRef<PreviewQuoteHandle, Props>(
                   store={store}
                   title={title ?? "ใบรับซื้อทองเก่า / ใบสำคัญจ่าย"}
                   goldPrices={goldPrices}
+                  lockPrice={lockPrice}
                   documentNo={documentNo}
                   date={date}
                   customerName={customerName}
+                  customerPhone={customerPhone}
                   customerAddress={customerAddress}
                   customerTaxId={customerTaxId}
                 />
@@ -1079,9 +1129,11 @@ export const PreviewQuote = React.forwardRef<PreviewQuoteHandle, Props>(
                   store={store}
                   title="ใบรับซื้อทองเก่า / ใบสำคัญจ่าย"
                   goldPrices={goldPrices}
+                  lockPrice={lockPrice}
                   documentNo={documentNo}
                   date={date}
                   customerName={customerName}
+                  customerPhone={customerPhone}
                   customerAddress={customerAddress}
                   customerTaxId={customerTaxId}
                 />

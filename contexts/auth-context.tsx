@@ -25,6 +25,10 @@ interface AuthContextType {
   credits: number;
   loading: boolean;
   unfinishedBills: number;
+  // Same count split per list page (รายการขายทอง / รายการขายเงิน) — bills are
+  // single-metal, so gold + silver always add up to unfinishedBills.
+  unfinishedGoldBills: number;
+  unfinishedSilverBills: number;
   login: (email: string, password: string) => Promise<void>;
   logout: () => void;
   refreshUser: () => Promise<void>;
@@ -44,17 +48,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [credits, setCredits] = useState(0);
   const [loading, setLoading] = useState(true);
   const [unfinishedBills, setUnfinishedBills] = useState(0);
+  const [unfinishedGoldBills, setUnfinishedGoldBills] = useState(0);
+  const [unfinishedSilverBills, setUnfinishedSilverBills] = useState(0);
   const router = useRouter();
 
   // Pull the count of bills that are not yet completed/cancelled (for the
-  // sidebar badge). Scope is resolved server-side from the caller's role.
+  // sidebar badges). Scope is resolved server-side from the caller's role; the
+  // response splits the count per metal, one per list page.
   const refreshUnfinishedBills = useCallback(async () => {
     try {
       if (!hasToken()) return;
-      const res = await api.get<{ count: number }>("/bills/unfinished-count");
-      setUnfinishedBills((res.data as unknown as { count: number })?.count ?? 0);
+      const res = await api.get<{ count: number; gold: number; silver: number }>("/bills/unfinished-count");
+      const counts = res.data as unknown as { count?: number; gold?: number; silver?: number };
+      setUnfinishedBills(counts?.count ?? 0);
+      setUnfinishedGoldBills(counts?.gold ?? 0);
+      setUnfinishedSilverBills(counts?.silver ?? 0);
     } catch {
       setUnfinishedBills(0);
+      setUnfinishedGoldBills(0);
+      setUnfinishedSilverBills(0);
     }
   }, []);
 
@@ -128,6 +140,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         credits,
         loading,
         unfinishedBills,
+        unfinishedGoldBills,
+        unfinishedSilverBills,
         login,
         logout,
         refreshUser,

@@ -134,7 +134,8 @@ export default function CreateBillPage() {
       setPendingItem(null);
       setShowConfirm(false);
       await refreshUnfinishedBills();
-      router.push("/bills");
+      // Gold and silver sells land in separate bills, each on its own list page.
+      router.push(pendingItem.metal === "silver" ? "/bills/silver" : "/bills");
     } catch (err: unknown) {
       const msg =
         err instanceof Error ? err.message : "บันทึกไม่สำเร็จ กรุณาลองใหม่";

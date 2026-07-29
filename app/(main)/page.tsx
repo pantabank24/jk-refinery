@@ -65,6 +65,8 @@ interface RecentItem {
   status: number;
   total_amount: number;
   created_at: string;
+  // Bills only — decides which sales list the row belongs to.
+  metal?: string;
 }
 
 const BILL_STATUS_LABEL: Record<number, string> = {
@@ -72,12 +74,14 @@ const BILL_STATUS_LABEL: Record<number, string> = {
   11: "รอตรวจบิล",
   12: "สำเร็จ",
   13: "ยกเลิก",
+  14: "เคลียร์แล้ว",
 };
 const BILL_STATUS_COLOR: Record<number, string> = {
   10: "bg-yellow-500/20 text-yellow-700 border-yellow-500/30",
   11: "bg-blue-500/20 text-blue-700 border-blue-500/30",
   12: "bg-green-500/20 text-green-700 border-green-500/30",
   13: "bg-red-500/20 text-red-700 border-red-500/30",
+  14: "bg-purple-500/20 text-purple-700 border-purple-500/30",
 };
 
 // Sections fade + slide in, staggered one after another as the page mounts.
@@ -141,6 +145,22 @@ export default function Home() {
     newsDisc.onOpen();
   };
 
+  // Open a recent-activity row where it actually lives. For a customer that is a
+  // bill: finished ones (สำเร็จ/เคลียร์แล้ว) sit in "บิลทั้งหมด", the rest on the
+  // sales list for their metal — billId there opens the bill straight away.
+  const openRecent = (item: RecentItem) => {
+    if (!isCustomer) {
+      router.push("/quote-list");
+      return;
+    }
+    if (item.status === 12 || item.status === 14) {
+      router.push("/bills/issued");
+      return;
+    }
+    const list = item.metal === "silver" ? "/bills/silver" : "/bills";
+    router.push(`${list}?billId=${item.id}`);
+  };
+
   if (loading || !user) return null;
 
   const creditsValue = stats
@@ -166,8 +186,14 @@ export default function Home() {
       show: hasPermission("quotations.create"),
     },
     {
-      label: "รายการขาย",
+      label: "รายการขายทอง",
       href: "/bills",
+      icon: <Receipt size={18} />,
+      show: hasPermission("bills.read"),
+    },
+    {
+      label: "รายการขายเงิน",
+      href: "/bills/silver",
       icon: <Receipt size={18} />,
       show: hasPermission("bills.read"),
     },
@@ -423,7 +449,8 @@ export default function Home() {
               return (
                 <div
                   key={item.id}
-                  className="flex items-center justify-between border-1 border-black/10 bg-black/5 backdrop-blur-xl rounded-2xl px-4 py-3"
+                  onClick={() => openRecent(item)}
+                  className="flex items-center justify-between border-1 border-black/10 bg-black/5 backdrop-blur-xl rounded-2xl px-4 py-3 cursor-pointer transition-all hover:bg-black/10 hover:shadow-md"
                 >
                   <div className="flex flex-col">
                     <span className="font-bold text-sm text-black/80">

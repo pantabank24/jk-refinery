@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@heroui/button";
+import { Checkbox } from "@heroui/checkbox";
 import { Spinner } from "@heroui/spinner";
 import { Tabs, Tab } from "@heroui/tabs";
 import { Modal, ModalContent, ModalHeader, ModalBody, ModalFooter, useDisclosure } from "@heroui/modal";
@@ -93,6 +94,13 @@ const STATUS_COLOR: Record<number, string> = {
   14: "bg-purple-500/20 text-purple-700 border-purple-500/30",
 };
 
+// ประวัติ rows for bills that are no longer live: เคลียร์แล้ว (14) and ยกเลิก (13)
+// are struck through. Any other status keeps the table's normal black text.
+const HISTORY_ROW_TONE: Record<number, string> = {
+  13: "text-red-500 line-through",
+  14: "text-purple-600 line-through",
+};
+
 const fmtDate = (s: string) =>
   new Date(s).toLocaleDateString("th-TH", { year: "numeric", month: "short", day: "numeric" });
 
@@ -157,6 +165,10 @@ export const CustomerDetail = ({ selfMode = false }: { selfMode?: boolean } = {}
   const [detailB, setDetailB] = useState<BillDetail | null>(null);
   const [billPage1Items, setBillPage1Items] = useState<QuotationProps[]>([]);
   const previewRef = useRef<PreviewQuoteHandle>(null);
+  // The preview is rendered with `hidePrint` (its own ตั้งค่า dropdown is hidden and
+  // the footer button below drives printing), so the "print page 2 too" choice lives
+  // here instead. Off by default — most reprints only need page 1.
+  const [printPage2, setPrintPage2] = useState(false);
 
   const toQuoItems = (items: BillItem[] | undefined): QuotationProps[] =>
     (items ?? []).map((item) => ({
@@ -479,20 +491,26 @@ export const CustomerDetail = ({ selfMode = false }: { selfMode?: boolean } = {}
                       </tr>
                     </thead>
                     <tbody>
-                      {historyRows.map(({ bill: b, it }) => (
-                        <tr
-                          key={`${b.id}-${it.id}`}
-                          onClick={() => openBill(b)}
-                          className="border-t border-black/5 hover:bg-white/40 cursor-pointer"
-                        >
-                          <td className="px-4 py-2.5 font-bold text-black/70">{b.code}</td>
-                          <td className="px-4 py-2.5 text-black/60">{fmtDate(b.created_at)}</td>
-                          <td className="px-4 py-2.5 text-black/70">{it.type_name}</td>
-                          <td className="px-4 py-2.5 text-right tabular-nums text-black/60">
-                            {it.weight.toLocaleString("th-TH", { minimumFractionDigits: 2 })}
-                          </td>
-                        </tr>
-                      ))}
+                      {historyRows.map(({ bill: b, it }) => {
+                        // Settled and cancelled lines are struck through so a long
+                        // history reads at a glance: เคลียร์แล้ว ม่วง, ยกเลิก แดง,
+                        // everything still in play stays black.
+                        const tone = HISTORY_ROW_TONE[b.status] ?? "";
+                        return (
+                          <tr
+                            key={`${b.id}-${it.id}`}
+                            onClick={() => openBill(b)}
+                            className="border-t border-black/5 hover:bg-white/40 cursor-pointer"
+                          >
+                            <td className={`px-4 py-2.5 font-bold ${tone || "text-black/70"}`}>{b.code}</td>
+                            <td className={`px-4 py-2.5 ${tone || "text-black/60"}`}>{fmtDate(b.created_at)}</td>
+                            <td className={`px-4 py-2.5 ${tone || "text-black/70"}`}>{it.type_name}</td>
+                            <td className={`px-4 py-2.5 text-right tabular-nums ${tone || "text-black/60"}`}>
+                              {it.weight.toLocaleString("th-TH", { minimumFractionDigits: 2 })}
+                            </td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
@@ -606,12 +624,21 @@ export const CustomerDetail = ({ selfMode = false }: { selfMode?: boolean } = {}
               );
             })()}
           </ModalBody>
-          <ModalFooter>
+          <ModalFooter className="items-center">
+            <Checkbox
+              size="sm"
+              color="warning"
+              className="mr-auto"
+              isSelected={printPage2}
+              onValueChange={setPrintPage2}
+            >
+              <span className="text-xs">พิมพ์ใบรับซื้อทองเก่า (ใบที่ 2) ด้วย</span>
+            </Checkbox>
             <Button variant="light" onPress={detailDisc.onClose}>ปิด</Button>
             <Button
               className="bg-gradient-to-r from-[#c09c42] to-yellow-600 text-white font-bold"
               startContent={<Printer size={14} />}
-              onPress={() => previewRef.current?.print()}
+              onPress={() => previewRef.current?.print({ includePage2: printPage2 })}
             >
               พิมพ์
             </Button>

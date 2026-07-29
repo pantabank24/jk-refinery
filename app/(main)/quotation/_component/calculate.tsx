@@ -138,6 +138,9 @@ interface Props {
   /** When set, overrides the auto-filled price with a fixed value (read-only).
    *  Applies to melted GOLD only; other metals keep their own price source. */
   forcedPrice?: number;
+  /** Metal tab to open on — the bill being issued is single-metal, so a silver
+   *  bill should not start the master on the gold tab. Defaults to gold. */
+  initialMetal?: string;
 }
 
 export const Calculate = ({
@@ -146,6 +149,7 @@ export const Calculate = ({
   quotationCount = 0,
   lockMeltType,
   forcedPrice,
+  initialMetal = "gold",
 }: Props) => {
   const router = useRouter();
   const [goldTypes, setGoldTypes] = useState<GoldType[]>([]);
@@ -163,7 +167,7 @@ export const Calculate = ({
   );
   // Default to the shop's set price per requirement (walk-in toggle only).
   const [silverMode, setSilverMode] = useState<SilverPriceMode>("custom");
-  const [metal, setMetal] = useState<string>("gold");
+  const [metal, setMetal] = useState<string>(initialMetal);
 
   // Bill mode (master issuing a customer's melted metal): price silver exactly like
   // the customer did — shop config (feed|manual) + weight tiers, no market/custom toggle.
@@ -240,12 +244,7 @@ export const Calculate = ({
     api
       .get<GoldType[]>("/gold-types")
       .then((res) => {
-        const types = (res.data as unknown as GoldType[]) || [];
-        setGoldTypes(types);
-        // Always default to gold melt type (or first gold type); when locked, this
-        // also prevents the user from switching away.
-        const defGold = pickType(types, "gold") ?? types[0];
-        if (defGold) setTypeId(String(defGold.id));
+        setGoldTypes((res.data as unknown as GoldType[]) || []);
       })
       .catch(() => {});
 
@@ -342,11 +341,22 @@ export const Calculate = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rt, realtimeActive, typeId, goldTypes, forcedPrice]);
 
-  const handleMetalChange = (key: string) => {
-    setMetal(key);
-    const def = pickType(goldTypes, key);
+  // In bill mode the metal comes from the bill being issued, which loads AFTER
+  // this component mounts — follow it when it lands.
+  useEffect(() => {
+    setMetal(initialMetal);
+  }, [initialMetal]);
+
+  // Default the type whenever the metal tab changes (and once the list loads):
+  // gold prefers the หลอม type, other metals take their first. A type the user
+  // picked themselves survives — typeId is deliberately not a dependency.
+  useEffect(() => {
+    if (goldTypes.length === 0) return;
+    const def = pickType(goldTypes, metal) ?? goldTypes[0];
     setTypeId(def ? String(def.id) : "");
-  };
+  }, [goldTypes, metal]);
+
+  const handleMetalChange = (key: string) => setMetal(key);
 
   const typeOptions: Option[] = metalTypes.map((t) => ({
     value: String(t.id),

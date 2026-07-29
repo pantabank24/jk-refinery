@@ -8,11 +8,13 @@ import { useAuth } from "@/contexts/auth-context";
 import { Spinner } from "@heroui/spinner";
 import { Modal, ModalContent, ModalHeader, ModalBody, ModalFooter, useDisclosure } from "@heroui/modal";
 import { Button } from "@heroui/button";
+import { Checkbox } from "@heroui/checkbox";
 import { Tabs, Tab } from "@heroui/tabs";
 import { DateRangePicker } from "@heroui/date-picker";
 import { CalendarDate, today, getLocalTimeZone } from "@internationalized/date";
 import type { RangeValue } from "@react-types/shared";
 import { ShieldOff, Printer, CalendarDays, Layers } from "lucide-react";
+import { fetchAllPages } from "../_component/paging";
 import { PreviewQuote, PreviewQuoteHandle, type PayMethod } from "../../quotation/_component/previewQuote";
 import { QuotationProps } from "../../quotation/_component/quotation";
 import {
@@ -104,6 +106,10 @@ export default function IssuedBillsPage() {
   const detailDisc = useDisclosure();
   const [detailB, setDetailB] = useState<BillData | null>(null);
   const previewRef = useRef<PreviewQuoteHandle>(null);
+  // The preview is rendered with `hidePrint` (its own ตั้งค่า dropdown is hidden and
+  // the footer button below drives printing), so the "print page 2 too" choice lives
+  // here instead. Off by default — most reprints only need page 1.
+  const [printPage2, setPrintPage2] = useState(false);
   // Itemised original items across all bills in the open group — feeds the
   // preview's page 1 so it breaks the customer's items down line-by-line instead
   // of the consolidated issued-quotation lines (page 2 keeps the consolidation).
@@ -162,8 +168,9 @@ export default function IssuedBillsPage() {
   const fetchBills = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await api.get<BillData[]>("/bills?limit=100");
-      const list = (res.data as unknown as BillData[]) || [];
+      // Every page: the date-range filter below runs client-side, so a truncated
+      // fetch would silently hide older bills (the API caps limit at 100).
+      const list = await fetchAllPages<BillData>("/bills");
       setBills(list.filter((b) => ISSUED_STATUSES.includes(b.status)));
     } catch {
       setBills([]);
@@ -375,12 +382,21 @@ export default function IssuedBillsPage() {
               );
             })()}
           </ModalBody>
-          <ModalFooter>
+          <ModalFooter className="items-center">
+            <Checkbox
+              size="sm"
+              color="warning"
+              className="mr-auto"
+              isSelected={printPage2}
+              onValueChange={setPrintPage2}
+            >
+              <span className="text-xs">พิมพ์ใบรับซื้อทองเก่า (ใบที่ 2) ด้วย</span>
+            </Checkbox>
             <Button variant="light" onPress={detailDisc.onClose}>ปิด</Button>
             <Button
               className="bg-gradient-to-r from-[#c09c42] to-yellow-600 text-white font-bold"
               startContent={<Printer size={14} />}
-              onPress={() => previewRef.current?.print()}
+              onPress={() => previewRef.current?.print({ includePage2: printPage2 })}
             >
               พิมพ์
             </Button>
