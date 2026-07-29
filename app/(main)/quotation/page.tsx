@@ -310,27 +310,58 @@ export default function QuotationPage() {
         // merge the customer's other pending bills. The current issuance is
         // reversed at save time before re-issuing.
         if (editIssued) {
-          const stashedIds = sessionStorage.getItem("editBillIds");
+          // The stash is tagged with the bill it was written for: a stale stash
+          // (edit abandoned, then this URL reached again) must never bleed into a
+          // different bill's group. It is cleared only once the re-issue succeeds
+          // (see doSave), so refreshing mid-edit doesn't silently drop the group.
+          const stashValid =
+            sessionStorage.getItem("editBillFor") === String(billId);
+          const stashedIds = stashValid
+            ? sessionStorage.getItem("editBillIds")
+            : null;
           const gids = stashedIds
             ? (JSON.parse(stashedIds) as number[])
             : [clicked?.id ?? Number(billId)];
           setBillIds(gids);
-          const editRef = (clicked?.items ?? []).map((i) => ({
-            typeId: i.type_id,
-            typeName: i.type_name,
-            metal: i.metal || "gold",
-            price: i.price,
-            plus: i.plus,
-            percent: i.percent,
-            weight: i.weight,
-            perGram: i.per_gram,
-            total: i.total,
-            billId: clicked?.id ?? Number(billId),
-            itemId: i.id,
-          }));
+
+          // Bills issued together form one group. Pull EVERY bill's submitted
+          // items, not just the clicked one — the reference card and the locked
+          // average price (forcedPrice) are derived from these, so covering only
+          // part of the group forces the master to key at the wrong price.
+          const groupBills = await Promise.all(
+            gids.map((gid) =>
+              gid === clicked?.id
+                ? Promise.resolve(clicked)
+                : api
+                    .get(`/bills/${gid}`)
+                    .then((r) => r.data as unknown as BillLite)
+                    .catch(() => null),
+            ),
+          );
+          const editRef: ReferenceItem[] = [];
+          for (const b of groupBills) {
+            if (!b) continue;
+            for (const i of b.items ?? []) {
+              editRef.push({
+                typeId: i.type_id,
+                typeName: i.type_name,
+                metal: i.metal || "gold",
+                price: i.price,
+                plus: i.plus,
+                percent: i.percent,
+                weight: i.weight,
+                perGram: i.per_gram,
+                total: i.total,
+                billId: b.id,
+                itemId: i.id,
+              });
+            }
+          }
           setReferenceItems(editRef);
           setSelectedItemIds(new Set(editRef.map((r) => r.itemId)));
-          const stashedItems = sessionStorage.getItem("editBillItems");
+          const stashedItems = stashValid
+            ? sessionStorage.getItem("editBillItems")
+            : null;
           if (stashedItems) {
             try {
               const items = JSON.parse(stashedItems) as QuotationProps[];
@@ -339,8 +370,6 @@ export default function QuotationPage() {
               /* ignore */
             }
           }
-          sessionStorage.removeItem("editBillItems");
-          sessionStorage.removeItem("editBillIds");
           return;
         }
 
@@ -678,6 +707,15 @@ export default function QuotationPage() {
       });
       const saved = res.data as unknown as { id: number; code: string };
       const quotationId = saved.id;
+
+      // The group has been re-issued — the edit stash has done its job and must
+      // not survive to be re-applied. Kept until here (rather than dropped on
+      // load) so a refresh mid-edit still restores the full group.
+      if (editIssued) {
+        sessionStorage.removeItem("editBillItems");
+        sessionStorage.removeItem("editBillIds");
+        sessionStorage.removeItem("editBillFor");
+      }
 
       // Persist the keyed lines for page-1 reprints. A delivery log attaches to a
       // bill row, so only log to a bill that ends up issued: a FULLY-ticked bill.

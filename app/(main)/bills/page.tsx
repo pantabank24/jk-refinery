@@ -469,19 +469,32 @@ export default function BillsList() {
   const handleRevert = () => {
     if (!detailB) return;
     setReverting(true);
+    // Pre-fill with the ITEMISED lines the master originally keyed in (delivery
+    // logs first, then the quotation's page1_items) — same order the preview uses.
+    // issued_quotation.items is stored consolidated one-line-per-metal, so falling
+    // back to it would collapse every keyed line into one.
+    const itemised: QuotationProps[] =
+      billPage1Items.length
+        ? billPage1Items
+        : detailB.issued_quotation?.page1_items ?? [];
     const src = detailB.issued_quotation?.items ?? detailB.items ?? [];
-    const editItems: QuotationProps[] = src.map((it) => ({
-      typeId: it.type_id,
-      typeName: it.type_name,
-      metal: it.metal || "gold",
-      price: it.price,
-      plus: it.plus,
-      percent: it.percent,
-      weight: it.weight,
-      perGram: it.per_gram,
-      total: it.total,
-    }));
+    const editItems: QuotationProps[] = itemised.length
+      ? itemised
+      : src.map((it) => ({
+          typeId: it.type_id,
+          typeName: it.type_name,
+          metal: it.metal || "gold",
+          price: it.price,
+          plus: it.plus,
+          percent: it.percent,
+          weight: it.weight,
+          perGram: it.per_gram,
+          total: it.total,
+        }));
     const ids = groupBillIds.length ? groupBillIds : [detailB.id];
+    // Tagged with the bill this stash belongs to — the quotation page ignores a
+    // stash written for a different bill (see its editIssued branch).
+    sessionStorage.setItem("editBillFor", String(detailB.id));
     sessionStorage.setItem("editBillItems", JSON.stringify(editItems));
     sessionStorage.setItem("editBillIds", JSON.stringify(ids));
     revertDisc.onClose();
