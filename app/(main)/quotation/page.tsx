@@ -3,9 +3,11 @@
 import { Calculate } from "./_component/calculate";
 import { useState, useEffect } from "react";
 import { Quotation, QuotationProps } from "./_component/quotation";
+import { consolidateByMetal } from "./_component/consolidate";
 import { PreviewQuote, type PayMethod } from "./_component/previewQuote";
 import { TermsForm } from "./_component/termsForm";
 import { api } from "@/lib/api";
+import { roundedGrandTotal, roundQuoteLines } from "@/lib/quote-rounding";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/contexts/auth-context";
 import {
@@ -555,44 +557,25 @@ export default function QuotationPage() {
   // In bill mode, consolidate the keyed lines per METAL: gold collapses into one
   // line, and each other metal gets its own consolidated line. Each round is
   // self-contained — no aggregates from earlier rounds.
-  const previewItems: QuotationProps[] = (() => {
-    if (billIds.length === 0 || quotation.length === 0) return quotation;
+  const rawPreviewItems: QuotationProps[] =
+    billIds.length === 0 || quotation.length === 0
+      ? quotation
+      : consolidateByMetal(quotation);
 
-    const lines: QuotationProps[] = [];
-    const byMetal = new Map<string, QuotationProps[]>();
-    for (const item of quotation) {
-      const m = item.metal || "gold";
-      const group = byMetal.get(m);
-      if (group) group.push(item);
-      else byMetal.set(m, [item]);
-    }
-    // Gold first so the document leads with the main line.
-    const metalKeys: string[] = [];
-    byMetal.forEach((_, k) => metalKeys.push(k));
-    const metals = ["gold", ...metalKeys.filter((m) => m !== "gold")];
-    for (const m of metals) {
-      const group = byMetal.get(m);
-      if (!group) continue;
-      const w = group.reduce((s, i) => s + (i.weight || 0), 0);
-      const t = group.reduce((s, i) => s + i.total, 0);
-      const first = group[0];
-      const avg = w > 0 ? t / w : first.price;
-      lines.push({
-        ...first,
-        price: Math.round(avg * 100) / 100,
-        weight: w,
-        perGram: w > 0 ? t / w : first.perGram,
-        total: t,
-      });
-    }
-    return lines;
-  })();
+  // ราคา/กรัม และ จำนวนเงิน ของใบที่ออกใหม่เป็นจำนวนเต็ม โดยปันส่วนให้ทุกบรรทัดบวกกัน
+  // แล้วเท่ายอดรวมพอดี. ปัดตรงนี้ที่เดียวแล้วใช้ทั้งพรีวิวและตอนบันทึก — สิ่งที่ลูกค้าเห็น
+  // ก่อนกดยืนยันจึงเป็นตัวเลขชุดเดียวกับที่ลงฐานข้อมูลเป๊ะ
+  //
+  // ใบเก่าที่บันทึกไว้ก่อนหน้าไม่ถูกแตะ: PreviewQuote แสดงค่าตามที่เก็บมาตรง ๆ ไม่ปัดซ้ำ
+  // เปิดใบเก่าดูจึงยังเห็นทศนิยมเดิมเหมือนวันที่ออกใบ
+  const savedTotal = roundedGrandTotal(rawPreviewItems);
+  const previewItems = roundQuoteLines(rawPreviewItems, savedTotal);
 
   // Page 1 of the preview lists each keyed line individually (not the
   // consolidated per-metal lines used for the total / page 2).
-  const page1Items: QuotationProps[] = quotation;
+  const page1Items: QuotationProps[] = roundQuoteLines(quotation, savedTotal);
 
-  const totalAmount = previewItems.reduce((sum, item) => sum + item.total, 0);
+  const totalAmount = savedTotal;
   const totalWeight = previewItems.reduce(
     (sum, item) => sum + (item.weight || 0),
     0,
@@ -660,8 +643,8 @@ export default function QuotationPage() {
         await api.post(`/bills/${billId}/revert`, {});
       }
 
-      // previewItems already contains the per-metal consolidated lines in bill
-      // mode, so reuse it directly.
+      // previewItems / page1Items ถูกปัดไว้แล้วตอนสร้าง (ดูด้านบน) — บันทึกชุดเดียวกับ
+      // ที่พรีวิวแสดง เพื่อให้ตัวเลขใน DB ตรงกับกระดาษที่ลูกค้าเพิ่งเห็นและเซ็นไป
       const saveItems = previewItems.map((item) => ({
         type_id: item.typeId,
         type_name: item.typeName,
@@ -709,7 +692,7 @@ export default function QuotationPage() {
         // Detailed per-item lines for the printed page 1. `items` above is stored
         // consolidated (one line per metal); this keeps the itemised view so
         // reprints never fall back to the merged lines (covers partial ticking too).
-        page1_items: quotation,
+        page1_items: page1Items,
         created_at: quotationDate,
       });
       const saved = res.data as unknown as { id: number; code: string };

@@ -11,6 +11,14 @@ interface AuthUser {
   phone: string;
   avatar?: string;
   is_active: boolean;
+  // Customer's own record — the same fields the shop keeps on them, editable by
+  // the customer at /profile. They print on the receipt and are paid out to.
+  store_name?: string;
+  address?: string;
+  tax_id?: string;
+  bank_id?: number | null;
+  bank_account_no?: string;
+  bank_account_name?: string;
   store_id: number | null;
   branch_id: number | null;
   role_id: number | null;

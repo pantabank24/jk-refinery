@@ -13,7 +13,9 @@ import { Textarea } from "@heroui/input";
 import { Switch } from "@heroui/switch";
 import { PreviewQuote, type PayMethod } from "../../quotation/_component/previewQuote";
 import { GoldType, computeItem } from "@/lib/gold-calc";
+import { roundedGrandTotal, roundQuoteLines } from "@/lib/quote-rounding";
 import { QuotationProps } from "../../quotation/_component/quotation";
+import { consolidateByMetal } from "../../quotation/_component/consolidate";
 import { QuotationData, QuotationItem, MemberOption } from "./types";
 import { imgUrls, STATUS_LABEL, STATUS_COLOR, REJECT_REASONS } from "./constants";
 
@@ -153,12 +155,42 @@ export function QuotationDetailPanel({ quotation, members, goldTypes, canUpdate,
     }
   };
 
+  // The lines page 1 of the document actually prints. For a quotation issued
+  // against a bill, `items` is stored consolidated (one line per metal) — editing
+  // that would show a single row against the several the customer is looking at.
+  const printedLines = (): QuotationProps[] =>
+    page1Items.length ? page1Items : (quotation?.page1_items ?? []);
+
+  // True when `items` is the consolidated form of the printed lines, so a save
+  // has to re-consolidate rather than write the itemised rows straight back.
+  const itemsAreConsolidated = () => (quotation?.items?.length ?? 0) < printedLines().length;
+
   const openEdit = () => {
     if (!quotation) return;
     setEditNote(quotation.note || "");
     setEditMemberId(quotation.member ? String(quotation.member.id) : "");
     setEditDate(quotation.created_at ? quotation.created_at.slice(0, 10) : new Date().toISOString().slice(0, 10));
-    setEditItems(quotation.items ? quotation.items.map((i) => ({ ...i })) : []);
+    const printed = printedLines();
+    setEditItems(
+      printed.length
+        // Edit what the document shows. Row ids are synthetic — a save replaces
+        // every item row anyway, so the backend never reads them.
+        ? printed.map((p, idx) => ({
+            id: -(idx + 1),
+            type_id: p.typeId,
+            type_name: p.typeName,
+            metal: p.metal || "gold",
+            price: p.price,
+            percent: p.percent,
+            plus: p.plus,
+            plus_type: p.plus_type ?? 0,
+            weight: p.weight,
+            per_gram: p.perGram,
+            total: p.total,
+          }))
+        // Older quotations kept no page-1 snapshot — their items are the lines.
+        : (quotation.items ?? []).map((i) => ({ ...i })),
+    );
     editDisc.onOpen();
   };
 
@@ -188,7 +220,9 @@ export function QuotationDetailPanel({ quotation, members, goldTypes, canUpdate,
     );
   };
 
-  const editTotal = editItems.reduce((s, i) => s + i.total, 0);
+  // ยอดที่ปัดแล้ว — ต้องเป็นตัวเดียวกับที่จะถูกบันทึก ไม่งั้นการเทียบกับ total_amount
+  // ที่เก็บไว้ (ซึ่งปัดแล้ว) จะไม่ตรงตลอด แล้วเด้งถามปรับเครดิตทั้งที่ไม่ได้แก้อะไรเลย
+  const editTotal = roundedGrandTotal(editItems);
 
   // A master edit that changes the total prompts whether to reconcile the
   // creator's credits; otherwise save straight away.
@@ -204,24 +238,52 @@ export function QuotationDetailPanel({ quotation, members, goldTypes, canUpdate,
   const doEditSave = async (adjustCredits: boolean) => {
     if (!quotation) return;
     setEditSaving(true);
+    // What the master just keyed, in the document's own (camelCase) line shape.
+    const edited: QuotationProps[] = editItems.map((i) => ({
+      typeId: i.type_id,
+      typeName: i.type_name,
+      metal: i.metal || "gold",
+      price: i.price,
+      plus: i.plus,
+      plus_type: i.plus_type ?? 0,
+      percent: i.percent,
+      weight: i.weight,
+      perGram: i.per_gram,
+      total: i.total,
+    }));
+    // เก็บค่าที่ปัดแล้วให้ตรงกับที่พิมพ์บนเอกสาร เหมือนตอนออกใบครั้งแรก. ปัด `edited`
+    // ก่อนแล้วค่อยยุบรวม — ยอดกลุ่มจึงเป็นผลบวกของจำนวนเต็ม และยังเท่ายอดรวมเดิม
+    // (roundQuoteLines รอบสองปัดแค่ ราคา/กรัม ที่เพิ่งคำนวณใหม่ตอนยุบรวม)
+    const savedTotal = roundedGrandTotal(edited);
+    const editedRounded = roundQuoteLines(edited, savedTotal);
+    // `items` drives the total and page 2, and has to keep the shape this
+    // quotation was saved in: a bill-issued document stores one consolidated
+    // line per metal, a plain quotation stores the lines as keyed.
+    const savedItems = roundQuoteLines(
+      itemsAreConsolidated() ? consolidateByMetal(editedRounded) : editedRounded,
+      savedTotal,
+    );
     try {
       await api.patch(`/quotations/${quotation.id}`, {
         member_id: editMemberId ? Number(editMemberId) : null,
         note: editNote,
         created_at: editDate,
-        items: editItems.map((i) => ({
-          id: i.id,
-          type_id: i.type_id,
-          type_name: i.type_name,
-          metal: i.metal || "gold",
-          price: i.price,
-          percent: i.percent,
-          plus: i.plus,
-          plus_type: i.plus_type ?? 0,
-          weight: i.weight,
-          per_gram: i.per_gram,
-          total: i.total,
+        items: savedItems.map((p) => ({
+          type_id: p.typeId,
+          type_name: p.typeName,
+          metal: p.metal || "gold",
+          price: p.price,
+          percent: p.percent,
+          plus: p.plus,
+          plus_type: p.plus_type ?? 0,
+          weight: p.weight,
+          per_gram: p.perGram,
+          total: p.total,
         })),
+        // Page 1 prints from this snapshot, so it carries the edited lines —
+        // otherwise its rows keep the old prices while the grand total (taken
+        // from `items`) moves, and the two stop agreeing.
+        page1_items: editedRounded,
         adjust_credits: adjustCredits,
       });
       creditAdjustDisc.onClose();

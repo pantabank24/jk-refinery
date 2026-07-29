@@ -52,31 +52,10 @@ const THAI_MONTHS = [
   "พฤศจิกายน",
   "ธันวาคม",
 ];
-function thaiDate(d?: string | Date): string {
-  const dt = d ? new Date(d) : new Date();
-  if (isNaN(dt.getTime())) return "";
-  return `${dt.getDate()} ${THAI_MONTHS[dt.getMonth()]} ${dt.getFullYear() + 543}`;
-}
 function shortThaiDate(d?: string | Date): string {
   const dt = d ? new Date(d) : new Date();
   if (isNaN(dt.getTime())) return "";
   return `${dt.getDate()}/${dt.getMonth() + 1}/${dt.getFullYear() + 543}`;
-}
-
-// ช่องเว้นให้เขียนด้วยมือ — เมื่อมีข้อมูล จะพิมพ์ทับบนเส้นประแทนจุดไข่ปลา
-function Blank({
-  value,
-  dots = ".......................................",
-}: {
-  value?: string;
-  dots?: string;
-}) {
-  if (!value) return <span>{dots}</span>;
-  return (
-    <span className="font-bold border-b border-dotted border-gray-500 px-1">
-      {value}
-    </span>
-  );
 }
 
 // หัวเอกสาร (แบบทางการ) — ใช้ร่วมกันทั้งใบที่ 1 และใบที่ 2 เพื่อให้หน้าตาตรงกันเสมอ
@@ -95,7 +74,8 @@ function StoreHeaderBlock({ store }: { store?: StoreHeader }) {
       {store.name && (
         <h1 className="text-[13px] font-bold leading-tight">
           {store.name}
-          {store.branch ? ` (${store.branch})` : " (สำนักงานใหญ่)"}
+          {/* สาขาขึ้นบรรทัดใหม่ ไม่มีวงเล็บครอบ — ขนาด/น้ำหนักตัวอักษรเท่าชื่อร้าน */}
+          <span className="block">{store.branch || "สำนักงานใหญ่"}</span>
         </h1>
       )}
       {store.address && (
@@ -128,9 +108,9 @@ function GoldPriceBlock({
   // รับซื้อคืนต่อกรัม = (ราคาทองคำแท่งซื้อเข้า หัก 2%) ÷ 15.244 (กรัม/บาททอง)
   const ornamentPerGram = goldPrices
     ? ((goldPrices.bar_buy - goldPrices.bar_buy * 0.02) / 15.244).toLocaleString(
-        undefined,
-        { maximumFractionDigits: 2 },
-      )
+      undefined,
+      { maximumFractionDigits: 2 },
+    )
     : "-";
   const rows: [string, string][] = [
     ["ราคาทองคำแท่งซื้อเข้าบาทละ", goldPrices ? fmt(goldPrices.bar_buy) : "-"],
@@ -157,13 +137,17 @@ function GoldPriceBlock({
   );
 }
 
-// ส่วนหัวเหนือตาราง (แบบใบที่ 2 ทางการ) — หัวร้าน + ชื่อเอกสาร + ราคาทองอ้างอิง +
-// เลขที่/วันที่ + ข้อมูลลูกค้า. ใช้ร่วมกันทั้งสองใบเพื่อให้เหมือนกันทุกจุด
+// ส่วนหัวเหนือตาราง — ชื่อเอกสาร + เลขที่/วันที่ + ข้อมูลลูกค้า ใช้ร่วมกันทั้งสองใบ
+// เพื่อให้ข้อมูลลูกค้าตรงกันเสมอ. สองใบต่างกันที่ `bare`:
+//   bare       (ใบที่ 1) = ใบข้อมูลสินค้า/ประเมินราคา — ไม่มีหัวกระดาษร้าน ไม่มีราคาทอง
+//                          อ้างอิง ไม่มี "ต้นฉบับ" เหลือแค่ชื่อเอกสาร + เลขที่/วันที่ + ลูกค้า
+//   ไม่ bare   (ใบที่ 2) = ใบรับซื้อทองเก่า/ใบสำคัญจ่ายแบบทางการ — มีครบทุกอย่าง
 function DocumentTopSection({
+  bare,
   store,
   title,
-  goldPrices,
-  lockPrice,
+  goldPrices = null,
+  lockPrice = null,
   documentNo,
   date,
   customerName,
@@ -171,10 +155,11 @@ function DocumentTopSection({
   customerAddress,
   customerTaxId,
 }: {
+  bare?: boolean;
   store?: StoreHeader;
   title: string;
-  goldPrices: GoldRefPrices | null;
-  lockPrice: number | null;
+  goldPrices?: GoldRefPrices | null;
+  lockPrice?: number | null;
   documentNo?: string;
   date?: string | Date;
   customerName?: string;
@@ -184,16 +169,25 @@ function DocumentTopSection({
 }) {
   return (
     <>
-      <StoreHeaderBlock store={store} />
+      {!bare && <StoreHeaderBlock store={store} />}
 
-      <div className="flex justify-between items-start mt-2">
-        <span className="w-10 text-[9px]">&nbsp;</span>
-        <h2 className="text-[14px] font-bold text-center flex-1">{title}</h2>
-        <span className="w-10 text-[9px] font-bold text-right">ต้นฉบับ</span>
-      </div>
+      {bare ? (
+        <h2 className="text-[14px] font-bold text-center">{title}</h2>
+      ) : (
+        <div className="flex justify-between items-start mt-2">
+          <span className="w-10 text-[9px]">&nbsp;</span>
+          <h2 className="text-[14px] font-bold text-center flex-1">{title}</h2>
+          <span className="w-10 text-[9px] font-bold text-right">ต้นฉบับ</span>
+        </div>
+      )}
 
-      <div className="flex justify-between text-[9px] mt-3">
-        <GoldPriceBlock goldPrices={goldPrices} lockPrice={lockPrice} />
+      {/* ไม่มีราคาทองอ้างอิงบนใบ bare — เลขที่/วันที่ จึงชิดขวาอยู่ลำพัง */}
+      <div
+        className={`flex text-[9px] mt-3 ${bare ? "justify-end" : "justify-between"}`}
+      >
+        {!bare && (
+          <GoldPriceBlock goldPrices={goldPrices} lockPrice={lockPrice} />
+        )}
         <div className="flex flex-col gap-y-0.5 text-right">
           <span>เลขที่ {documentNo ?? ""}</span>
           <span>วันที่ {shortThaiDate(date)}</span>
@@ -234,13 +228,18 @@ interface Props {
   onPrint?: () => void;
   hidePrint?: boolean; // ซ่อนปุ่มพิมพ์ (เช่น ฝั่งลูกค้า)
   store?: StoreHeader; // หัวใบเสร็จ จากข้อมูลร้าน
-  title?: string; // ชื่อเอกสาร (default: ใบรับซื้อทองคำเก่า/ใบสำคัญรับจ่าย)
+  // ชื่อเอกสารของใบที่ 1 (default: ข้อมูลสินค้า / ใบประเมินราคา).
+  // ใบที่ 2 เป็นเอกสารทางการ ชื่อจึงตายตัวเป็น "ใบรับซื้อทองเก่า / ใบสำคัญจ่าย" เสมอ
+  title?: string;
   documentNo?: string; // เลขที่เอกสาร (quotation.code) — แสดงในหน้าใบรับซื้อทองเก่าทางการ
   customerName?: string;
   customerPhone?: string; // เบอร์โทรลูกค้า — แสดงต่อท้ายชื่อลูกค้าบนหัวเอกสารทั้งสองใบ
   customerAddress?: string; // ที่อยู่ลูกค้า (ผู้ขาย)
   customerTaxId?: string; // เลขประจำตัวผู้เสียภาษีของลูกค้า
   date?: string | Date; // วันที่บนเอกสาร (default: วันนี้)
+  // รูปประกอบ — ยังไม่ได้วาดลงเอกสารตอนนี้: ใบที่ 1 ตัดส่วนท้าย (รวมแถบรูป) ออกเหลือ
+  // แค่ช่องเซ็นชื่อ ส่วนใบที่ 2 เป็นแบบทางการที่ไม่เคยมีรูปอยู่แล้ว. คงรับไว้เพราะทุกหน้า
+  // ที่เรียกยังส่งมา และเป็นจุดเดียวที่จะเสียบรูปกลับเข้าเอกสารได้ถ้าต้องการอีก
   previewImages?: string[];
   beforeImages?: string[]; // รูปก่อนหลอม
   afterImages?: string[]; // รูปบนตราชั่ง (หลังหลอม)
@@ -506,6 +505,25 @@ export const PreviewQuote = React.forwardRef<PreviewQuoteHandle, Props>(
       return arr.reduce((sum, item) => sum + (item.weight || 0), 0);
     };
 
+    // ===== ใบที่ 2 คิดเป็นกรัม =====
+    // ทองซื้อขายกันเป็นบาททอง แต่ใบรับซื้อทองเก่าเป็นเอกสารทางการที่ต้องระบุเป็นกรัม
+    // จึงแปลงหน่วยตอนแสดงผล (ไม่ได้แก้ค่าที่เก็บไว้ — น้ำหนักจริงในระบบยังเป็นบาททอง):
+    //   ราคา/กรัม   = (ราคาตัดล็อก หัก 2%) ÷ 15.244 กรัมต่อบาททอง
+    //   จำนวน (กรัม) = จำนวนเงิน ÷ ราคา/กรัม
+    // ผลคือ จำนวน × ราคา/กรัม = จำนวนเงิน เสมอ ใบจึงอ่านแล้วคิดเลขตามได้ลงตัว
+    const page2PerGram: number | null =
+      lockPrice !== null && lockPrice > 0
+        ? Math.round((lockPrice - lockPrice * 0.02) / 15.244)
+        : null;
+    // ใบที่ไม่มีราคาตัดล็อก (เช่น ใบเก่าที่ไม่ได้บันทึกราคาไว้) ตกกลับไปใช้ค่าที่เก็บมา
+    const page2Grams = (amount: number): number | null =>
+      page2PerGram && page2PerGram > 0 ? amount / page2PerGram : null;
+    const fmtGrams = (g: number) =>
+      g.toLocaleString(undefined, {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      });
+
     const calculateGrandTotal = (arr: QuotationProps[] = items) => {
       return arr.reduce((sum, item) => sum + (item.total || 0), 0);
     };
@@ -734,16 +752,15 @@ export const PreviewQuote = React.forwardRef<PreviewQuoteHandle, Props>(
                         long document. The gap collapses to 0 when printing, since the
                         forced page-break (see printStyles) handles pagination instead. */}
             <div className="flex flex-col gap-y-6 print:gap-y-0">
-              {/* ============ Page 1: ใบเสนอราคาแบบละเอียด (เดิม) ============ */}
+              {/* ============ Page 1: ข้อมูลสินค้า / ใบประเมินราคา ============ */}
               <div
                 className="print-page bg-white shadow-lg rounded-lg p-[20px] min-h-auto text-[10px]" // Explicit sizing to match A5 Print (210mm height, 20px padding)
               >
-                {/* ส่วนหัวเหนือตาราง — แบบเดียวกับใบที่ 2 ทั้งหมด */}
+                {/* ส่วนหัวเหนือตาราง — แบบ bare: ไม่มีหัวกระดาษร้าน/ราคาทองอ้างอิง
+                    เหลือแค่ชื่อเอกสาร เลขที่/วันที่ และข้อมูลลูกค้า */}
                 <DocumentTopSection
-                  store={store}
-                  title={title ?? "ใบรับซื้อทองเก่า / ใบสำคัญจ่าย"}
-                  goldPrices={goldPrices}
-                  lockPrice={lockPrice}
+                  bare
+                  title={title ?? "ข้อมูลสินค้า / ใบประเมินราคา"}
                   documentNo={documentNo}
                   date={date}
                   customerName={customerName}
@@ -969,78 +986,10 @@ export const PreviewQuote = React.forwardRef<PreviewQuoteHandle, Props>(
                     </div>
                   </div>
 
+                  {/* ใบที่ 1 เป็นใบข้อมูลสินค้า/ประเมินราคา — ไม่มีช่องชำระเงิน
+                      ข้อความรับรอง หรือรูปประกอบ เหลือไว้แค่ช่องเซ็นชื่อ
+                      (ทั้งหมดนั้นยังอยู่ครบบนใบที่ 2 ซึ่งเป็นเอกสารทางการ) */}
                   <div className=" flex flex-col text-[8px] gap-y-2 mt-3">
-                    <div className=" flex flex-row gap-x-4">
-                      <div className=" w-12 flex flex-row justify-end">
-                        ชำระโดย
-                      </div>
-                      <div className=" flex flex-col gap-y-2">
-                        <Checkbox
-                          size="sm"
-                          isSelected={isCash}
-                          isReadOnly={payReadOnly}
-                          onValueChange={(v) => choosePayMethod(v ? "cash" : null)}
-                        >
-                          <div className=" text-black text-[8px]">
-                            เงินสด{" "}
-                            <Blank
-                              value={
-                                isCash
-                                  ? calculateGrandTotal().toLocaleString()
-                                  : ""
-                              }
-                              dots="......................................................................"
-                            />
-                          </div>
-                        </Checkbox>
-                        <Checkbox
-                          size="sm"
-                          isSelected={isTransfer}
-                          isReadOnly={payReadOnly}
-                          onValueChange={(v) =>
-                            choosePayMethod(v ? "transfer" : null)
-                          }
-                        >
-                          <div className=" text-black text-[8px]">
-                            เช็ค / บัตร / เงินโอน ธนาคาร{" "}
-                            <Blank
-                              value={isTransfer ? bankLine : ""}
-                              dots="......................................................................"
-                            />
-                          </div>
-                        </Checkbox>
-                      </div>
-                    </div>
-                    <div className=" flex flex-row gap-x-4">
-                      <div className=" flex flex-row gap-x-4">
-                        <div className=" w-12 flex flex-row justify-end">
-                          เลขที่
-                        </div>
-                        <div className=" ">
-                          <Blank value={isTransfer ? bankAccountNo : ""} />
-                        </div>
-                      </div>
-                      <div className=" flex flex-row gap-x-1">
-                        ลงวันที่{" "}
-                        <Blank value={isTransfer ? thaiDate(date) : ""} />
-                      </div>
-                      <div className=" flex flex-row gap-x-1">
-                        จำนวนเงิน{" "}
-                        <Blank
-                          value={
-                            isTransfer
-                              ? calculateGrandTotal().toLocaleString()
-                              : ""
-                          }
-                        />
-                      </div>
-                    </div>
-                    <div className=" flex flex-row indent-16">
-                      ข้าพเจ้าขอรับรองว่าเป็นสมบัติของข้าพเจ้าโดยแท้จริง
-                      และขอรับรองว่าของที่นำมาขายนั้นเป็นของที่บริสุทธิ์
-                      ถ้าหากเป็นของทุจริตแล้ว ข้าพเจ้าขอรับผิดชอบทั้งสิ้น
-                      และได้อ่านทบทวนเรียบร้อยแล้วจึงลงนามไว้เป็นหลักฐาน
-                    </div>
                     <div className=" flex flex-row justify-end mt-8">
                       <div className=" flex flex-col w-80 gap-y-12">
                         {/* Seller / signature line — embeds the actual signature when present */}
@@ -1063,62 +1012,15 @@ export const PreviewQuote = React.forwardRef<PreviewQuoteHandle, Props>(
                               ...........................................................................
                             </span>
                           )}
-                          <span>ผู้ขาย/ผู้รับเงิน</span>
+                          <span>เจ้าของสินค้า</span>
                         </div>
                         <div className=" flex flex-row justify-end">
                           ลงชื่อ
-                          ...........................................................................
-                          ผู้ซื้อ/ผู้รับสินค้า
+                          ..................................................................
+                          ผู้ประเมินราคาสินค้า
                         </div>
                       </div>
                     </div>
-                    {/* Uploaded images — all types flow together in one row, captioned below each thumbnail */}
-                    {(() => {
-                      const allImages = [
-                        ...(beforeImages ?? []).map((src) => ({
-                          src,
-                          label: "ก่อนหลอม",
-                        })),
-                        ...(afterImages ?? []).map((src) => ({
-                          src,
-                          label: "หลังหลอม",
-                        })),
-                        ...(previewImages ?? []).map((src) => ({
-                          src,
-                          label: "รูปประกอบ",
-                        })),
-                      ];
-                      return allImages.length > 0 ? (
-                        <div className="mt-2 pt-2 border-t border-gray-300">
-                          <p className="text-[8px] font-semibold mb-1">
-                            รูปภาพประกอบ
-                          </p>
-                          <div>
-                            {allImages.map((img, i) => (
-                              <div
-                                key={i}
-                                className="inline-flex flex-col items-center align-top"
-                                style={{
-                                  marginRight: "4px",
-                                  marginBottom: "4px",
-                                }}
-                              >
-                                {/* eslint-disable-next-line @next/next/no-img-element */}
-                                <img
-                                  src={img.src}
-                                  alt={`${img.label} ${i + 1}`}
-                                  className="w-auto object-contain rounded border border-gray-300"
-                                  style={{ height: "90px" }}
-                                />
-                                <span className="text-[6px] text-gray-500 leading-tight">
-                                  {img.label}
-                                </span>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      ) : null;
-                    })()}
                   </div>
                 </div>
               </div>
@@ -1168,10 +1070,15 @@ export const PreviewQuote = React.forwardRef<PreviewQuoteHandle, Props>(
                           {item.typeName.replace("ทองหลอม", "ทองรูปพรรณเก่า")}
                         </td>
                         <td className="border border-gray-400 px-2 py-1 text-center text-[9px]">
-                          {item.weight.toLocaleString()}
+                          {(() => {
+                            const g = page2Grams(item.total);
+                            return g !== null
+                              ? fmtGrams(g)
+                              : item.weight.toLocaleString();
+                          })()}
                         </td>
                         <td className="border border-gray-400 px-2 py-1 text-center text-[9px]">
-                          {item.perGram.toLocaleString()}
+                          {(page2PerGram ?? item.perGram).toLocaleString()}
                         </td>
                         <td className="border border-gray-400 px-2 py-1 text-center text-[9px]">
                           {item.total.toLocaleString()}
@@ -1204,8 +1111,15 @@ export const PreviewQuote = React.forwardRef<PreviewQuoteHandle, Props>(
                       <td className="border border-gray-400 px-2 py-1 text-center text-[9px] font-bold">
                         รวม -- {bahtText(calculateGrandTotal())} --
                       </td>
+                      {/* รวมกรัม — บวกจากคอลัมน์ที่แสดงจริง (ยอดรวม ÷ ราคา/กรัม)
+                          ไม่ใช่น้ำหนักบาททองที่เก็บไว้ ไม่งั้นคอลัมน์จะบวกไม่ตรง */}
                       <td className="border border-gray-400 px-2 py-1 text-center text-[9px] font-bold">
-                        {calculateTotalWeight().toFixed(2)}
+                        {(() => {
+                          const g = page2Grams(calculateGrandTotal());
+                          return g !== null
+                            ? fmtGrams(g)
+                            : calculateTotalWeight().toFixed(2);
+                        })()}
                       </td>
                       <td className="border border-gray-400 px-2 py-1 text-center text-[9px]">
                         &nbsp;

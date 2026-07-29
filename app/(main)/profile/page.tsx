@@ -3,11 +3,13 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
-import { Input } from "@heroui/input";
+import { Input, Textarea } from "@heroui/input";
+import { Select, SelectItem } from "@heroui/select";
 import { Button } from "@heroui/button";
 import { Spinner } from "@heroui/spinner";
 import { ArrowLeft, Camera, Eye, EyeOff, KeyRound, Save } from "lucide-react";
 import { api } from "@/lib/api";
+import type { BankDto } from "@/dtos/bank-dto";
 import { useAuth } from "@/contexts/auth-context";
 
 const API_BASE =
@@ -35,6 +37,17 @@ export default function ProfilePage() {
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
 
+  // Customer-only record: the same fields the shop maintains on ลูกค้า. They feed
+  // the receipt header (address / tax id) and the payout account, so the customer
+  // keeps them current themselves.
+  const [storeName, setStoreName] = useState("");
+  const [address, setAddress] = useState("");
+  const [taxId, setTaxId] = useState("");
+  const [banks, setBanks] = useState<BankDto[]>([]);
+  const [bankId, setBankId] = useState("");
+  const [bankAccountNo, setBankAccountNo] = useState("");
+  const [bankAccountName, setBankAccountName] = useState("");
+
   const [oldPassword, setOldPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -55,7 +68,26 @@ export default function ProfilePage() {
     setEmail(user.email || "");
     setPhone(user.phone || "");
     setExistingAvatar(user.avatar || "");
+    setStoreName(user.store_name || "");
+    setAddress(user.address || "");
+    setTaxId(user.tax_id || "");
+    setBankId(user.bank_id ? String(user.bank_id) : "");
+    setBankAccountNo(user.bank_account_no || "");
+    setBankAccountName(user.bank_account_name || "");
   }, [user]);
+
+  // Bank list for the payout picker — customers only, since only they have one.
+  useEffect(() => {
+    if (!isCustomer) return;
+    api
+      .get<BankDto[]>("/banks")
+      .then((res) => setBanks((res.data as unknown as BankDto[]) || []))
+      .catch(() => setBanks([]));
+  }, [isCustomer]);
+
+  // Disabled banks stay out of the picker, except the one already on file —
+  // otherwise saving would silently drop it.
+  const bankOptions = banks.filter((b) => b.is_active || String(b.id) === bankId);
 
   const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -70,12 +102,32 @@ export default function ProfilePage() {
     setError("");
     setSuccess("");
     if (!name.trim()) return setError("กรุณากรอกชื่อ");
-    if (!email.trim()) return setError("กรุณากรอกอีเมล");
-    if (!EMAIL_RE.test(email)) return setError("รูปแบบอีเมลไม่ถูกต้อง");
+    // Customers can't edit their email, so it is never theirs to get wrong.
+    if (!isCustomer) {
+      if (!email.trim()) return setError("กรุณากรอกอีเมล");
+      if (!EMAIL_RE.test(email)) return setError("รูปแบบอีเมลไม่ถูกต้อง");
+    }
 
     setSaving(true);
     try {
-      await api.put("/auth/profile", { name, email, phone });
+      await api.put("/auth/profile", {
+        name,
+        email,
+        phone,
+        // Staff have no customer record — omitting these leaves them untouched
+        // server-side rather than blanking them.
+        ...(isCustomer
+          ? {
+              store_name: storeName,
+              address,
+              tax_id: taxId,
+              // 0 = ไม่ระบุ; the API maps it back to NULL so a bank can be cleared.
+              bank_id: bankId ? Number(bankId) : 0,
+              bank_account_no: bankAccountNo,
+              bank_account_name: bankAccountName,
+            }
+          : {}),
+      });
       if (avatarFile) {
         const fd = new FormData();
         fd.append("avatar", avatarFile);
@@ -189,13 +241,21 @@ export default function ProfilePage() {
                   classNames={{ inputWrapper: inputStyle }}
                   isRequired
                 />
+                {/* A customer's email is the login the shop issued — shown, but
+                    theirs to read only. The API enforces the same rule. */}
                 <Input
                   label="อีเมล"
                   type="email"
                   value={email}
                   onValueChange={setEmail}
                   classNames={{ inputWrapper: inputStyle }}
-                  isRequired
+                  isRequired={!isCustomer}
+                  isDisabled={isCustomer}
+                  description={
+                    isCustomer
+                      ? "ต้องการเปลี่ยนอีเมล กรุณาติดต่อทางร้าน"
+                      : undefined
+                  }
                 />
                 <Input
                   label="เบอร์โทร"
@@ -213,6 +273,79 @@ export default function ProfilePage() {
                   />
                 )}
               </div>
+
+              {/* Customer's own record — prints on their bills, so they keep it
+                  current themselves instead of asking the shop to edit it. */}
+              {isCustomer && (
+                <>
+                  <div className="flex flex-col gap-y-3">
+                    <span className={sectionTitle}>ข้อมูลสำหรับออกเอกสาร</span>
+                    <Input
+                      label="ชื่อบริษัท / ร้านค้า"
+                      value={storeName}
+                      onValueChange={setStoreName}
+                      classNames={{ inputWrapper: inputStyle }}
+                      placeholder="ชื่อบริษัทหรือร้านค้า"
+                    />
+                    <Textarea
+                      label="ที่อยู่"
+                      value={address}
+                      onValueChange={setAddress}
+                      minRows={2}
+                      classNames={{ inputWrapper: inputStyle }}
+                      placeholder="ที่อยู่สำหรับติดต่อ/ออกเอกสาร"
+                    />
+                    <Input
+                      label="เลขประจำตัวผู้เสียภาษี"
+                      value={taxId}
+                      onValueChange={setTaxId}
+                      classNames={{ inputWrapper: inputStyle }}
+                      placeholder="เลขประจำตัวผู้เสียภาษี 13 หลัก"
+                    />
+                  </div>
+
+                  <div className="flex flex-col gap-y-3">
+                    <span className={sectionTitle}>บัญชีธนาคาร</span>
+                    <span className="text-[11px] text-black/40 -mt-2">
+                      บัญชีที่ทางร้านจะโอนเงินค่าทองให้
+                    </span>
+                    <Select
+                      label="ธนาคาร"
+                      placeholder="เลือกธนาคาร"
+                      selectedKeys={bankId ? new Set([bankId]) : new Set([])}
+                      onSelectionChange={(keys) =>
+                        setBankId((Array.from(keys)[0] as string) ?? "")
+                      }
+                      classNames={{ trigger: inputStyle }}
+                    >
+                      {bankOptions.map((b) => (
+                        <SelectItem key={String(b.id)} textValue={b.name}>
+                          {b.name}
+                          {b.code ? ` (${b.code})` : ""}
+                          {b.is_active ? "" : " — ปิดใช้งาน"}
+                        </SelectItem>
+                      ))}
+                    </Select>
+                    <Input
+                      label="เลขที่บัญชี"
+                      value={bankAccountNo}
+                      onValueChange={(v) =>
+                        setBankAccountNo(v.replace(/[^0-9-]/g, ""))
+                      }
+                      inputMode="numeric"
+                      classNames={{ inputWrapper: inputStyle }}
+                      placeholder="เลขที่บัญชีธนาคาร"
+                    />
+                    <Input
+                      label="ชื่อบัญชี"
+                      value={bankAccountName}
+                      onValueChange={setBankAccountName}
+                      classNames={{ inputWrapper: inputStyle }}
+                      placeholder="ชื่อเจ้าของบัญชี"
+                    />
+                  </div>
+                </>
+              )}
 
               {error && (
                 <div className="text-red-500 text-sm bg-red-50 border border-red-200 rounded-xl px-4 py-2">
