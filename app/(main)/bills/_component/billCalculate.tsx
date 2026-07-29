@@ -48,6 +48,10 @@ interface Props {
   // silver-sell schedule on the customer page (staff page leaves both on).
   allowGold?: boolean;
   allowSilver?: boolean;
+  // Fluid drops the fixed 700px column and the calculator's own scrollbar, so it
+  // fits whatever it is placed in (the sell dialog on the issue screen) instead
+  // of overflowing it. Full-page callers leave it off.
+  fluid?: boolean;
 }
 
 // Metal tabs offered on the customer sell screen. Gold keeps its baht-weight
@@ -104,6 +108,7 @@ export const BillCalculate = ({
   staffMode = false,
   allowGold = true,
   allowSilver = true,
+  fluid = false,
 }: Props) => {
   // Tabs limited to the metals allowed right now (gold first).
   const metals = ALL_METALS.filter((m) =>
@@ -372,8 +377,14 @@ export const BillCalculate = ({
       : `${effGold?.gold_date ?? ""} ${effGold?.gold_time ?? ""}`.trim();
 
   return (
-    <div className="flex flex-col  w-full xl:w-[700px] mb-5">
-      <div className="flex flex-col h-full border-1 border-black/10 bg-black/5 backdrop-blur-xl rounded-4xl p-3 gap-y-2 overflow-y-scroll scrollbar-hide">
+    <div
+      className={`flex flex-col w-full min-w-0 ${fluid ? "" : "xl:w-[700px] mb-5"}`}
+    >
+      <div
+        className={`flex flex-col border-1 border-black/10 bg-black/5 backdrop-blur-xl rounded-4xl p-3 gap-y-2 ${
+          fluid ? "" : "h-full overflow-y-scroll scrollbar-hide"
+        }`}
+      >
         {metals.length > 1 && (
           <div className="w-full flex justify-center">
             <Tabs

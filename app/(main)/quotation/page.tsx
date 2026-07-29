@@ -7,6 +7,8 @@ import { consolidateByMetal } from "./_component/consolidate";
 import { PreviewQuote, type PayMethod } from "./_component/previewQuote";
 import { TermsForm } from "./_component/termsForm";
 import { api } from "@/lib/api";
+import { BillCalculate } from "../bills/_component/billCalculate";
+import { GoldType, computeItem } from "@/lib/gold-calc";
 import { roundedGrandTotal, roundQuoteLines } from "@/lib/quote-rounding";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/contexts/auth-context";
@@ -22,6 +24,7 @@ import {
   UserCheck,
   PenLine,
   Store,
+  ShoppingBag,
 } from "lucide-react";
 import {
   Modal,
@@ -34,6 +37,7 @@ import {
 import { Button } from "@heroui/button";
 import { Input } from "@heroui/input";
 import { Checkbox } from "@heroui/checkbox";
+import { Spinner } from "@heroui/spinner";
 import { useStore } from "@/contexts/store-context";
 import { StoreBranchSelector } from "@/components/store-branch-selector";
 import { useSalesStatus } from "@/hooks/use-sales-status";
@@ -200,6 +204,9 @@ export default function QuotationPage() {
   // stays "รอตรวจบิล"; the old issuance is reversed at save time (see doSave), not now.
   const editIssued = searchParams.get("editIssued") === "1";
   const [billCustomer, setBillCustomer] = useState("");
+  // Who the bill belongs to — the master sells on their behalf straight from this
+  // screen when the melted result comes out over (or under) what they submitted.
+  const [billCustomerId, setBillCustomerId] = useState<number | null>(null);
   // The bill's metal decides which list page to return to (รายการขายทอง/เงิน).
   const [billMetal, setBillMetal] = useState("gold");
   const billsListHref = billMetal === "gold" ? "/bills" : "/bills/silver";
@@ -240,6 +247,26 @@ export default function QuotationPage() {
   const deleteBillDisc = useDisclosure();
   const [deletingBill, setDeletingBill] = useState(false);
 
+  // ── ขายแทนลูกค้า (bill mode) ──
+  // The melted result routinely comes out over or under what the customer
+  // submitted; the master settles the difference by selling for them, which used
+  // to mean leaving this screen for /bills/sell and walking back.
+  const sellDisc = useDisclosure();
+  const [sellSaving, setSellSaving] = useState(false);
+  const [sellError, setSellError] = useState("");
+  // Set after a sale reprices the keyed lines, so the numbers never move silently.
+  const [repriceNote, setRepriceNote] = useState("");
+  // Gold types (with their formulas) — needed to recompute keyed lines at the new
+  // locked price, the same way the calculator computed them in the first place.
+  const [goldTypes, setGoldTypes] = useState<GoldType[]>([]);
+  useEffect(() => {
+    if (!billId) return;
+    api
+      .get<GoldType[]>("/gold-types")
+      .then((r) => setGoldTypes((r.data as unknown as GoldType[]) || []))
+      .catch(() => {});
+  }, [billId]);
+
   type BillItemLite = {
     id: number;
     type_id: string;
@@ -273,6 +300,48 @@ export default function QuotationPage() {
     };
   };
 
+  // Every pending (รอออกบิล) bill this customer has in this metal, flattened into
+  // the reference card's lines. Called on load and again after the master sells
+  // for them, so the card and billIds always describe the same set of bills.
+  const fetchReferences = async (
+    creatorId: number | undefined,
+    metal: string,
+    fallback?: BillLite | null,
+  ) => {
+    let bills: BillLite[] = [];
+    if (creatorId) {
+      const listRes = await api.get<BillLite[]>(
+        `/bills?created_by=${creatorId}&status=10&limit=100&metal=${metal}`,
+      );
+      // res.data IS the array — reading a further .data off it always yielded
+      // undefined, so this quietly fell back to the clicked bill every time.
+      bills = (listRes.data as unknown as BillLite[]) || [];
+    }
+    if (bills.length === 0 && fallback) bills = [fallback];
+
+    const ids: number[] = [];
+    const reference: ReferenceItem[] = [];
+    for (const b of bills) {
+      ids.push(b.id);
+      for (const i of b.items ?? []) {
+        reference.push({
+          typeId: i.type_id,
+          typeName: i.type_name,
+          metal: i.metal || "gold",
+          price: i.price,
+          plus: i.plus,
+          percent: i.percent,
+          weight: i.weight,
+          perGram: i.per_gram,
+          total: i.total,
+          billId: b.id,
+          itemId: i.id,
+        });
+      }
+    }
+    return { ids, reference };
+  };
+
   useEffect(() => {
     if (!billId) return;
     (async () => {
@@ -280,6 +349,7 @@ export default function QuotationPage() {
         const res = await api.get(`/bills/${billId}`);
         const clicked = res.data as unknown as BillLite;
         setBillMetal(clicked?.metal || "gold");
+        setBillCustomerId(clicked?.creator?.id ?? null);
         if (clicked?.creator?.name) {
           setBillCustomer(clicked.creator.name);
           setSignerName(clicked.creator.name);
@@ -384,35 +454,11 @@ export default function QuotationPage() {
         // Combine ALL of this customer's pending (รอออกบิล) bills' submitted items
         // as reference (their gold was melted; the master re-assesses from scratch).
         // Same metal only — a gold issuance must never pull in their silver bill.
-        let bills: BillLite[] = [];
-        if (clicked?.creator?.id) {
-          const listRes = await api.get(
-            `/bills?created_by=${clicked.creator.id}&status=10&limit=100&metal=${clicked.metal || "gold"}`,
-          );
-          bills = (listRes.data as unknown as { data: BillLite[] }).data || [];
-        }
-        if (bills.length === 0 && clicked) bills = [clicked];
-
-        const ids: number[] = [];
-        const reference: ReferenceItem[] = [];
-        for (const b of bills) {
-          ids.push(b.id);
-          for (const i of b.items ?? []) {
-            reference.push({
-              typeId: i.type_id,
-              typeName: i.type_name,
-              metal: i.metal || "gold",
-              price: i.price,
-              plus: i.plus,
-              percent: i.percent,
-              weight: i.weight,
-              perGram: i.per_gram,
-              total: i.total,
-              billId: b.id,
-              itemId: i.id,
-            });
-          }
-        }
+        const { ids, reference } = await fetchReferences(
+          clicked?.creator?.id,
+          clicked?.metal || "gold",
+          clicked,
+        );
         setBillIds(ids);
         setReferenceItems(reference); // reference only — quote stays empty
         // Everything ticked by default — untick (via แก้ไขรายการ) to hold items
@@ -542,6 +588,99 @@ export default function QuotationPage() {
   // what the customer was locked in at (total includes percent/plus adjustments).
   const selAvgPrice = selGoldWeight > 0 ? selGoldTotal / selGoldWeight : 0;
   const effectiveForcedPrice = billId && selAvgPrice > 0 ? selAvgPrice : 0;
+
+  // Sell on the customer's behalf without leaving the issue screen. The sale
+  // lands in the very bill being issued (same customer, same metal, still
+  // รอออกบิล), so the reference card and billIds only need re-reading.
+  const handleSellForCustomer = async (item: QuotationProps) => {
+    if (!billCustomerId) return;
+    setSellSaving(true);
+    setSellError("");
+    try {
+      await api.post("/bills", {
+        customer_id: billCustomerId,
+        items: [
+          {
+            type_id: item.typeId,
+            type_name: item.typeName,
+            metal: item.metal ?? "gold",
+            plus: item.plus,
+            price: item.price,
+            percent: item.percent,
+            weight: item.weight,
+            per_gram: item.perGram,
+            total: item.total,
+          },
+        ],
+      });
+
+      const { ids, reference } = await fetchReferences(billCustomerId, billMetal);
+      // Keep whatever the master had unticked (held for a later round); anything
+      // that wasn't there before — the line just sold — starts ticked.
+      const known = new Set(referenceItems.map((r) => r.itemId));
+      const ticked = new Set<number>();
+      for (const r of reference) {
+        if (!known.has(r.itemId) || selectedItemIds.has(r.itemId)) {
+          ticked.add(r.itemId);
+        }
+      }
+      setBillIds(ids);
+      setReferenceItems(reference);
+      setSelectedItemIds(ticked);
+      repriceKeyedLines(reference, ticked);
+      sellDisc.onClose();
+    } catch (err: unknown) {
+      setSellError(err instanceof Error ? err.message : "บันทึกไม่สำเร็จ");
+    } finally {
+      setSellSaving(false);
+    }
+  };
+
+  // The locked price is the weighted average of the ticked GOLD reference lines,
+  // so a sale moves it — and lines already keyed at the old rate would no longer
+  // add up to what the customer has now submitted. Recompute them through the
+  // same formula the calculator used, changing only the base price.
+  const repriceKeyedLines = (
+    reference: ReferenceItem[],
+    ticked: Set<number>,
+  ) => {
+    const sel = reference.filter((r) => ticked.has(r.itemId)).filter(isGoldItem);
+    const w = sel.reduce((s, i) => s + (i.weight || 0), 0);
+    const t = sel.reduce((s, i) => s + i.total, 0);
+    const avg = w > 0 ? t / w : 0;
+    if (avg <= 0) return;
+
+    // Silver keeps its own price — the locked average is a gold-only mechanism.
+    const goldLines = quotation.filter(isGoldItem);
+    if (goldLines.length === 0) return;
+    const from = goldLines[0].price;
+    if (Math.abs(from - avg) < 0.005) return;
+
+    setQuotation((prev) =>
+      prev.map((line) => {
+        if (!isGoldItem(line)) return line;
+        const gt =
+          goldTypes.find((g) => String(g.id) === String(line.typeId)) ?? null;
+        const { perGram, total } = computeItem({
+          goldType: gt,
+          price: avg,
+          percent: line.percent,
+          plus: line.plus,
+          weight: line.weight,
+          plusType: line.plus_type ?? 0,
+        });
+        return { ...line, price: avg, perGram, total };
+      }),
+    );
+    const fmt = (n: number) =>
+      n.toLocaleString(undefined, {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      });
+    setRepriceNote(
+      `ราคาล็อกเปลี่ยน — ปรับ ${goldLines.length} รายการที่คีย์ไว้จาก ${fmt(from)} เป็น ${fmt(avg)} บาท`,
+    );
+  };
 
   // The receipt's "ชื่อลูกค้า / เบอร์โทร" line names the actual customer, which is
   // independent of who signs: in bill mode it comes from the bill's registered
@@ -935,13 +1074,28 @@ export default function QuotationPage() {
     <div className="h-full flex flex-col gap-y-3">
       {salesClosed && <SalesStatusBanner status={salesStatus} />}
       {billId && (
-        <div className="flex items-center gap-x-2 bg-blue-50 border-1 border-blue-200 rounded-2xl p-3">
+        <div className="flex items-center gap-x-2 bg-blue-50 border-1 border-blue-200 rounded-2xl p-3 flex-wrap">
           <Receipt size={16} className="text-blue-600 shrink-0" />
-          <span className="text-sm font-bold text-blue-700 flex-1">
+          <span className="text-sm font-bold text-blue-700 flex-1 min-w-0">
             ออกบิลให้ลูกค้า{billCustomer ? ` : ${billCustomer}` : ""}
             {billIds.length > 1 ? ` (${billIds.length} รายการ)` : ""} —
             กรอกรายการใหม่จากทองที่หลอมเสร็จ
           </span>
+          {/* Hidden while fixing an already-issued quote: that bill is no longer
+              "รอออกบิล", so a sale would land in a different bill entirely. */}
+          {!editIssued && billCustomerId && hasPermission("bills.sell") && (
+            <Button
+              size="sm"
+              className="shrink-0 bg-gradient-to-r from-[#c09c42] to-yellow-600 text-white font-bold"
+              startContent={<ShoppingBag size={14} />}
+              onPress={() => {
+                setSellError("");
+                sellDisc.onOpen();
+              }}
+            >
+              ขายแทนลูกค้า
+            </Button>
+          )}
           {hasPermission("bills.approve") && (
             <Button
               size="sm"
@@ -954,6 +1108,24 @@ export default function QuotationPage() {
               ลบบิล
             </Button>
           )}
+        </div>
+      )}
+
+      {/* Keyed lines were recomputed at the new locked price — say so, since the
+          master is looking at numbers they typed at a different rate. */}
+      {repriceNote && (
+        <div className="flex items-center gap-x-2 bg-amber-50 border-1 border-amber-200 rounded-2xl px-3 py-2">
+          <AlertCircle size={16} className="text-amber-500 shrink-0" />
+          <span className="text-xs font-bold text-amber-700 flex-1">
+            {repriceNote}
+          </span>
+          <button
+            type="button"
+            onClick={() => setRepriceNote("")}
+            className="text-amber-600 shrink-0"
+          >
+            <X size={14} />
+          </button>
         </div>
       )}
       <div className="flex flex-row gap-x-5 flex-1 min-h-0">
@@ -1611,6 +1783,51 @@ export default function QuotationPage() {
               </ModalFooter>
             </>
           )}
+        </ModalContent>
+      </Modal>
+
+      {/* ขายแทนลูกค้า — same calculator as /bills/sell, but the customer is already
+          known and only the bill's own metal is on offer (bills are single-metal,
+          so selling the other one would open a bill this issuance can't cover). */}
+      <Modal
+        isOpen={sellDisc.isOpen}
+        onClose={sellDisc.onClose}
+        size="3xl"
+        scrollBehavior="inside"
+        backdrop="blur"
+      >
+        <ModalContent>
+          <ModalHeader className="flex flex-col gap-0.5">
+            <span className="font-bold bg-gradient-to-l from-black/90 to-yellow-600 bg-clip-text text-transparent">
+              ขายแทนลูกค้า{billCustomer ? ` : ${billCustomer}` : ""}
+            </span>
+            <span className="text-xs font-normal text-black/50">
+              รายการที่เพิ่มจะเข้าบิลใบที่กำลังออกนี้ และราคาล็อกจะคิดใหม่ให้อัตโนมัติ
+            </span>
+          </ModalHeader>
+          <ModalBody className="pb-4">
+            {sellSaving ? (
+              <div className="flex flex-col items-center justify-center py-16 gap-y-3">
+                <Spinner size="lg" color="warning" />
+                <span className="text-sm text-black/50">กำลังบันทึก...</span>
+              </div>
+            ) : (
+              <>
+                {sellError && (
+                  <div className="text-red-500 text-sm bg-red-50 border border-red-200 rounded-xl px-4 py-2 mb-2">
+                    {sellError}
+                  </div>
+                )}
+                <BillCalculate
+                  onAdd={handleSellForCustomer}
+                  staffMode
+                  fluid
+                  allowGold={billMetal === "gold"}
+                  allowSilver={billMetal !== "gold"}
+                />
+              </>
+            )}
+          </ModalBody>
         </ModalContent>
       </Modal>
 
