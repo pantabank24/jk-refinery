@@ -11,6 +11,7 @@ import { ArrowLeft, Pencil, ShieldOff, Upload, FolderOpen, Trash2, Printer, Rece
 import { api } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
 import { CustomerCard } from "../_components/customerCard";
+import { CustomerActivityLogs } from "../_components/activityLogs";
 import { DocumentList, DOC_ACCEPT, type CustomerDocument } from "../_components/documentList";
 import { PreviewQuote, PreviewQuoteHandle, type PayMethod } from "../../../quotation/_component/previewQuote";
 import { QuotationProps } from "../../../quotation/_component/quotation";
@@ -148,6 +149,9 @@ export const CustomerDetail = ({ selfMode = false }: { selfMode?: boolean } = {}
   const { hasPermission, loading: authLoading, user, isCustomer } = useAuth();
   const canRead = selfMode ? isCustomer : hasPermission("customers.read");
   const canUpdate = selfMode ? false : hasPermission("customers.update");
+  // Logs are a back-office audit view: staff only, and only for staff holding
+  // logs.read. A customer never sees the trail of their own account here.
+  const canReadLogs = !selfMode && hasPermission("logs.read");
 
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [docs, setDocs] = useState<CustomerDocument[]>([]);
@@ -220,9 +224,24 @@ export const CustomerDetail = ({ selfMode = false }: { selfMode?: boolean } = {}
       if (selfMode) {
         // ลูกค้าดูตัวเอง: /bills ถูก scope เป็นของลูกค้าที่ล็อกอินอยู่แล้ว
         const bRes = await api.get<Bill[]>(`/bills?limit=100`).catch(() => null);
+        // ต้อง map ให้ครบทุกฟิลด์ที่ใบเสนอราคา/การ์ดลูกค้าใช้ — ที่อยู่ เลขผู้เสีย
+        // ภาษี และบัญชีรับเงิน พิมพ์ลงใบจริง ถ้าตกไปช่องนั้นจะว่างเปล่า
         setCustomer(
           user
-            ? { id: user.id, name: user.name, email: user.email, phone: user.phone, avatar: user.avatar, is_active: true }
+            ? {
+                id: user.id,
+                name: user.name,
+                email: user.email,
+                phone: user.phone,
+                avatar: user.avatar,
+                is_active: true,
+                store_name: user.store_name,
+                address: user.address,
+                tax_id: user.tax_id,
+                bank: user.bank ?? null,
+                bank_account_no: user.bank_account_no,
+                bank_account_name: user.bank_account_name,
+              }
             : null
         );
         setDocs([]);
@@ -438,6 +457,7 @@ export const CustomerDetail = ({ selfMode = false }: { selfMode?: boolean } = {}
             <Tab key="bills" title={`บิลที่ออก (${bills.length})`} />
             <Tab key="history" title={`ประวัติ (${historyRows.length})`} />
             {!selfMode ? <Tab key="docs" title={`เอกสาร (${docs.length})`} /> : null}
+            {canReadLogs ? <Tab key="logs" title="Logs" /> : null}
           </Tabs>
 
           {tab === "bills" ? (
@@ -520,6 +540,8 @@ export const CustomerDetail = ({ selfMode = false }: { selfMode?: boolean } = {}
                 </div>
               )}
             </div>
+          ) : tab === "logs" && canReadLogs && customerId ? (
+            <CustomerActivityLogs customerId={customerId} />
           ) : (
             <div className="flex flex-col md:flex-1 md:min-h-0 border-1 border-black/10 bg-white/20 backdrop-blur-xl rounded-xl shadow-xl overflow-hidden">
               <div className="flex items-center justify-between px-4 py-3 bg-black/5 shrink-0">

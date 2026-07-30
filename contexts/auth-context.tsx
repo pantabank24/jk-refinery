@@ -17,6 +17,9 @@ interface AuthUser {
   address?: string;
   tax_id?: string;
   bank_id?: number | null;
+  // Preloaded on /auth/me — the payout bank's name prints on the receipt, so
+  // bank_id alone is not enough to render it.
+  bank?: { id: number; name: string; code?: string } | null;
   bank_account_no?: string;
   bank_account_name?: string;
   store_id: number | null;

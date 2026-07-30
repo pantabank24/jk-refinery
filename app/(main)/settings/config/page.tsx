@@ -7,7 +7,7 @@ import { Spinner } from "@heroui/spinner";
 import { Button } from "@heroui/button";
 import { Input } from "@heroui/input";
 import { Switch } from "@heroui/switch";
-import { Save, ChevronRight, Tag, Keyboard, Coins } from "lucide-react";
+import { Save, ChevronRight, Tag, Keyboard, Coins, Zap } from "lucide-react";
 import Link from "next/link";
 
 interface SystemConfig {
@@ -16,9 +16,12 @@ interface SystemConfig {
   description: string;
 }
 
+// The only keys this page edits. Everything else lives on the pages linked below,
+// so saving here must not rewrite them — the gold-cron section is all there is.
+const OWNED_KEYS = ["gold_price_auto_fetch", "gold_price_cron"];
+
 export default function ConfigPage() {
   const { hasPermission } = useAuth();
-  const [configs, setConfigs] = useState<SystemConfig[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [values, setValues] = useState<Record<string, string>>({});
@@ -28,12 +31,11 @@ export default function ConfigPage() {
     try {
       const res = await api.get<SystemConfig[]>("/configs");
       const list = (res.data as unknown as SystemConfig[]) || [];
-      setConfigs(list);
       const map: Record<string, string> = {};
       list.forEach((c) => { map[c.key] = c.value; });
       setValues(map);
     } catch {
-      setConfigs([]);
+      setValues({});
     } finally {
       setLoading(false);
     }
@@ -45,9 +47,12 @@ export default function ConfigPage() {
     setSaving(true);
     setSaved(false);
     try {
+      // Only the keys this page owns. Writing every key it happened to load would
+      // re-save settings the operator never touched here — and re-saving
+      // auto_sell_tick_seconds restarts the auto-sell engine for no reason.
       await Promise.all(
-        Object.entries(values).map(([key, value]) =>
-          api.put("/configs", { key, value })
+        OWNED_KEYS.filter((key) => values[key] !== undefined).map((key) =>
+          api.put("/configs", { key, value: values[key] })
         )
       );
       setSaved(true);
@@ -59,15 +64,6 @@ export default function ConfigPage() {
 
   const autoFetch = values["gold_price_auto_fetch"] === "true";
   const cronExpr = values["gold_price_cron"] || "";
-
-  // Keys rendered by dedicated sections / the sales-price & customer-sell pages (excluded here).
-  const HANDLED_KEYS = [
-    "gold_price_auto_fetch", "gold_price_cron",
-    "sales_hours_enabled", "sales_open_time", "sales_close_time",
-    "sales_enabled", "sales_realtime_after_hours",
-    "custom_weight_enabled", "bills_open",
-    "silver_sell_enabled", "silver_sell_close_time", "silver_shop_open",
-  ];
 
   const CRON_PRESETS = [
     { label: "ทุก 15 นาที", value: "*/15 * * * *" },
@@ -222,30 +218,28 @@ export default function ConfigPage() {
           <ChevronRight size={20} className="text-black/40" />
         </Link>
 
-        {/* Other configs */}
-        {configs
-          .filter((c) => !HANDLED_KEYS.includes(c.key))
-          .map((cfg) => (
-            <div
-              key={cfg.key}
-              className="flex flex-col border-1 border-black/10 bg-black/5 backdrop-blur-xl rounded-3xl p-5 gap-y-3"
-            >
-              <div className="flex flex-col">
-                <span className="font-bold text-sm">{cfg.key}</span>
-                {cfg.description && (
-                  <span className="text-xs text-black/50">{cfg.description}</span>
-                )}
-              </div>
-              <Input
-                value={values[cfg.key] || ""}
-                isDisabled={!hasPermission("config.update")}
-                onValueChange={(v) => setValues((prev) => ({ ...prev, [cfg.key]: v }))}
-                classNames={{
-                  inputWrapper: "bg-gradient-to-br from-black/10 to-transparent border-1 border-black/10 rounded-2xl",
-                }}
-              />
+        {/* Auto-sell settings — opens a dedicated page */}
+        <Link
+          href="/settings/auto-sell"
+          className="flex flex-row items-center justify-between border-1 border-black/10 bg-black/5 hover:bg-black/10 transition-colors backdrop-blur-xl rounded-3xl p-5"
+        >
+          <div className="flex flex-row items-center gap-x-3">
+            <span className="text-[#c09c42]"><Zap size={20} /></span>
+            <div className="flex flex-col">
+              <span className="font-bold text-md bg-gradient-to-l from-black/90 to-yellow-600 bg-clip-text text-transparent">
+                ตั้งค่าขายอัตโนมัติ
+              </span>
+              <span className="text-xs text-black/50">
+                เปิด/ปิดให้ลูกค้าตั้งราคาเป้าหมาย · เพดานคำสั่ง · ความถี่ตรวจราคา
+              </span>
             </div>
-          ))}
+          </div>
+          <ChevronRight size={20} className="text-black/40" />
+        </Link>
+
+        {/* Every remaining config key belongs to one of the pages linked above (or
+            is internal engine state like the LINE alert latches), so this page no
+            longer renders the leftovers as raw key/value inputs. */}
       </div>
     </div>
   );

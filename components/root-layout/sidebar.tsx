@@ -1,10 +1,16 @@
 "use client";
 
-import { Home, FileText, List, Users, Store, Settings, Shield, ScrollText, Gem, TrendingUp, Coins, SlidersHorizontal, X, Wallet, Receipt, UserCircle, FileCheck, Radio, MessageCircle, ShoppingBag } from "lucide-react";
+import { Home, FileText, List, Users, Store, Settings, Shield, ScrollText, Gem, TrendingUp, Coins, SlidersHorizontal, X, Wallet, Receipt, UserCircle, FileCheck, Radio, MessageCircle, ShoppingBag, Target, ListChecks } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useAuth } from "@/contexts/auth-context";
+import { useAutoSellStatus } from "@/hooks/use-auto-sell-status";
+import { useNewBadge } from "@/hooks/use-new-badge";
 import { useEffect, type ReactNode } from "react";
+
+// ขายอัตโนมัติ launched 31 ก.ค. 2026 — flag it as new for a week, then delete this
+// line and the isNew prop below.
+const AUTO_SELL_NEW_UNTIL = "2026-08-07T23:59:59+07:00";
 
 interface SidebarProps {
   isOpen?: boolean;
@@ -18,6 +24,7 @@ interface MenuItem {
   icon: ReactNode;
   show: boolean;
   badge?: number;
+  isNew?: boolean;
 }
 
 export const Sidebar = ({ isOpen = false, onClose }: SidebarProps) => {
@@ -26,6 +33,16 @@ export const Sidebar = ({ isOpen = false, onClose }: SidebarProps) => {
   // Bill creation is customer-only. Use the raw permission list (NOT hasPermission,
   // which auto-grants master) so "สร้างบิล" hides from master/owner/employee.
   const canCreateBill = permissions.includes("bills.create");
+  // Same reasoning for auto-sell: placing an order is a customer action, so the
+  // raw permission decides (master manages orders from the settings page instead).
+  // The menu also disappears entirely while the shop has the feature switched off
+  // — re-read periodically because the master can flip it at any time. Only the
+  // users who could place an order pay for the lookup (it reaches the price
+  // sidecar), and this hook runs on every page.
+  const canPlaceOrder = permissions.includes("sell_orders.create");
+  const { status: autoSell } = useAutoSellStatus(60000, canPlaceOrder);
+  const showAutoSell = canPlaceOrder && !!autoSell?.enabled;
+  const autoSellIsNew = useNewBadge(AUTO_SELL_NEW_UNTIL);
 
   // Close on route change (mobile)
   useEffect(() => {
@@ -48,6 +65,8 @@ export const Sidebar = ({ isOpen = false, onClose }: SidebarProps) => {
     { id: 2, name: "ออกใบเสนอราคา", href: "/quotation", icon: <FileText size={18} />, show: hasPermission("quotations.create") },
     { id: 3, name: "ใบเสนอราคาทั้งหมด", href: "/quote-list", icon: <List size={18} />, show: hasPermission("quotations.read") },
     { id: 14, name: "ขาย", href: "/bills/create", icon: <FileText size={18} />, show: canCreateBill },
+    { id: 24, name: "ตั้งราคาขายอัตโนมัติ", href: "/bills/auto-sell", icon: <Target size={18} />, show: showAutoSell, isNew: autoSellIsNew },
+    { id: 26, name: "คำสั่งขายอัตโนมัติ", href: "/bills/auto-sell/orders", icon: <ListChecks size={18} />, show: showAutoSell },
     { id: 22, name: "ขายแทนลูกค้า", href: "/bills/sell", icon: <ShoppingBag size={18} />, show: hasPermission("bills.sell") },
     // Bills are single-metal, so gold and silver sells get a list (and badge) each.
     { id: 15, name: "รายการขายทอง", href: "/bills", icon: <Receipt size={18} />, show: hasPermission("bills.read"), badge: unfinishedGoldBills },
@@ -63,6 +82,7 @@ export const Sidebar = ({ isOpen = false, onClose }: SidebarProps) => {
     { id: 9, name: "ราคาทองคำ", href: "/settings/gold-price", icon: <TrendingUp size={18} />, show: hasPermission("gold_prices.read") },
     { id: 18, name: "ราคาทองเรียลไทม์", href: "/realtime-gold", icon: <Radio size={18} />, show: hasPermission("gold_prices.read") },
     { id: 19, name: "ราคาเงิน", href: "/settings/silver-price", icon: <Coins size={18} />, show: hasPermission("metal_prices.read") },
+    // ตั้งค่าขายอัตโนมัติ lives inside ตั้งค่าระบบ, alongside the other sell settings.
     { id: 10, name: "ตั้งค่าระบบ", href: "/settings/config", icon: <SlidersHorizontal size={18} />, show: hasPermission("config.read") },
     { id: 20, name: "การแจ้งเตือน LINE", href: "/settings/line-notification", icon: <MessageCircle size={18} />, show: hasPermission("config.read") },
     { id: 11, name: "จัดการสิทธิ์", href: "/settings/roles", icon: <Shield size={18} />, show: hasPermission("roles.read") },
@@ -87,6 +107,11 @@ export const Sidebar = ({ isOpen = false, onClose }: SidebarProps) => {
           <span className="font-bold text-sm bg-gradient-to-b from-black/70 to-[#c09c42]/60 bg-clip-text text-transparent flex-1">
             {item.name}
           </span>
+          {item.isNew && (
+            <span className="shrink-0 px-1.5 py-0.5 rounded-full bg-gradient-to-r from-[#c09c42] to-yellow-600 text-white text-[9px] font-bold tracking-wide">
+              New
+            </span>
+          )}
           {!!item.badge && item.badge > 0 && (
             <span className="min-w-5 h-5 px-1.5 flex items-center justify-center rounded-full bg-red-500 text-white text-[10px] font-bold">
               {item.badge > 99 ? "99+" : item.badge}

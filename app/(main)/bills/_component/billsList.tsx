@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import { Avatar } from "@heroui/avatar";
-import { CheckCircle, XCircle, FileUp, AlertCircle, Trash2, Store, Pencil, ChevronLeft, ChevronRight } from "lucide-react";
+import { CheckCircle, XCircle, FileUp, AlertCircle, Trash2, Store, Pencil, ChevronLeft, ChevronRight, Zap } from "lucide-react";
 import { ConfirmDeleteModal } from "@/components/confirmDeleteModal";
 import moment from "moment";
 import { CmpInput } from "@/components/cmpInput";
@@ -57,6 +57,9 @@ interface BillData {
   note: string;
   reject_reason: string;
   total_amount: number;
+  // Created by the auto-sell engine when the customer's target price was reached,
+  // rather than submitted by hand. Everything else about the bill is the same.
+  auto_sell?: boolean;
   // Full store relation (preloaded on the /bills/:id detail response) — carries
   // the receipt-header fields, not just id/name.
   store?: StoreHeaderSnapshot & { id: number; name: string } | null;
@@ -99,6 +102,9 @@ interface BillGroup {
   goldAmount: number;
   silverAmount: number;
   count: number;
+  // True when ANY bill in the group came from auto-sell: after issuance several
+  // bills share a row, and the representative may not be the automatic one.
+  autoSell: boolean;
   // Newest item date across the group. A "รอออกบิล" bill accumulates every later
   // sell, so its created_at is only the FIRST one — this is what actually moved.
   lastAt: string;
@@ -178,6 +184,7 @@ const groupBills = (list: BillData[]): BillGroup[] => {
       goldAmount: split.goldAmount,
       silverAmount: split.silverAmount,
       count: group.length,
+      autoSell: group.some((x) => !!x.auto_sell),
       // Always from the submitted items — those are the lines that accumulate.
       lastAt: latestActivity(group, submitted),
     };
@@ -193,6 +200,18 @@ const STATUS_COLOR: Record<number, string> = {
   13: "bg-red-500/20 text-red-700 border-red-500/30",
   14: "bg-purple-500/20 text-purple-700 border-purple-500/30",
 };
+
+// Marks a bill the auto-sell engine created on its own. Worth calling out on
+// every surface: nobody pressed a button for it, so staff reading the list need
+// to know why it appeared.
+const AutoSellChip = () => (
+  <span
+    title="ระบบขายให้อัตโนมัติเมื่อราคาถึงเป้าที่ลูกค้าตั้งไว้"
+    className="shrink-0 inline-flex items-center gap-x-0.5 text-[10px] font-bold px-1.5 py-0.5 rounded-full border-1 bg-sky-500/15 text-sky-700 border-sky-500/30"
+  >
+    <Zap size={9} /> ขายอัตโนมัติ
+  </span>
+);
 
 // Rows per page. The whole-set totals come from /bills/summary, so this only
 // governs how much of the list is on screen.
@@ -324,6 +343,7 @@ export function BillsList({ metal }: { metal: BillMetal }) {
           goldAmount: split.goldAmount,
           silverAmount: split.silverAmount,
           count: 1,
+          autoSell: !!b.auto_sell,
           lastAt: latestActivity([b], b.items),
         };
       });
@@ -770,10 +790,13 @@ export function BillsList({ metal }: { metal: BillMetal }) {
                       onClick={() => handleRowClick(g)}
                     >
                       <TableCell>
-                        <span className="font-bold text-sm bg-gradient-to-l from-black/90 to-yellow-600 bg-clip-text text-transparent">
-                          {g.rep.code}
-                          {g.count > 1 && <span className="ml-1 text-[10px] font-bold text-blue-600">รวม {g.count} บิล</span>}
-                        </span>
+                        <div className="flex items-center gap-x-1.5">
+                          <span className="font-bold text-sm bg-gradient-to-l from-black/90 to-yellow-600 bg-clip-text text-transparent">
+                            {g.rep.code}
+                            {g.count > 1 && <span className="ml-1 text-[10px] font-bold text-blue-600">รวม {g.count} บิล</span>}
+                          </span>
+                          {g.autoSell && <AutoSellChip />}
+                        </div>
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center gap-x-2">
@@ -810,14 +833,17 @@ export function BillsList({ metal }: { metal: BillMetal }) {
                   onClick={() => handleRowClick(g)}
                   className="flex flex-col border-1 border-black/10 bg-black/5 backdrop-blur-xl rounded-2xl p-3 transition-all gap-y-2 cursor-pointer hover:shadow-md"
                 >
-                  <div className="flex flex-row items-center justify-between">
-                    <span className="font-bold text-sm bg-gradient-to-l from-black/90 to-yellow-600 bg-clip-text text-transparent">
-                      {g.rep.code}
-                      {g.count > 1 && (
-                        <span className="ml-1 text-[10px] font-bold text-blue-600">รวม {g.count} บิล</span>
-                      )}
-                    </span>
-                    <span className={`text-xs font-bold px-2 py-0.5 rounded-full border-1 ${STATUS_COLOR[g.status]}`}>
+                  <div className="flex flex-row items-center justify-between gap-x-2">
+                    <div className="flex items-center gap-x-1.5 min-w-0">
+                      <span className="font-bold text-sm bg-gradient-to-l from-black/90 to-yellow-600 bg-clip-text text-transparent truncate">
+                        {g.rep.code}
+                        {g.count > 1 && (
+                          <span className="ml-1 text-[10px] font-bold text-blue-600">รวม {g.count} บิล</span>
+                        )}
+                      </span>
+                      {g.autoSell && <AutoSellChip />}
+                    </div>
+                    <span className={`shrink-0 text-xs font-bold px-2 py-0.5 rounded-full border-1 ${STATUS_COLOR[g.status]}`}>
                       {STATUS_LABEL[g.status]}
                     </span>
                   </div>
@@ -870,11 +896,12 @@ export function BillsList({ metal }: { metal: BillMetal }) {
       <Modal isOpen={detailDisc.isOpen} onClose={detailDisc.onClose} size="3xl" scrollBehavior="inside">
         <ModalContent>
           <ModalHeader className="flex flex-col gap-0.5">
-            <div className="flex items-center justify-between">
-              <span className="font-bold bg-gradient-to-l from-black/90 to-yellow-600 bg-clip-text text-transparent">
+            <div className="flex items-center justify-between gap-x-2">
+              <span className="font-bold bg-gradient-to-l from-black/90 to-yellow-600 bg-clip-text text-transparent flex items-center gap-x-1.5">
                 {detailB?.code}
+                {detailB?.auto_sell && <AutoSellChip />}
               </span>
-              <span className={`text-xs font-bold px-2 py-0.5 rounded-full border-1 ${STATUS_COLOR[detailB?.status ?? 10]}`}>
+              <span className={`shrink-0 text-xs font-bold px-2 py-0.5 rounded-full border-1 ${STATUS_COLOR[detailB?.status ?? 10]}`}>
                 {STATUS_LABEL[detailB?.status ?? 10]}
               </span>
             </div>
