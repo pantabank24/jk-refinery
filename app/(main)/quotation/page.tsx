@@ -557,6 +557,24 @@ export default function QuotationPage() {
 
   // Missing metal means gold — items created before the metal tag existed.
   const isGoldItem = (i: QuotationProps) => (i.metal || "gold") === "gold";
+  // Bills are single-metal, so "the bill's metal" is the only side that matters
+  // when locking a price or repricing keyed lines.
+  const isBillMetalItem = (i: QuotationProps) =>
+    isGoldItem(i) === (billMetal === "gold");
+
+  // ราคาล็อกเฉลี่ยของรายการที่ลูกค้าส่งมา — ถ่วงน้ำหนักเสมอ แต่คนละสูตรตามโลหะ เพราะ
+  // สองฝั่งคิดคนละหน่วย:
+  //   ทอง — ราคาเป็น บาท/บาททอง และน้ำหนักเป็นบาททอง Σยอดเงิน ÷ Σน้ำหนัก จึงได้หน่วย
+  //          เดียวกับช่องราคาพอดี และครอบคลุมส่วนบวก/เปอร์เซ็นต์ที่ติดมากับรายการด้วย
+  //   เงิน — ราคาเป็น บาท/กก. แต่น้ำหนักเป็นกรัม สูตรเดียวกันจะได้ บาท/กรัม ซึ่งผิดหน่วย
+  //          ไป 1,000 เท่า จึงถัวเฉลี่ย "ราคาฐาน" ของแต่ละรายการตามน้ำหนักแทน (ส่วนบวก
+  //          ตามช่วงน้ำหนักไม่ได้เก็บในช่องราคาอยู่แล้ว — ถูกคิดใหม่ตอนคีย์รายการ)
+  const lockedAvgPrice = (rows: ReferenceItem[], metal: string): number => {
+    const w = rows.reduce((s, i) => s + (i.weight || 0), 0);
+    if (w <= 0) return 0;
+    if (metal === "gold") return rows.reduce((s, i) => s + i.total, 0) / w;
+    return rows.reduce((s, i) => s + i.price * (i.weight || 0), 0) / w;
+  };
 
   // From the terms step → preview. Signature is optional (the seller may sign
   // in person but it isn't required).
@@ -572,22 +590,24 @@ export default function QuotationPage() {
     selectedItemIds.has(r.itemId),
   );
   const selTotal = selectedRef.reduce((s, i) => s + i.total, 0);
-  // Gold and silver are weighed in different units (baht vs grams), so weight and
-  // the locked average price are computed from the GOLD portion only. The average
-  // feeds the gold tab's forced price; silver (per-gram) must never distort it.
+  // Gold and silver are weighed in different units (baht vs grams), so the two
+  // weights are only ever shown side by side, never summed.
   const selGoldWeight = selectedRef
     .filter(isGoldItem)
     .reduce((s, i) => s + (i.weight || 0), 0);
-  const selGoldTotal = selectedRef
-    .filter(isGoldItem)
-    .reduce((s, i) => s + i.total, 0);
   const selSilverWeight = selectedRef
     .filter((i) => !isGoldItem(i))
     .reduce((s, i) => s + (i.weight || 0), 0);
-  // Weighted-average effective rate of the gold selection: Σ(total) / Σ(weight) —
-  // what the customer was locked in at (total includes percent/plus adjustments).
-  const selAvgPrice = selGoldWeight > 0 ? selGoldTotal / selGoldWeight : 0;
+  // ราคาที่ลูกค้าถูกล็อกไว้ตอนขาย ถัวเฉลี่ยจากรายการที่ติ๊กไว้ — บิลเป็นโลหะเดียว จึงคิด
+  // จากฝั่งของโลหะนั้นและส่งไปล็อกช่องราคาในเครื่องคิดเลข (ทั้งทองและเงิน)
+  const selAvgPrice = lockedAvgPrice(
+    selectedRef.filter(isBillMetalItem),
+    billMetal,
+  );
   const effectiveForcedPrice = billId && selAvgPrice > 0 ? selAvgPrice : 0;
+  // หน่วยของราคาล็อก — ทองคิดต่อบาททอง เงินคิดต่อกิโลกรัม
+  const lockPriceLabel = billMetal === "gold" ? "ทอง/บาท" : "เงิน/กก.";
+  const lockPriceUnit = billMetal === "gold" ? "บาท" : "บาท/กก.";
 
   // Sell on the customer's behalf without leaving the issue screen. The sale
   // lands in the very bill being issued (same customer, same metal, still
@@ -636,40 +656,49 @@ export default function QuotationPage() {
     }
   };
 
-  // The locked price is the weighted average of the ticked GOLD reference lines,
-  // so a sale moves it — and lines already keyed at the old rate would no longer
-  // add up to what the customer has now submitted. Recompute them through the
-  // same formula the calculator used, changing only the base price.
+  // The locked price is the weighted average of the ticked reference lines of the
+  // bill's metal, so a sale moves it — and lines already keyed at the old rate
+  // would no longer add up to what the customer has now submitted. Recompute them
+  // through the same formula the calculator used, changing only the base price.
   const repriceKeyedLines = (
     reference: ReferenceItem[],
     ticked: Set<number>,
   ) => {
-    const sel = reference.filter((r) => ticked.has(r.itemId)).filter(isGoldItem);
-    const w = sel.reduce((s, i) => s + (i.weight || 0), 0);
-    const t = sel.reduce((s, i) => s + i.total, 0);
-    const avg = w > 0 ? t / w : 0;
+    const sel = reference
+      .filter((r) => ticked.has(r.itemId))
+      .filter(isBillMetalItem);
+    const avg = lockedAvgPrice(sel, billMetal);
     if (avg <= 0) return;
 
-    // Silver keeps its own price — the locked average is a gold-only mechanism.
-    const goldLines = quotation.filter(isGoldItem);
-    if (goldLines.length === 0) return;
-    const from = goldLines[0].price;
+    const lines = quotation.filter(isBillMetalItem);
+    if (lines.length === 0) return;
+    const from = lines[0].price;
     if (Math.abs(from - avg) < 0.005) return;
 
     setQuotation((prev) =>
       prev.map((line) => {
-        if (!isGoldItem(line)) return line;
+        if (!isBillMetalItem(line)) return line;
         const gt =
           goldTypes.find((g) => String(g.id) === String(line.typeId)) ?? null;
-        const { perGram, total } = computeItem({
+        const vars = {
           goldType: gt,
-          price: avg,
           percent: line.percent,
           plus: line.plus,
           weight: line.weight,
           plusType: line.plus_type ?? 0,
-        });
-        return { ...line, price: avg, perGram, total };
+        };
+        // ขยับด้วย "ส่วนต่าง" แทนการคำนวณทั้งบรรทัดใหม่: บรรทัดเงินเก็บราคาฐานไว้ในช่อง
+        // ราคา แต่ยอดของมันรวมส่วนบวกตามช่วงน้ำหนักไว้แล้ว การคำนวณใหม่จากช่องราคา
+        // อย่างเดียวจะทำให้ส่วนบวกนั้นหายไป. สูตรเป็นเชิงเส้นกับราคา ผลของทองจึงเท่ากับ
+        // คำนวณใหม่ทั้งก้อนเป๊ะ ๆ เหมือนเดิม
+        const now = computeItem({ ...vars, price: avg });
+        const was = computeItem({ ...vars, price: line.price });
+        return {
+          ...line,
+          price: avg,
+          perGram: line.perGram + (now.perGram - was.perGram),
+          total: line.total + (now.total - was.total),
+        };
       }),
     );
     const fmt = (n: number) =>
@@ -678,7 +707,7 @@ export default function QuotationPage() {
         maximumFractionDigits: 2,
       });
     setRepriceNote(
-      `ราคาล็อกเปลี่ยน — ปรับ ${goldLines.length} รายการที่คีย์ไว้จาก ${fmt(from)} เป็น ${fmt(avg)} บาท`,
+      `ราคาล็อกเปลี่ยน — ปรับ ${lines.length} รายการที่คีย์ไว้จาก ${fmt(from)} เป็น ${fmt(avg)} ${lockPriceUnit}`,
     );
   };
 
@@ -991,7 +1020,7 @@ export default function QuotationPage() {
           </div>
           <div className="flex flex-col border-1 border-black/10 bg-black/5 rounded-xl p-1.5">
             <span className="font-bold text-[10px] text-black/50 pl-1">
-              ราคาเฉลี่ย (ทอง/บาท)
+              ราคาเฉลี่ย ({lockPriceLabel})
             </span>
             <span className="font-bold text-sm text-yellow-700 pl-1">
               {selAvgPrice > 0
@@ -1140,6 +1169,9 @@ export default function QuotationPage() {
             forcedPrice={
               effectiveForcedPrice > 0 ? effectiveForcedPrice : undefined
             }
+            // ราคาล็อกเป็นของโลหะที่บิลนี้ถืออยู่ — ล็อกเฉพาะแท็บนั้น ไม่ให้ราคาทองไปโผล่
+            // ในแท็บเงิน (หรือกลับกัน) ถ้าผู้ใช้สลับแท็บ
+            forcedPriceMetal={billMetal}
           />
         </div>
         {/* Right column: reference card (customer's submitted items) above the quote card */}

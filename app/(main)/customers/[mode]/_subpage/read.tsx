@@ -49,6 +49,8 @@ interface Bill {
 interface BillItem {
   id: number;
   type_name: string;
+  // gold|silver|... — missing means gold. Gold is weighed in baht, others in grams.
+  metal?: string;
   price: number;
   percent: number;
   plus: number;
@@ -174,6 +176,8 @@ export const CustomerDetail = ({ selfMode = false }: { selfMode?: boolean } = {}
     (items ?? []).map((item) => ({
       typeId: String(item.id),
       typeName: item.type_name,
+      // ใบที่ 2 คิดกรัม/ราคาต่อกรัมคนละสูตรตามโลหะ — ต้องส่ง metal ไปด้วยเสมอ
+      metal: item.metal || "gold",
       price: item.price,
       plus: item.plus,
       percent: item.percent,

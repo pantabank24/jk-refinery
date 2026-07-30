@@ -362,6 +362,8 @@ export function QuotationDetailPanel({ quotation, members, goldTypes, canUpdate,
         items={(quotation.items ?? []).map((item): QuotationProps => ({
           typeId: String(item.id),
           typeName: item.type_name,
+          // ใบที่ 2 คิดกรัม/ราคาต่อกรัมคนละสูตรตามโลหะ — ต้องส่ง metal ไปด้วยเสมอ
+          metal: item.metal || "gold",
           price: item.price,
           plus: item.plus,
           percent: item.percent,

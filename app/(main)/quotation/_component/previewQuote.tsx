@@ -100,9 +100,16 @@ function StoreHeaderBlock({ store }: { store?: StoreHeader }) {
 function GoldPriceBlock({
   goldPrices,
   lockPrice,
+  showGoldRefs,
+  lockUnit,
 }: {
   goldPrices: GoldRefPrices | null;
   lockPrice: number | null;
+  // ใบที่ไม่มีทองอยู่เลย (เช่น ใบขายเงินล้วน) ไม่ต้องพิมพ์ราคาทองอ้างอิงของวันนั้น —
+  // มันไม่เกี่ยวกับเงินที่จ่ายในใบ และอ่านแล้วชวนเข้าใจผิดว่าคิดราคาจากทอง
+  showGoldRefs: boolean;
+  // หน่วยของราคาตัดล็อก — ทองคิดต่อบาททอง เงินคิดต่อกิโลกรัม
+  lockUnit: string;
 }) {
   const fmt = (v: number) => v.toLocaleString();
   // รับซื้อคืนต่อกรัม = (ราคาทองคำแท่งซื้อเข้า หัก 2%) ÷ 15.244 (กรัม/บาททอง)
@@ -112,25 +119,29 @@ function GoldPriceBlock({
       { maximumFractionDigits: 2 },
     )
     : "-";
-  const rows: [string, string][] = [
-    ["ราคาทองคำแท่งซื้อเข้าบาทละ", goldPrices ? fmt(goldPrices.bar_buy) : "-"],
-    ["ราคาทองคำแท่งขายออกบาทละ", goldPrices ? fmt(goldPrices.bar_sell) : "-"],
-    ["ราคาทองรูปพรรณรับซื้อคืนต่อบาท", goldPrices ? fmt(goldPrices.ornament_buy) : "-"],
-    ["ราคาทองรูปพรรณรับซื้อคืนต่อกรัม", ornamentPerGram],
-    [
-      "ราคาตัดล็อก",
-      lockPrice !== null
-        ? lockPrice.toLocaleString(undefined, { maximumFractionDigits: 2 })
-        : "-",
-    ],
-  ];
+  const rows: [string, string, string][] = [];
+  if (showGoldRefs) {
+    rows.push(
+      ["ราคาทองคำแท่งซื้อเข้าบาทละ", goldPrices ? fmt(goldPrices.bar_buy) : "-", "บาท"],
+      ["ราคาทองคำแท่งขายออกบาทละ", goldPrices ? fmt(goldPrices.bar_sell) : "-", "บาท"],
+      ["ราคาทองรูปพรรณรับซื้อคืนต่อบาท", goldPrices ? fmt(goldPrices.ornament_buy) : "-", "บาท"],
+      ["ราคาทองรูปพรรณรับซื้อคืนต่อกรัม", ornamentPerGram, "บาท"],
+    );
+  }
+  rows.push([
+    "ราคาตัดล็อก",
+    lockPrice !== null
+      ? lockPrice.toLocaleString(undefined, { maximumFractionDigits: 2 })
+      : "-",
+    lockUnit,
+  ]);
   return (
     <div className="flex flex-col gap-y-0.5">
-      {rows.map(([label, value]) => (
+      {rows.map(([label, value, unit]) => (
         <div key={label} className="flex gap-x-2">
           <span>{label}</span>
           <span className="font-semibold">{value}</span>
-          <span>บาท</span>
+          <span>{unit}</span>
         </div>
       ))}
     </div>
@@ -148,6 +159,8 @@ function DocumentTopSection({
   title,
   goldPrices = null,
   lockPrice = null,
+  showGoldRefs = true,
+  lockUnit = "บาท",
   documentNo,
   date,
   customerName,
@@ -160,6 +173,8 @@ function DocumentTopSection({
   title: string;
   goldPrices?: GoldRefPrices | null;
   lockPrice?: number | null;
+  showGoldRefs?: boolean;
+  lockUnit?: string;
   documentNo?: string;
   date?: string | Date;
   customerName?: string;
@@ -186,7 +201,12 @@ function DocumentTopSection({
         className={`flex text-[9px] mt-3 ${bare ? "justify-end" : "justify-between"}`}
       >
         {!bare && (
-          <GoldPriceBlock goldPrices={goldPrices} lockPrice={lockPrice} />
+          <GoldPriceBlock
+            goldPrices={goldPrices}
+            lockPrice={lockPrice}
+            showGoldRefs={showGoldRefs}
+            lockUnit={lockUnit}
+          />
         )}
         <div className="flex flex-col gap-y-0.5 text-right">
           <span>เลขที่ {documentNo ?? ""}</span>
@@ -446,6 +466,18 @@ export const PreviewQuote = React.forwardRef<PreviewQuoteHandle, Props>(
     // Page 1 uses page1Items (the customer's original itemisation) when given.
     const p1 = page1Items ?? items;
 
+    // Missing metal means gold (lines saved before the metal tag existed).
+    const isGoldLine = (i: QuotationProps) => (i.metal || "gold") === "gold";
+    // ใบนี้มีทองอยู่ไหม — ตัดสินว่าจะพิมพ์ราคาทองอ้างอิง และจะแปลงหน่วยของใบที่ 2 แบบไหน
+    const docHasGold = items.some(isGoldLine) || p1.some(isGoldLine);
+    // หน่วยของราคาตัดล็อกบนหัวใบที่ 2: ทองคิดต่อบาททอง, เงินคิดต่อกิโลกรัม, โลหะอื่น
+    // (แพลตินัม/แพลเลเดียม) คีย์ราคาต่อกรัมมาตั้งแต่ต้น
+    const lockUnit = docHasGold
+      ? "บาท"
+      : (p1.length > 0 ? p1 : items).some((i) => (i.metal || "") === "silver")
+        ? "บาท/กก."
+        : "บาท/กรัม";
+
     // Page 2 (official ใบรับซื้อทองเก่า) always shows the CONSOLIDATED view: one line
     // per metal (all gold collapses into a single line). We derive it here so page 2
     // stays merged regardless of whether the caller passed itemised or already-
@@ -482,14 +514,18 @@ export const PreviewQuote = React.forwardRef<PreviewQuoteHandle, Props>(
       return lines;
     })();
 
-    // ราคาตัดล็อก — ราคาทองที่เอกสารใบนี้ล็อกไว้ คือค่าเดียวกับคอลัมน์ "ราคา" ในตาราง
-    // (โหมดบิลคือ forcedPrice ที่ถูกล็อกจากรอบนั้น). ปกติทุกรายการทองใช้ราคาเดียวกัน
-    // จึงแสดงตัวเลขนั้นตรง ๆ; ถ้าเป็นใบที่คีย์หลายราคา (เช่น walk-in หลายชนิด) จะถัว
-    // เฉลี่ยถ่วงน้ำหนักให้เป็นตัวแทนใบเดียว. เงิน/โลหะอื่นชั่งคนละหน่วยกับทอง จึงคิด
-    // เฉพาะส่วนทอง เว้นแต่ใบนั้นไม่มีทองเลย (ใบขายเงินล้วน) ค่อยใช้ทั้งใบแทน
+    // ราคาตัดล็อก — ราคาที่เอกสารใบนี้ล็อกไว้ คือค่าเดียวกับคอลัมน์ "ราคา" ในตาราง
+    // (โหมดบิลคือ forcedPrice ที่ถูกล็อกจากรอบนั้น). ปกติทุกรายการใช้ราคาเดียวกันจึง
+    // แสดงตัวเลขนั้นตรง ๆ; ถ้าเป็นใบที่คีย์หลายราคา (เช่น walk-in หลายชนิด) จะถัวเฉลี่ย
+    // ถ่วงน้ำหนักให้เป็นตัวแทนใบเดียว. เงิน/โลหะอื่นชั่งคนละหน่วยกับทอง จึงคิดเฉพาะส่วน
+    // ทอง เว้นแต่ใบนั้นไม่มีทองเลย (ใบขายเงินล้วน) ค่อยใช้ทั้งใบแทน — หน่วยที่พิมพ์กำกับ
+    // ไว้แล้วด้วย lockUnit ข้างบน
     const lockPrice: number | null = (() => {
-      const src = items.length > 0 ? items : (page1Items ?? []);
-      const gold = src.filter((i) => (i.metal || "gold") === "gold");
+      // ต้องอ่านจาก p1 (บรรทัดที่ยังไม่ยุบรวม = คอลัมน์ "ราคา" บนใบที่ 1) เท่านั้น
+      // เพราะ consolidateByMetal เขียนทับ price ด้วยอัตราต่อกรัม (Σtotal/Σweight)
+      // ใบที่ยุบรวมแล้วจึงไม่เหลือราคาทองอยู่ — อ่านจาก items จะได้ต่อกรัมมาแทน
+      const src = p1.length > 0 ? p1 : items;
+      const gold = src.filter(isGoldLine);
       const pool = (gold.length > 0 ? gold : src).filter((i) => i.price > 0);
       if (pool.length === 0) return null;
       const distinct = Array.from(new Set(pool.map((i) => i.price)));
@@ -511,18 +547,51 @@ export const PreviewQuote = React.forwardRef<PreviewQuoteHandle, Props>(
     //   ราคา/กรัม   = (ราคาตัดล็อก หัก 2%) ÷ 15.244 กรัมต่อบาททอง
     //   จำนวน (กรัม) = จำนวนเงิน ÷ ราคา/กรัม
     // ผลคือ จำนวน × ราคา/กรัม = จำนวนเงิน เสมอ ใบจึงอ่านแล้วคิดเลขตามได้ลงตัว
+    //
+    // ใช้ได้กับ "ทอง" เท่านั้น — โลหะอื่นชั่งเป็นกรัมมาตั้งแต่ต้น (เงินคีย์ราคาเป็น บาท/กก.
+    // แล้วหาร 1,000 ในสูตรของประเภทสินค้า) เอาสูตรนี้ไปทับจะเพี้ยนทั้งใบ จึงกันไว้ด้วย
+    // docHasGold และแยกทางคิดของแต่ละบรรทัดข้างล่าง
     const page2PerGram: number | null =
-      lockPrice !== null && lockPrice > 0
+      docHasGold && lockPrice !== null && lockPrice > 0
         ? Math.round((lockPrice - lockPrice * 0.02) / 15.244)
         : null;
-    // ใบที่ไม่มีราคาตัดล็อก (เช่น ใบเก่าที่ไม่ได้บันทึกราคาไว้) ตกกลับไปใช้ค่าที่เก็บมา
-    const page2Grams = (amount: number): number | null =>
-      page2PerGram && page2PerGram > 0 ? amount / page2PerGram : null;
+    // จำนวนกรัมที่พิมพ์ต่อบรรทัด — ทองแปลงจากยอดเงินด้วยราคา/กรัมข้างบน (บรรทัดจึงคูณกัน
+    // ได้จำนวนเงินพอดี) ส่วนโลหะอื่นใช้น้ำหนักกรัมจริงที่ชั่งมา
+    // null = ใบเก่าที่ไม่มีราคาตัดล็อกให้แปลง ตกกลับไปพิมพ์ค่าที่เก็บมาดิบ ๆ
+    const lineGrams = (it: QuotationProps): number | null =>
+      isGoldLine(it)
+        ? page2PerGram && page2PerGram > 0
+          ? (it.total || 0) / page2PerGram
+          : null
+        : it.weight || 0;
+    // ราคา/กรัม ที่พิมพ์ — โลหะอื่นคิดย้อนจากยอดเงิน (ยอด ÷ น้ำหนักกรัม) ไม่ใช้ perGram ที่
+    // เก็บไว้ ซึ่งถูกปัดเป็นจำนวนเต็มตอนออกใบ: บนใบทางการทุกบรรทัดต้องคูณกันแล้วลงตัว
+    const linePerGram = (it: QuotationProps): number =>
+      isGoldLine(it)
+        ? (page2PerGram ?? it.perGram)
+        : (it.weight || 0) > 0
+          ? (it.total || 0) / it.weight
+          : it.perGram;
     const fmtGrams = (g: number) =>
       g.toLocaleString(undefined, {
         minimumFractionDigits: 2,
         maximumFractionDigits: 2,
       });
+    const fmtPerGram = (it: QuotationProps) =>
+      isGoldLine(it)
+        ? linePerGram(it).toLocaleString()
+        : linePerGram(it).toLocaleString(undefined, {
+            maximumFractionDigits: 2,
+          });
+    // รวมกรัมของทั้งใบ = ผลบวกของคอลัมน์ที่พิมพ์จริง (ทองที่แปลงแล้ว + กรัมของโลหะอื่น)
+    // ถ้ามีบรรทัดที่แปลงไม่ได้ ให้ทั้งช่องตกกลับไปใช้น้ำหนักรวมที่เก็บไว้แทน
+    const page2TotalGrams: number | null = page2Items.reduce<number | null>(
+      (sum, it) => {
+        const g = lineGrams(it);
+        return sum === null || g === null ? null : sum + g;
+      },
+      0,
+    );
 
     const calculateGrandTotal = (arr: QuotationProps[] = items) => {
       return arr.reduce((sum, item) => sum + (item.total || 0), 0);
@@ -1032,6 +1101,8 @@ export const PreviewQuote = React.forwardRef<PreviewQuoteHandle, Props>(
                   title="ใบรับซื้อทองเก่า / ใบสำคัญจ่าย"
                   goldPrices={goldPrices}
                   lockPrice={lockPrice}
+                  showGoldRefs={docHasGold}
+                  lockUnit={lockUnit}
                   documentNo={documentNo}
                   date={date}
                   customerName={customerName}
@@ -1071,14 +1142,14 @@ export const PreviewQuote = React.forwardRef<PreviewQuoteHandle, Props>(
                         </td>
                         <td className="border border-gray-400 px-2 py-1 text-center text-[9px]">
                           {(() => {
-                            const g = page2Grams(item.total);
+                            const g = lineGrams(item);
                             return g !== null
                               ? fmtGrams(g)
                               : item.weight.toLocaleString();
                           })()}
                         </td>
                         <td className="border border-gray-400 px-2 py-1 text-center text-[9px]">
-                          {(page2PerGram ?? item.perGram).toLocaleString()}
+                          {fmtPerGram(item)}
                         </td>
                         <td className="border border-gray-400 px-2 py-1 text-center text-[9px]">
                           {item.total.toLocaleString()}
@@ -1111,15 +1182,12 @@ export const PreviewQuote = React.forwardRef<PreviewQuoteHandle, Props>(
                       <td className="border border-gray-400 px-2 py-1 text-center text-[9px] font-bold">
                         รวม -- {bahtText(calculateGrandTotal())} --
                       </td>
-                      {/* รวมกรัม — บวกจากคอลัมน์ที่แสดงจริง (ยอดรวม ÷ ราคา/กรัม)
-                          ไม่ใช่น้ำหนักบาททองที่เก็บไว้ ไม่งั้นคอลัมน์จะบวกไม่ตรง */}
+                      {/* รวมกรัม — บวกจากคอลัมน์ที่แสดงจริง ไม่ใช่น้ำหนักที่เก็บไว้
+                          (ทองเก็บเป็นบาททอง) ไม่งั้นคอลัมน์จะบวกไม่ตรง */}
                       <td className="border border-gray-400 px-2 py-1 text-center text-[9px] font-bold">
-                        {(() => {
-                          const g = page2Grams(calculateGrandTotal());
-                          return g !== null
-                            ? fmtGrams(g)
-                            : calculateTotalWeight().toFixed(2);
-                        })()}
+                        {page2TotalGrams !== null
+                          ? fmtGrams(page2TotalGrams)
+                          : calculateTotalWeight().toFixed(2)}
                       </td>
                       <td className="border border-gray-400 px-2 py-1 text-center text-[9px]">
                         &nbsp;

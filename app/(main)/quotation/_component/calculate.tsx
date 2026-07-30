@@ -131,13 +131,18 @@ interface Props {
   onAdd: (item: QuotationProps) => void;
   onOpenList?: () => void;
   quotationCount?: number;
-  /** When true, locks the GOLD tab to the melt type and hides its type dropdown.
-   *  Other metal tabs stay usable (price editable) — non-gold items are paid in
-   *  full on the quotation and never enter the bill debt/credit cycle. */
+  /** When true (bill mode), hides the type dropdown and keys off the metal's melt
+   *  type. Tabs other than the bill's stay usable with their own editable price —
+   *  they're walk-in extras, outside the bill's debt/credit cycle. */
   lockMeltType?: boolean;
   /** When set, overrides the auto-filled price with a fixed value (read-only).
-   *  Applies to melted GOLD only; other metals keep their own price source. */
+   *  It is the rate the customer was locked in at, so it only applies to the tab
+   *  of the metal it was averaged from (see forcedPriceMetal) — every other tab
+   *  keeps its own price source. */
   forcedPrice?: number;
+  /** Which metal forcedPrice belongs to. Bills are single-metal, so this is the
+   *  bill's metal; a gold lock must never leak into the silver tab. Defaults to gold. */
+  forcedPriceMetal?: string;
   /** Metal tab to open on — the bill being issued is single-metal, so a silver
    *  bill should not start the master on the gold tab. Defaults to gold. */
   initialMetal?: string;
@@ -149,6 +154,7 @@ export const Calculate = ({
   quotationCount = 0,
   lockMeltType,
   forcedPrice,
+  forcedPriceMetal = "gold",
   initialMetal = "gold",
 }: Props) => {
   const router = useRouter();
@@ -170,7 +176,9 @@ export const Calculate = ({
   const [metal, setMetal] = useState<string>(initialMetal);
 
   // Bill mode (master issuing a customer's melted metal): price silver exactly like
-  // the customer did — shop config (feed|manual) + weight tiers, no market/custom toggle.
+  // the customer did — shop config (feed|manual) + weight tiers, no market/custom
+  // toggle. When the bill carries a locked average (forcedPrice) that wins over the
+  // config base; the tiers still apply on top of it, as they did at sale time.
   const billMode = !!lockMeltType;
   // Whether a shop price is actually configured (>0) — else falls back to feed.
   const hasCustomSilver = silverCfg.manualPrice > 0;
@@ -222,9 +230,11 @@ export const Calculate = ({
   const realtimeActive = effGoldSource === "realtime" && metal === "gold";
   // อัปเดตทุก 10 วินาที — ตอนออกใบเสนอราคาไม่ต้องรัวเท่าหน้าดูราคาสด
   const { data: rt, dir: rtDir } = useRealtimeGold(!!realtimeActive, 10000);
-  // The forced (blended-avg) price only applies to melted GOLD. Silver / platinum
-  // / palladium are a different product, so their price stays editable.
-  const priceForced = forcedPrice !== undefined && metal === "gold";
+  // The forced (blended-avg) price belongs to one metal — the bill's. On any other
+  // tab it means nothing (different unit entirely), so the price stays editable and
+  // auto-filled from that metal's own feed.
+  const priceForced =
+    forcedPrice !== undefined && metal === (forcedPriceMetal || "gold");
 
   // Effective gold feed: real-time overrides the association price when active.
   const effGold: GoldPrice | null =
