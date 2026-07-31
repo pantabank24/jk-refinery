@@ -10,7 +10,7 @@ import { Input } from "@heroui/input";
 import { Switch } from "@heroui/switch";
 import {
   MessageCircle, Save, CheckCircle2, XCircle, RefreshCw, Unlink,
-  Send, Gauge, AlertTriangle, Scale, RotateCcw,
+  Send, Gauge, AlertTriangle, Scale,
 } from "lucide-react";
 
 // One metal = one alert channel, mirroring the เคลียร์บิล pages (/bills = ทอง,
@@ -33,19 +33,19 @@ interface BacklogRow {
   latched: boolean;
 }
 
-// The sell-in meter: metal customers sold to the shop, accumulated across ALL of
-// them until it makes a full lot (65 บาท of gold / 1000 กรัม of silver, each
-// traded as 1 กิโลกรัม), which is announced once and taken off the meter. One
-// meter per metal, same as the backlog above — and unlike the backlog, it only
-// ever goes up.
-interface SellAccumRow {
+// The pending-sell rule: does ONE customer have a full lot (65 บาท of gold /
+// 1000 กรัม of silver, each traded as 1 กิโลกรัม) sitting at รอออกบิล right now?
+// Nothing accumulates across customers — over_count/top_* are just the live
+// picture so the shop can see whether the threshold is set sensibly.
+interface PendingSellRow {
   metal: Metal;
   enabled: boolean;
   threshold: number;
   purity: string;
   unit: string;
-  accumulated: number;
-  remaining: number;
+  over_count: number;
+  top_weight: number;
+  top_name: string;
 }
 
 interface LineStatus {
@@ -58,13 +58,13 @@ interface LineStatus {
   token_set: boolean;
   oa_basic_id: string;
   backlog: BacklogRow[];
-  sell_accum: SellAccumRow[];
+  pending_sell: PendingSellRow[];
 }
 
-// The sell-in rule as it is being edited. Kept apart from `sell_accum` above so
-// the live meter keeps reporting against the SAVED threshold while a new one is
+// The rule as it is being edited. Kept apart from `pending_sell` above so the
+// live picture keeps reporting against the SAVED threshold while a new one is
 // still being typed.
-interface SellAccumForm {
+interface PendingSellForm {
   enabled: boolean;
   threshold: string;
   purity: string;
@@ -85,7 +85,7 @@ const dec = (v: number) => v.toLocaleString("th-TH", { minimumFractionDigits: 2,
 // Announcement wording per metal, mirroring the API's metalNoun().
 const METAL_NOUN: Record<Metal, string> = { gold: "ทองคำ", silver: "เงิน" };
 
-const emptySellAccumForm = (): Record<Metal, SellAccumForm> => ({
+const emptyPendingSellForm = (): Record<Metal, PendingSellForm> => ({
   gold:   { enabled: false, threshold: "65",   purity: "99.99" },
   silver: { enabled: false, threshold: "1000", purity: "99.9" },
 });
@@ -101,7 +101,6 @@ export default function LineNotificationPage() {
   const [saved, setSaved] = useState(false);
   const [unlinking, setUnlinking] = useState(false);
   const [testing, setTesting] = useState<string | null>(null);
-  const [resetting, setResetting] = useState<Metal | null>(null);
   const [error, setError] = useState("");
 
   const [status, setStatus] = useState<LineStatus>({
@@ -114,10 +113,10 @@ export default function LineNotificationPage() {
     token_set: false,
     oa_basic_id: "",
     backlog: [],
-    sell_accum: [],
+    pending_sell: [],
   });
 
-  const [accumForm, setAccumForm] = useState<Record<Metal, SellAccumForm>>(emptySellAccumForm);
+  const [ruleForm, setRuleForm] = useState<Record<Metal, PendingSellForm>>(emptyPendingSellForm);
 
   const [quota, setQuota] = useState<QuotaInfo | null>(null);
   const [quotaLoading, setQuotaLoading] = useState(false);
@@ -132,11 +131,11 @@ export default function LineNotificationPage() {
     try {
       const res = await api.get("/line/status");
       const data = res.data as unknown as LineStatus;
-      const rows = data.sell_accum ?? [];
-      setStatus({ ...data, backlog: data.backlog ?? [], sell_accum: rows });
+      const rows = data.pending_sell ?? [];
+      setStatus({ ...data, backlog: data.backlog ?? [], pending_sell: rows });
       // Seed the edit form from what came back, keeping the defaults for a metal
       // the API didn't report (its migration hasn't run yet).
-      setAccumForm((prev) => {
+      setRuleForm((prev) => {
         const next = { ...prev };
         for (const row of rows) {
           next[row.metal] = {
@@ -181,19 +180,19 @@ export default function LineNotificationPage() {
         silver_enabled: status.line_notify_silver_enabled === "true",
         gold_threshold: parseInt(status.line_bill_notify_threshold_gold || "0", 10) || 0,
         silver_threshold: parseInt(status.line_bill_notify_threshold_silver || "0", 10) || 0,
-        sell_accum: Object.fromEntries(
+        pending_sell: Object.fromEntries(
           METALS.map(({ key }) => [key, {
-            enabled: accumForm[key].enabled,
-            threshold: parseFloat(accumForm[key].threshold || "0") || 0,
+            enabled: ruleForm[key].enabled,
+            threshold: parseFloat(ruleForm[key].threshold || "0") || 0,
             // Sent as typed: an empty box is the API's error to report, not
             // something to silently paper over with a made-up purity.
-            purity: accumForm[key].purity,
+            purity: ruleForm[key].purity,
           }]),
         ),
       });
-      const data = res.data as unknown as { backlog?: BacklogRow[]; sell_accum?: SellAccumRow[] };
+      const data = res.data as unknown as { backlog?: BacklogRow[]; pending_sell?: PendingSellRow[] };
       if (data?.backlog) setStatus((p) => ({ ...p, backlog: data.backlog! }));
-      if (data?.sell_accum) setStatus((p) => ({ ...p, sell_accum: data.sell_accum! }));
+      if (data?.pending_sell) setStatus((p) => ({ ...p, pending_sell: data.pending_sell! }));
       setSaved(true);
       setTimeout(() => setSaved(false), 2500);
     } catch (e) {
@@ -216,11 +215,11 @@ export default function LineNotificationPage() {
     }
   };
 
-  const handleTestSellAccum = async (metal: Metal) => {
-    setTesting(`sell_accum:${metal}`);
+  const handleTestPendingSell = async (metal: Metal) => {
+    setTesting(`pending_sell:${metal}`);
     setError("");
     try {
-      await api.post(`/line/test?kind=sell_accum&metal=${metal}`, {});
+      await api.post(`/line/test?kind=pending_sell&metal=${metal}`, {});
       await fetchQuota();
     } catch (e) {
       setError(e instanceof Error ? e.message : "ส่งข้อความทดสอบไม่สำเร็จ");
@@ -229,22 +228,6 @@ export default function LineNotificationPage() {
     }
   };
 
-  // Zeroing a meter throws away real accumulated metal, so it asks first — and
-  // it only ever clears the one metal, never both.
-  const handleResetSellAccum = async (metal: Metal, label: string, unit: string) => {
-    if (!window.confirm(`ล้างยอดสะสม${label}ให้เป็น 0 ${unit}? น้ำหนักที่สะสมไว้จะไม่ถูกนับในการแจ้งครั้งถัดไป`)) return;
-    setResetting(metal);
-    setError("");
-    try {
-      const res = await api.post(`/line/sell-accum/reset?metal=${metal}`, {});
-      const data = res.data as unknown as { sell_accum?: SellAccumRow[] };
-      if (data?.sell_accum) setStatus((p) => ({ ...p, sell_accum: data.sell_accum! }));
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "ล้างยอดสะสมไม่สำเร็จ");
-    } finally {
-      setResetting(null);
-    }
-  };
 
   const handleUnlink = async () => {
     setUnlinking(true);
@@ -269,7 +252,7 @@ export default function LineNotificationPage() {
       ? Math.min(100, ((quota.used ?? 0) / (quota.limit ?? 1)) * 100)
       : 0;
 
-  const accumOf = (metal: Metal) => status.sell_accum.find((s) => s.metal === metal);
+  const ruleOf = (metal: Metal) => status.pending_sell.find((s) => s.metal === metal);
 
   if (!authLoading && !canRead) return null;
 
@@ -546,41 +529,41 @@ export default function LineNotificationPage() {
             );
           })}
 
-          {/* Sell-in meters — the second alert. Its own heading, because the two
-              cards under it answer a different question from the backlog cards
-              above ("how much have we bought" vs "how much is left to clear"). */}
+          {/* Pending-sell rules — the second alert. Its own heading, because the
+              two cards under it answer a different question from the backlog
+              cards above ("does one customer have a kilo waiting" vs "how many
+              bills are left to clear"). */}
           <div className="lg:col-span-2 flex items-center gap-x-2 pt-1">
             <Scale size={15} className="text-[#c09c42]" />
             <div className="flex flex-col">
-              <span className="font-bold text-sm text-black/70">แจ้งขายเมื่อยอดที่ลูกค้าขายเข้ามาครบเกณฑ์</span>
+              <span className="font-bold text-sm text-black/70">แจ้งขายเมื่อลูกค้ามีของค้างรอออกบิลถึงเกณฑ์</span>
               <span className="text-xs text-black/40">
-                นับรวมทุกลูกค้าทั้งร้าน · เริ่มนับตอน &quot;ออกบิล&quot; ให้ลูกค้า · ทองกับเงินนับแยกมิเตอร์กัน
+                ดูเป็นรายลูกค้า ไม่รวมกันทั้งร้าน · แจ้งทันทีที่ลูกค้าขายเข้ามาแล้วยอดค้างถึงเกณฑ์ · ทองกับเงินแยกกัน
               </span>
             </div>
           </div>
 
           {METALS.map(({ key, label, unit, accent }) => {
-            const form = accumForm[key];
-            const live = accumOf(key);
-            // The meter reports against the SAVED threshold, not what is currently
-            // typed in the box — showing 120% because someone lowered a number
-            // they haven't saved yet would read as "it already fired".
+            const form = ruleForm[key];
+            const live = ruleOf(key);
+            // The live picture is measured against the SAVED threshold, not what
+            // is currently typed in the box — counting customers against a number
+            // nobody has saved yet would read as "it already fired".
             const savedThreshold = live?.threshold ?? 0;
-            const pct = savedThreshold > 0 ? Math.min(100, ((live?.accumulated ?? 0) / savedThreshold) * 100) : 0;
             const typedThreshold = parseFloat(form.threshold || "0") || 0;
             const unsaved = !!live && typedThreshold !== savedThreshold;
             const purity = (form.purity || "").replace(/%$/, "") || "—";
 
-            const patch = (p: Partial<SellAccumForm>) =>
-              setAccumForm((prev) => ({ ...prev, [key]: { ...prev[key], ...p } }));
+            const patch = (p: Partial<PendingSellForm>) =>
+              setRuleForm((prev) => ({ ...prev, [key]: { ...prev[key], ...p } }));
 
             return (
-              <div key={`accum-${key}`} className="flex flex-col self-stretch border-1 border-black/10 bg-black/5 backdrop-blur-xl rounded-2xl p-4 gap-y-3">
+              <div key={`pending-${key}`} className="flex flex-col self-stretch border-1 border-black/10 bg-black/5 backdrop-blur-xl rounded-2xl p-4 gap-y-3">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-x-2">
                     <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: accent }} />
                     <div className="flex flex-col">
-                      <span className="text-sm font-bold">แจ้งขาย{METAL_NOUN[key]}สะสม</span>
+                      <span className="text-sm font-bold">แจ้งขาย{METAL_NOUN[key]}ค้างรอออกบิล</span>
                       <span className="text-xs text-black/40">
                         นับแยกจาก{label === "ทอง" ? "เงิน" : "ทอง"} ไม่รวมกัน
                       </span>
@@ -596,12 +579,12 @@ export default function LineNotificationPage() {
 
                 <Input
                   type="number"
-                  label={`เกณฑ์น้ำหนัก${label}สะสม (${unit}) ต่อ 1 กิโลกรัม`}
+                  label={`เกณฑ์น้ำหนัก${label}ค้างรอออกบิล (${unit}) ต่อ 1 กิโลกรัม`}
                   placeholder={key === "gold" ? "65" : "1000"}
                   value={form.threshold}
                   isDisabled={!canUpdate}
                   onValueChange={(v) => patch({ threshold: v })}
-                  description="ครบเมื่อไหร่แจ้งครั้งหนึ่ง แล้วตัดยอดออก เศษที่เหลือสะสมต่อ · ใส่ 0 เพื่อปิด"
+                  description="ลูกค้ารายไหนมีของค้างถึงเกณฑ์ แจ้งทันที · ขายเพิ่มจนครบอีกกิโลถึงจะแจ้งซ้ำ · ใส่ 0 เพื่อปิด"
                   classNames={{ inputWrapper: "bg-white/60 border-1 border-black/10" }}
                 />
 
@@ -615,27 +598,26 @@ export default function LineNotificationPage() {
                   classNames={{ inputWrapper: "bg-white/60 border-1 border-black/10" }}
                 />
 
-                {/* Live meter */}
+                {/* Who is over the line right now — the same pile the alert reads */}
                 {live && (
                   <div className="flex flex-col gap-y-1.5 bg-white/60 border-1 border-black/10 rounded-xl px-3 py-2.5">
                     <div className="flex items-baseline justify-between">
-                      <span className="text-xs text-black/50">สะสมตอนนี้</span>
-                      <span className="text-sm font-bold" style={{ color: accent }}>
-                        {dec(live.accumulated)} {unit}
-                        {savedThreshold > 0 ? ` / เกณฑ์ ${dec(savedThreshold)}` : ""}
+                      <span className="text-xs text-black/50">ลูกค้าที่ถึงเกณฑ์ตอนนี้</span>
+                      <span className="text-sm font-bold" style={{ color: live.over_count > 0 ? accent : undefined }}>
+                        {num(live.over_count)} ราย
                       </span>
                     </div>
-                    <div className="h-2 w-full rounded-full bg-black/10 overflow-hidden">
-                      <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, backgroundColor: accent }} />
-                    </div>
-                    {savedThreshold > 0 && (
-                      <span className="text-[10px] text-black/40 self-end">
-                        อีก {dec(live.remaining)} {unit} จะแจ้งครั้งถัดไป
+                    <div className="flex items-baseline justify-between">
+                      <span className="text-xs text-black/50">ค้างมากสุด</span>
+                      <span className="text-xs font-bold text-black/70">
+                        {live.top_weight > 0
+                          ? `${dec(live.top_weight)} ${unit}${live.top_name ? ` · ${live.top_name}` : ""}`
+                          : "—"}
                       </span>
-                    )}
+                    </div>
                     {unsaved && (
                       <span className="text-[10px] text-amber-600 flex items-center gap-x-1">
-                        <AlertTriangle size={11} /> ยังไม่ได้บันทึกเกณฑ์ใหม่ — ยอดด้านบนยังเทียบกับเกณฑ์เดิม
+                        <AlertTriangle size={11} /> ยังไม่ได้บันทึกเกณฑ์ใหม่ — ตัวเลขด้านบนยังนับด้วยเกณฑ์เดิม
                       </span>
                     )}
                   </div>
@@ -649,32 +631,21 @@ export default function LineNotificationPage() {
                     วีระชัย ชัยนุมาศ วันที่ 31/07/2568 เวลา 14:35 น. แจ้งขาย{METAL_NOUN[key]} {purity}% จำนวน 1 กิโลกรัม
                   </span>
                   <span className="text-[10px] text-black/35">
-                    ชื่อคือลูกค้าของบิลที่ทำให้ยอดครบเกณฑ์ · บิลเดียวที่หนักเกินหลายเท่าจะแจ้งรวมเป็น &quot;จำนวน 2 กิโลกรัม&quot; ในข้อความเดียว
+                    ค้างถึง 2 เท่าของเกณฑ์จะเขียนว่า &quot;จำนวน 2 กิโลกรัม&quot; · พอออกบิลให้แล้ว ยอดค้างหมดไป รอบถัดไปเริ่มนับใหม่
                   </span>
                 </div>
 
                 {canUpdate && isLinked && (
-                  <div className="flex flex-wrap gap-2">
-                    <Button
-                      size="sm"
-                      variant="flat"
-                      startContent={<Send size={13} />}
-                      onPress={() => handleTestSellAccum(key)}
-                      isLoading={testing === `sell_accum:${key}`}
-                    >
-                      ส่งข้อความทดสอบ
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="flat"
-                      color="danger"
-                      startContent={<RotateCcw size={13} />}
-                      onPress={() => handleResetSellAccum(key, label, unit)}
-                      isLoading={resetting === key}
-                    >
-                      ล้างยอดสะสม
-                    </Button>
-                  </div>
+                  <Button
+                    size="sm"
+                    variant="flat"
+                    startContent={<Send size={13} />}
+                    onPress={() => handleTestPendingSell(key)}
+                    isLoading={testing === `pending_sell:${key}`}
+                    className="self-start"
+                  >
+                    ส่งข้อความทดสอบ
+                  </Button>
                 )}
               </div>
             );
