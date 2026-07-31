@@ -58,6 +58,10 @@ interface BillItem {
   weight: number;
   per_gram: number;
   total: number;
+  // When this line was actually sold in. A "รอออกบิล" bill stays open and later
+  // sells are appended to it, so this can be days after the bill's own
+  // created_at — that is what the ประวัติ tab has to show.
+  created_at?: string;
 }
 
 interface IssuedQuotation extends QuotationStoreSnapshot {
@@ -324,8 +328,16 @@ export const CustomerDetail = ({ selfMode = false }: { selfMode?: boolean } = {}
   if (loading) {
     return <div className="flex items-center justify-center h-full"><Spinner size="lg" color="warning" /></div>;
   }
-  // ประวัติ: ทุกรายการทองที่ลูกค้าส่งเข้ามาตอนสร้างบิล รวมจากบิลทุกใบ (ใหม่สุดก่อน)
-  const historyRows = bills.flatMap((b) => (b.items ?? []).map((it) => ({ bill: b, it })));
+  // ประวัติ: ทุกรายการทองที่ลูกค้าส่งเข้ามา รวมจากบิลทุกใบ (ใหม่สุดก่อน)
+  //
+  // Each row is dated by its OWN line, not by the bill: a bill sits open at
+  // รอออกบิล and every later sell is appended to it, so a bill opened on the 29th
+  // can hold lines sold on the 31st. Dating them all by the bill is what made the
+  // history read as the wrong day. Sorting follows the same date, so the rows are
+  // genuinely newest-first across bills instead of only bill-by-bill.
+  const historyRows = bills
+    .flatMap((b) => (b.items ?? []).map((it) => ({ bill: b, it, at: it.created_at || b.created_at })))
+    .sort((a, b) => b.at.localeCompare(a.at));
 
   // สรุปรายการที่ลูกค้าส่งเข้ามา รวมทุกบิล: ยอดรวม จำนวนบิล น้ำหนักรวม และแยกตามประเภทโลหะ
   const overview = (() => {
@@ -515,7 +527,7 @@ export const CustomerDetail = ({ selfMode = false }: { selfMode?: boolean } = {}
                       </tr>
                     </thead>
                     <tbody>
-                      {historyRows.map(({ bill: b, it }) => {
+                      {historyRows.map(({ bill: b, it, at }) => {
                         // Settled and cancelled lines are struck through so a long
                         // history reads at a glance: เคลียร์แล้ว ม่วง, ยกเลิก แดง,
                         // everything still in play stays black.
@@ -527,7 +539,7 @@ export const CustomerDetail = ({ selfMode = false }: { selfMode?: boolean } = {}
                             className="border-t border-black/5 hover:bg-white/40 cursor-pointer"
                           >
                             <td className={`px-4 py-2.5 font-bold ${tone || "text-black/70"}`}>{b.code}</td>
-                            <td className={`px-4 py-2.5 ${tone || "text-black/60"}`}>{fmtDate(b.created_at)}</td>
+                            <td className={`px-4 py-2.5 ${tone || "text-black/60"}`}>{fmtDate(at)}</td>
                             <td className={`px-4 py-2.5 ${tone || "text-black/70"}`}>{it.type_name}</td>
                             <td className={`px-4 py-2.5 text-right tabular-nums ${tone || "text-black/60"}`}>
                               {it.weight.toLocaleString("th-TH", { minimumFractionDigits: 2 })}
