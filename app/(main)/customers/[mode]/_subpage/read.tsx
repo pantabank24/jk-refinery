@@ -111,6 +111,18 @@ const HISTORY_ROW_TONE: Record<number, string> = {
 const fmtDate = (s: string) =>
   new Date(s).toLocaleDateString("th-TH", { year: "numeric", month: "short", day: "numeric" });
 
+const fmtTime = (s: string) =>
+  new Date(s).toLocaleTimeString("th-TH", { hour: "2-digit", minute: "2-digit" });
+
+// วันที่อย่างเดียวตอบไม่ได้ว่ารายการไหนมาก่อน เมื่อบิลใบเดิมถูกขายเพิ่มหลายรอบในวันเดียว
+// เวลาจึงอยู่บรรทัดล่างของทุกแถวประวัติ ทั้งฝั่งลูกค้าและหลังบ้าน (คอมโพเนนต์เดียวกัน)
+const DateCell = ({ at }: { at: string }) => (
+  <div className="flex flex-col leading-tight">
+    <span>{fmtDate(at)}</span>
+    <span className="text-[11px] opacity-60 tabular-nums">{fmtTime(at)} น.</span>
+  </div>
+);
+
 const fmtMoney = (n: number) => n.toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const fmtGram = (n: number) => n.toLocaleString("th-TH", { maximumFractionDigits: 2 });
 
@@ -482,7 +494,7 @@ export const CustomerDetail = ({ selfMode = false }: { selfMode?: boolean } = {}
                     <thead className="sticky top-0 bg-black/5 backdrop-blur-xl">
                       <tr className="text-left text-black/40 text-xs">
                         <th className="px-4 py-2.5 font-bold">เลขที่บิล</th>
-                        <th className="px-4 py-2.5 font-bold">วันที่</th>
+                        <th className="px-4 py-2.5 font-bold">วันที่ / เวลา</th>
                         <th className="px-4 py-2.5 font-bold text-center">สถานะ</th>
                         <th className="px-4 py-2.5 font-bold text-right">ยอดรวม (บาท)</th>
                       </tr>
@@ -495,7 +507,7 @@ export const CustomerDetail = ({ selfMode = false }: { selfMode?: boolean } = {}
                           className="border-t border-black/5 hover:bg-white/40 cursor-pointer"
                         >
                           <td className="px-4 py-2.5 font-bold text-black/70">{b.code}</td>
-                          <td className="px-4 py-2.5 text-black/60">{fmtDate(b.created_at)}</td>
+                          <td className="px-4 py-2.5 text-black/60"><DateCell at={b.created_at} /></td>
                           <td className="px-4 py-2.5 text-center">
                             <span className={`text-xs font-bold px-2 py-0.5 rounded-full border-1 ${STATUS_COLOR[b.status] || ""}`}>
                               {STATUS_LABEL[b.status] || b.status}
@@ -521,7 +533,7 @@ export const CustomerDetail = ({ selfMode = false }: { selfMode?: boolean } = {}
                     <thead className="sticky top-0 bg-black/5 backdrop-blur-xl">
                       <tr className="text-left text-black/40 text-xs">
                         <th className="px-4 py-2.5 font-bold">เลขที่บิล</th>
-                        <th className="px-4 py-2.5 font-bold">วันที่</th>
+                        <th className="px-4 py-2.5 font-bold">วันที่ / เวลา</th>
                         <th className="px-4 py-2.5 font-bold">รายการ</th>
                         <th className="px-4 py-2.5 font-bold text-right">น้ำหนัก (กรัม)</th>
                       </tr>
@@ -539,7 +551,7 @@ export const CustomerDetail = ({ selfMode = false }: { selfMode?: boolean } = {}
                             className="border-t border-black/5 hover:bg-white/40 cursor-pointer"
                           >
                             <td className={`px-4 py-2.5 font-bold ${tone || "text-black/70"}`}>{b.code}</td>
-                            <td className={`px-4 py-2.5 ${tone || "text-black/60"}`}>{fmtDate(at)}</td>
+                            <td className={`px-4 py-2.5 ${tone || "text-black/60"}`}><DateCell at={at} /></td>
                             <td className={`px-4 py-2.5 ${tone || "text-black/70"}`}>{it.type_name}</td>
                             <td className={`px-4 py-2.5 text-right tabular-nums ${tone || "text-black/60"}`}>
                               {it.weight.toLocaleString("th-TH", { minimumFractionDigits: 2 })}
