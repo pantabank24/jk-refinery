@@ -33,19 +33,21 @@ interface BacklogRow {
   latched: boolean;
 }
 
-// The pending-sell rule: does ONE customer have a full lot (65 บาท of gold /
+// The pending-sell rule: does the SHOP have a full lot (65 บาท of gold /
 // 1000 กรัม of silver, each traded as 1 กิโลกรัม) sitting at รอออกบิล right now?
-// Nothing accumulates across customers — over_count/top_* are just the live
-// picture so the shop can see whether the threshold is set sensibly.
+// Every bill still waiting to be issued counts towards the same pile, whoever
+// sold it in — weight/bill_count/lots are that live pile, and alerted_lots is
+// how much of it has already gone out.
 interface PendingSellRow {
   metal: Metal;
   enabled: boolean;
   threshold: number;
   purity: string;
   unit: string;
-  over_count: number;
-  top_weight: number;
-  top_name: string;
+  weight: number;
+  bill_count: number;
+  lots: number;
+  alerted_lots: number;
 }
 
 interface LineStatus {
@@ -59,6 +61,8 @@ interface LineStatus {
   oa_basic_id: string;
   backlog: BacklogRow[];
   pending_sell: PendingSellRow[];
+  // Who the แจ้งขาย message is signed by — one name for both metals.
+  pending_sell_name: string;
 }
 
 // The rule as it is being edited. Kept apart from `pending_sell` above so the
@@ -114,9 +118,13 @@ export default function LineNotificationPage() {
     oa_basic_id: "",
     backlog: [],
     pending_sell: [],
+    pending_sell_name: "",
   });
 
   const [ruleForm, setRuleForm] = useState<Record<Metal, PendingSellForm>>(emptyPendingSellForm);
+  // Kept out of `status` for the same reason as ruleForm: what is being typed is
+  // not what the saved message is signed with yet.
+  const [senderName, setSenderName] = useState("");
 
   const [quota, setQuota] = useState<QuotaInfo | null>(null);
   const [quotaLoading, setQuotaLoading] = useState(false);
@@ -133,6 +141,7 @@ export default function LineNotificationPage() {
       const data = res.data as unknown as LineStatus;
       const rows = data.pending_sell ?? [];
       setStatus({ ...data, backlog: data.backlog ?? [], pending_sell: rows });
+      setSenderName(data.pending_sell_name ?? "");
       // Seed the edit form from what came back, keeping the defaults for a metal
       // the API didn't report (its migration hasn't run yet).
       setRuleForm((prev) => {
@@ -189,10 +198,18 @@ export default function LineNotificationPage() {
             purity: ruleForm[key].purity,
           }]),
         ),
+        // Sent as typed, like the purity: an empty box is the API's error to
+        // report, not something to paper over with a made-up name.
+        pending_sell_name: senderName,
       });
-      const data = res.data as unknown as { backlog?: BacklogRow[]; pending_sell?: PendingSellRow[] };
+      const data = res.data as unknown as {
+        backlog?: BacklogRow[];
+        pending_sell?: PendingSellRow[];
+        pending_sell_name?: string;
+      };
       if (data?.backlog) setStatus((p) => ({ ...p, backlog: data.backlog! }));
       if (data?.pending_sell) setStatus((p) => ({ ...p, pending_sell: data.pending_sell! }));
+      if (data?.pending_sell_name) setSenderName(data.pending_sell_name);
       setSaved(true);
       setTimeout(() => setSaved(false), 2500);
     } catch (e) {
@@ -531,16 +548,30 @@ export default function LineNotificationPage() {
 
           {/* Pending-sell rules — the second alert. Its own heading, because the
               two cards under it answer a different question from the backlog
-              cards above ("does one customer have a kilo waiting" vs "how many
+              cards above ("is there a kilo waiting to be sold on" vs "how many
               bills are left to clear"). */}
           <div className="lg:col-span-2 flex items-center gap-x-2 pt-1">
             <Scale size={15} className="text-[#c09c42]" />
             <div className="flex flex-col">
-              <span className="font-bold text-sm text-black/70">แจ้งขายเมื่อลูกค้ามีของค้างรอออกบิลถึงเกณฑ์</span>
+              <span className="font-bold text-sm text-black/70">แจ้งขายเมื่อมีของค้างรอออกบิลถึงเกณฑ์</span>
               <span className="text-xs text-black/40">
-                ดูเป็นรายลูกค้า ไม่รวมกันทั้งร้าน · แจ้งทันทีที่ลูกค้าขายเข้ามาแล้วยอดค้างถึงเกณฑ์ · ทองกับเงินแยกกัน
+                นับรวมทุกบิลทั้งร้าน ไม่แยกรายลูกค้า · แจ้งทันทีที่ยอดค้างรวมถึงเกณฑ์ · ทองกับเงินแยกกัน
               </span>
             </div>
+          </div>
+
+          {/* The signature on the message. Shared by both metals, so it sits
+              above the two cards rather than inside either of them. */}
+          <div className="lg:col-span-2 flex flex-col border-1 border-black/10 bg-black/5 backdrop-blur-xl rounded-2xl p-4 gap-y-2">
+            <Input
+              label="ชื่อผู้แจ้งที่ขึ้นต้นข้อความ"
+              placeholder="วีรชัย ชัยนุมาศ"
+              value={senderName}
+              isDisabled={!canUpdate}
+              onValueChange={setSenderName}
+              description="ข้อความจะขึ้นต้นด้วยชื่อนี้เสมอ ไม่ว่าของค้างจะมาจากลูกค้ารายไหน"
+              classNames={{ inputWrapper: "bg-white/60 border-1 border-black/10" }}
+            />
           </div>
 
           {METALS.map(({ key, label, unit, accent }) => {
@@ -553,6 +584,7 @@ export default function LineNotificationPage() {
             const typedThreshold = parseFloat(form.threshold || "0") || 0;
             const unsaved = !!live && typedThreshold !== savedThreshold;
             const purity = (form.purity || "").replace(/%$/, "") || "—";
+            const sender = senderName.trim() || "วีรชัย ชัยนุมาศ";
 
             const patch = (p: Partial<PendingSellForm>) =>
               setRuleForm((prev) => ({ ...prev, [key]: { ...prev[key], ...p } }));
@@ -584,7 +616,7 @@ export default function LineNotificationPage() {
                   value={form.threshold}
                   isDisabled={!canUpdate}
                   onValueChange={(v) => patch({ threshold: v })}
-                  description="ลูกค้ารายไหนมีของค้างถึงเกณฑ์ แจ้งทันที · ขายเพิ่มจนครบอีกกิโลถึงจะแจ้งซ้ำ · ใส่ 0 เพื่อปิด"
+                  description="ยอดค้างรวมทุกบิลถึงเกณฑ์เมื่อไหร่ แจ้งทันที · ต้องครบอีกกิโลถึงจะแจ้งซ้ำ · ใส่ 0 เพื่อปิด"
                   classNames={{ inputWrapper: "bg-white/60 border-1 border-black/10" }}
                 />
 
@@ -598,23 +630,25 @@ export default function LineNotificationPage() {
                   classNames={{ inputWrapper: "bg-white/60 border-1 border-black/10" }}
                 />
 
-                {/* Who is over the line right now — the same pile the alert reads */}
+                {/* The live pile the alert reads — every รอออกบิล bill together */}
                 {live && (
                   <div className="flex flex-col gap-y-1.5 bg-white/60 border-1 border-black/10 rounded-xl px-3 py-2.5">
                     <div className="flex items-baseline justify-between">
-                      <span className="text-xs text-black/50">ลูกค้าที่ถึงเกณฑ์ตอนนี้</span>
-                      <span className="text-sm font-bold" style={{ color: live.over_count > 0 ? accent : undefined }}>
-                        {num(live.over_count)} ราย
+                      <span className="text-xs text-black/50">ค้างรอออกบิลตอนนี้</span>
+                      <span className="text-sm font-bold" style={{ color: live.lots > 0 ? accent : undefined }}>
+                        {dec(live.weight)} {unit}
+                        {savedThreshold > 0 ? ` / เกณฑ์ ${dec(savedThreshold)}` : ""}
                       </span>
                     </div>
                     <div className="flex items-baseline justify-between">
-                      <span className="text-xs text-black/50">ค้างมากสุด</span>
-                      <span className="text-xs font-bold text-black/70">
-                        {live.top_weight > 0
-                          ? `${dec(live.top_weight)} ${unit}${live.top_name ? ` · ${live.top_name}` : ""}`
-                          : "—"}
-                      </span>
+                      <span className="text-xs text-black/50">รวม {num(live.bill_count)} บิล คิดเป็น</span>
+                      <span className="text-xs font-bold text-black/70">{num(live.lots)} กิโลกรัม</span>
                     </div>
+                    {live.alerted_lots > 0 && (
+                      <span className="text-[10px] text-amber-600 flex items-center gap-x-1">
+                        <AlertTriangle size={11} /> แจ้งไปแล้ว {num(live.alerted_lots)} กิโลกรัม — ครบอีกกิโลถึงจะแจ้งใหม่
+                      </span>
+                    )}
                     {unsaved && (
                       <span className="text-[10px] text-amber-600 flex items-center gap-x-1">
                         <AlertTriangle size={11} /> ยังไม่ได้บันทึกเกณฑ์ใหม่ — ตัวเลขด้านบนยังนับด้วยเกณฑ์เดิม
@@ -628,10 +662,10 @@ export default function LineNotificationPage() {
                 <div className="flex flex-col gap-y-1 bg-[#06C755]/10 border-1 border-[#06C755]/30 rounded-xl px-3 py-2.5">
                   <span className="text-[10px] text-black/40 font-bold">ตัวอย่างข้อความ</span>
                   <span className="text-xs text-black/70">
-                    วีระชัย ชัยนุมาศ วันที่ 31/07/2568 เวลา 14:35 น. แจ้งขาย{METAL_NOUN[key]} {purity}% จำนวน 1 กิโลกรัม
+                    {sender} วันที่ 31/07/2568 เวลา 14:35 น. แจ้งขาย{METAL_NOUN[key]} {purity}% จำนวน 1 กิโลกรัม
                   </span>
                   <span className="text-[10px] text-black/35">
-                    ค้างถึง 2 เท่าของเกณฑ์จะเขียนว่า &quot;จำนวน 2 กิโลกรัม&quot; · พอออกบิลให้แล้ว ยอดค้างหมดไป รอบถัดไปเริ่มนับใหม่
+                    ค้างถึง 2 เท่าของเกณฑ์จะเขียนว่า &quot;จำนวน 2 กิโลกรัม&quot; · พอออกบิลแล้ว ยอดค้างหมดไป รอบถัดไปเริ่มนับใหม่
                   </span>
                 </div>
 

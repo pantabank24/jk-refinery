@@ -41,11 +41,20 @@ interface Bill {
   id: number;
   code: string;
   status: number;
+  // total_amount = ยอดที่ลูกค้าล็อกไว้ตอนกดขาย ไม่ใช่ยอดที่จ่ายจริงเสมอไป — เมื่อออกบิลแล้ว
+  // ยอดของใบเสนอราคาที่ออก (หลังชั่ง/ตรวจจริง) คือยอดที่เราจ่ายให้ลูกค้า ส่วนต่างไปเป็น
+  // หนี้/เครดิตยกไปรอบหน้า /bills preload IssuedQuotation มาให้แล้ว
   total_amount: number;
+  issued_quotation_id?: number | null;
+  issued_quotation?: { id: number; total_amount: number } | null;
   gold_round?: string;
   created_at: string;
   items?: BillItem[];
 }
+
+// ยอดที่เราจ่ายให้ลูกค้าจริงสำหรับบิลใบหนึ่ง — ยึดใบเสนอราคาที่ออกก่อน ถ้ายังไม่ออกบิล
+// ก็ยังไม่มียอดจ่าย จึงตกกลับไปที่ยอดที่ลูกค้ากดขายไว้ (แบบเดียวกับรายการบิลฝั่งลูกค้า)
+const paidAmount = (b: Bill) => b.issued_quotation?.total_amount ?? b.total_amount;
 
 interface BillItem {
   id: number;
@@ -361,10 +370,17 @@ export const CustomerDetail = ({ selfMode = false }: { selfMode?: boolean } = {}
     // vs still in progress รอออกบิล/รอตรวจบิล (10/11). Cancelled (13) is excluded.
     let completedTotal = 0;
     let pendingTotal = 0;
+    // ยอดที่จ่ายเหมือนคอลัมน์ในแท็บบิลที่ออก แต่ใบเสนอราคาหนึ่งใบครอบได้หลายบิล
+    // (ออกพร้อมกัน) ยอดของใบนั้นจึงนับครั้งเดียว ไม่งั้นสรุปจะบวกซ้ำ
+    const countedQuotations = new Set<number>();
     for (const b of bills) {
-      total += b.total_amount || 0;
-      if (b.status === 12 || b.status === 14) completedTotal += b.total_amount || 0;
-      else if (b.status === 10 || b.status === 11) pendingTotal += b.total_amount || 0;
+      const qid = b.issued_quotation?.id ?? b.issued_quotation_id ?? null;
+      const dup = qid !== null && countedQuotations.has(qid);
+      if (qid !== null) countedQuotations.add(qid);
+      const paid = dup ? 0 : paidAmount(b) || 0;
+      total += paid;
+      if (b.status === 12 || b.status === 14) completedTotal += paid;
+      else if (b.status === 10 || b.status === 11) pendingTotal += paid;
       for (const it of b.items ?? []) {
         totalWeight += it.weight || 0;
         const metal = metalOf(it.type_name);
@@ -496,7 +512,7 @@ export const CustomerDetail = ({ selfMode = false }: { selfMode?: boolean } = {}
                         <th className="px-4 py-2.5 font-bold">เลขที่บิล</th>
                         <th className="px-4 py-2.5 font-bold">วันที่ / เวลา</th>
                         <th className="px-4 py-2.5 font-bold text-center">สถานะ</th>
-                        <th className="px-4 py-2.5 font-bold text-right">ยอดรวม (บาท)</th>
+                        <th className="px-4 py-2.5 font-bold text-right">ยอดที่จ่าย (บาท)</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -514,7 +530,7 @@ export const CustomerDetail = ({ selfMode = false }: { selfMode?: boolean } = {}
                             </span>
                           </td>
                           <td className="px-4 py-2.5 text-right font-bold tabular-nums">
-                            {b.total_amount.toLocaleString("th-TH", { minimumFractionDigits: 2 })}
+                            {fmtMoney(paidAmount(b))}
                           </td>
                         </tr>
                       ))}
