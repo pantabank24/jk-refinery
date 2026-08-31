@@ -1,6 +1,6 @@
 "use client";
 
-import { Home, FileText, List, Users, Store, Settings, Shield, ScrollText, Gem, TrendingUp, Coins, SlidersHorizontal, X, Wallet, Receipt, UserCircle, FileCheck, Radio, MessageCircle, ShoppingBag, Target, ListChecks } from "lucide-react";
+import { Home, FileText, List, Users, Store, Settings, Shield, ScrollText, Gem, TrendingUp, Coins, SlidersHorizontal, X, Wallet, Receipt, UserCircle, Radio, MessageCircle, ShoppingBag, Target, ListChecks } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useAuth } from "@/contexts/auth-context";
@@ -71,7 +71,6 @@ export const Sidebar = ({ isOpen = false, onClose }: SidebarProps) => {
     // Bills are single-metal, so gold and silver sells get a list (and badge) each.
     { id: 15, name: "รายการขายทอง", href: "/bills", icon: <Receipt size={18} />, show: hasPermission("bills.read"), badge: unfinishedGoldBills },
     { id: 23, name: "รายการขายเงิน", href: "/bills/silver", icon: <Coins size={18} />, show: hasPermission("bills.read"), badge: unfinishedSilverBills },
-    { id: 17, name: "บิลทั้งหมด", href: "/bills/issued", icon: <FileCheck size={18} />, show: isCustomer },
     { id: 21, name: "โปรไฟล์", href: "/account", icon: <UserCircle size={18} />, show: isCustomer },
     { id: 16, name: "ลูกค้า", href: "/customers", icon: <UserCircle size={18} />, show: hasPermission("customers.read") },
     { id: 4, name: "สมาชิก", href: "/members", icon: <Users size={18} />, show: hasPermission("members.read") },
