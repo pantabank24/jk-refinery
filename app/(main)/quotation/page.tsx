@@ -177,6 +177,7 @@ export default function QuotationPage() {
   const [savedQuotation, setSavedQuotation] = useState<{
     id: number;
     code: string;
+    display_code?: string;
   } | null>(null);
   const router = useRouter();
   const [saveError, setSaveError] = useState("");
@@ -832,7 +833,7 @@ export default function QuotationPage() {
       const tickedBillIds = selectedRef
         .map((r) => r.billId)
         .filter((v, i, a) => a.indexOf(v) === i);
-      const res = await api.post<{ id: number; code: string }>("/quotations", {
+      const res = await api.post<{ id: number; code: string; display_code?: string }>("/quotations", {
         signer_name: signerName,
         signer_phone: signerPhone,
         // ชำระโดย ที่ติ๊กไว้ในพรีวิว — เก็บไว้กับใบ ไม่งั้นเปิดดูภายหลังจะว่างเปล่า
@@ -863,7 +864,7 @@ export default function QuotationPage() {
         page1_items: page1Items,
         created_at: quotationDate,
       });
-      const saved = res.data as unknown as { id: number; code: string };
+      const saved = res.data as unknown as { id: number; code: string; display_code?: string };
       const quotationId = saved.id;
 
       // The group has been re-issued — the edit stash has done its job and must
@@ -1658,7 +1659,7 @@ export default function QuotationPage() {
                   page1Items={page1Items}
                   onPrint={() => window.print()}
                   store={headerStore}
-                  documentNo={savedQuotation?.code}
+                  documentNo={savedQuotation?.display_code ?? savedQuotation?.code}
                   customerName={previewCustomerName}
                   customerPhone={previewCustomerPhone}
                   customerAddress={customerProfile?.address}

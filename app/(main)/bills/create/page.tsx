@@ -54,8 +54,29 @@ export default function CreateBillPage() {
   const [pendingItem, setPendingItem] = useState<QuotationProps | null>(null);
   const [saving, setSaving] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
+  const [confirmCountdown, setConfirmCountdown] = useState(10);
+  const [countdownActive, setCountdownActive] = useState(false);
   const router = useRouter();
   const [saveError, setSaveError] = useState("");
+
+  useEffect(() => {
+    if (!showConfirm || !countdownActive) return;
+
+    const intervalId = window.setInterval(() => {
+      setConfirmCountdown((seconds) => Math.max(seconds - 1, 0));
+    }, 1000);
+    const timeoutId = window.setTimeout(() => {
+      setShowConfirm(false);
+      setCountdownActive(false);
+      setPendingItem(null);
+      setSaveError("");
+    }, 10000);
+
+    return () => {
+      window.clearInterval(intervalId);
+      window.clearTimeout(timeoutId);
+    };
+  }, [showConfirm, countdownActive]);
 
   if (!canCreateBill) {
     return (
@@ -108,11 +129,14 @@ export default function CreateBillPage() {
   const handleAdd = (item: QuotationProps) => {
     setSaveError("");
     setPendingItem(item);
+    setConfirmCountdown(10);
+    setCountdownActive(true);
     setShowConfirm(true);
   };
 
   const doSave = async () => {
     if (!pendingItem) return;
+    setCountdownActive(false);
     setSaving(true);
     setSaveError("");
     try {
@@ -195,6 +219,14 @@ export default function CreateBillPage() {
                     ต้องการบันทึกรายการขายนี้หรือไม่?
                     หลังบันทึกต้องรอทางร้านออกบิลให้
                   </p>
+                  {countdownActive && (
+                    <div className="flex items-center justify-center gap-x-1.5 text-sm font-medium text-amber-600">
+                      <Clock size={16} />
+                      <span>
+                        กรุณายืนยันภายใน {confirmCountdown} วินาที
+                      </span>
+                    </div>
+                  )}
                   {saveError && (
                     <div className="text-red-500 text-sm bg-red-50 border border-red-200 rounded-xl px-4 py-2">
                       {saveError}

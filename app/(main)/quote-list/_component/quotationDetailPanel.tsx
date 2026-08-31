@@ -16,7 +16,7 @@ import { GoldType, computeItem } from "@/lib/gold-calc";
 import { roundedGrandTotal, roundQuoteLines } from "@/lib/quote-rounding";
 import { QuotationProps } from "../../quotation/_component/quotation";
 import { consolidateByMetal } from "../../quotation/_component/consolidate";
-import { QuotationData, QuotationItem, MemberOption } from "./types";
+import { QuotationData, QuotationItem, MemberOption, quotationDisplayCode } from "./types";
 import { imgUrls, STATUS_LABEL, STATUS_COLOR, REJECT_REASONS } from "./constants";
 
 interface Props {
@@ -302,6 +302,8 @@ export function QuotationDetailPanel({ quotation, members, goldTypes, canUpdate,
     );
   }
 
+  const documentCode = quotationDisplayCode(quotation);
+
   // Prefer the store-header snapshot taken at creation time (stays accurate
   // even if the store's info changes later); fall back to the live `store`
   // relation for quotations created before the snapshot existed. A no_header
@@ -333,7 +335,7 @@ export function QuotationDetailPanel({ quotation, members, goldTypes, canUpdate,
       <div className="flex flex-col gap-0.5 shrink-0">
         <div className="flex items-center justify-between">
           <span className="font-bold bg-gradient-to-l from-black/90 to-yellow-600 bg-clip-text text-transparent">
-            {quotation.code}
+            {documentCode}
           </span>
           <span className={`text-xs font-bold px-2 py-0.5 rounded-full border-1 ${STATUS_COLOR[quotation.status]}`}>
             {STATUS_LABEL[quotation.status]}
@@ -377,7 +379,7 @@ export function QuotationDetailPanel({ quotation, members, goldTypes, canUpdate,
             : quotation.page1_items ?? undefined
         }
         onPrint={() => window.print()}
-        documentNo={quotation.code}
+        documentNo={documentCode}
         store={storeHeader}
         customerName={quotation.signer_name || (quotation.member ? `${quotation.member.fname} ${quotation.member.lname}` : "")}
         customerPhone={quotation.signer_phone || quotation.member?.phone}
@@ -444,7 +446,7 @@ export function QuotationDetailPanel({ quotation, members, goldTypes, canUpdate,
         isOpen={deleteDisc.isOpen}
         onClose={deleteDisc.onClose}
         onConfirm={handleDeleteQuotation}
-        name={quotation.code}
+        name={documentCode}
         related={quotation.items?.length ? `รวมรายการสินค้า ${quotation.items.length} รายการ (เครดิตไม่คืน แต่ยังแสดงในประวัติ)` : undefined}
         loading={deleting}
       />
@@ -461,7 +463,7 @@ export function QuotationDetailPanel({ quotation, members, goldTypes, canUpdate,
             <div className="flex flex-col gap-y-3">
               <div className="flex flex-col border-1 border-black/10 bg-black/5 rounded-2xl p-3 gap-y-1">
                 <span className="text-xs text-black/50">เลขที่ใบเสนอราคา</span>
-                <span className="font-bold">{quotation.code}</span>
+                <span className="font-bold">{documentCode}</span>
               </div>
               {quotation.member && (
                 <div className="flex flex-col border-1 border-black/10 bg-black/5 rounded-2xl p-3 gap-y-1">
@@ -557,7 +559,7 @@ export function QuotationDetailPanel({ quotation, members, goldTypes, canUpdate,
         <ModalContent>
           <ModalHeader>
             <span className="font-bold bg-gradient-to-l from-black/90 to-yellow-600 bg-clip-text text-transparent">
-              แก้ไขใบเสนอราคา — {quotation.code}
+              แก้ไขใบเสนอราคา — {documentCode}
             </span>
           </ModalHeader>
           <ModalBody className="gap-y-4">

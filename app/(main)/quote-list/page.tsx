@@ -16,7 +16,7 @@ import { Input } from "@heroui/input";
 import { Tabs, Tab } from "@heroui/tabs";
 import { Table, TableHeader, TableColumn, TableBody, TableRow, TableCell } from "@heroui/table";
 import { GoldType } from "@/lib/gold-calc";
-import { QuotationData } from "./_component/types";
+import { QuotationData, quotationDisplayCode } from "./_component/types";
 import { STATUS_LABEL, STATUS_COLOR, METAL_LABEL, sumQuotations, QuoteTotals } from "./_component/constants";
 import { QuoteOverview } from "./_component/quoteOverview";
 import { QuotationDetailPanel } from "./_component/quotationDetailPanel";
@@ -351,14 +351,14 @@ export default function QuoteList() {
               >
                 <div className="flex flex-row items-center justify-between">
                   <span className="font-bold text-sm bg-gradient-to-l from-black/90 to-yellow-600 bg-clip-text text-transparent">
-                    {item.code}
+                    {quotationDisplayCode(item)}
                   </span>
                   <div className="flex items-center gap-x-2">
                     <span className={`text-xs font-bold px-2 py-0.5 rounded-full border-1 ${STATUS_COLOR[item.status]}`}>
                       {STATUS_LABEL[item.status]}
                     </span>
                     <Button isIconOnly size="sm" variant="light" className="text-[#c09c42]"
-                      onPress={(e) => handleExport(item.id, item.code, e as unknown as React.MouseEvent)}>
+                      onPress={(e) => handleExport(item.id, quotationDisplayCode(item), e as unknown as React.MouseEvent)}>
                       <Download size={13} />
                     </Button>
                   </div>

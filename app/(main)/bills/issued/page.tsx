@@ -157,7 +157,7 @@ export default function IssuedBillsPage() {
         key: rep.issued_quotation_id ? `q${rep.issued_quotation_id}` : `b${rep.id}`,
         rep,
         billIds: list.map((x) => x.id),
-        code: rep.issued_quotation?.code ?? rep.code,
+        code: rep.code,
         total: rep.issued_quotation?.total_amount ?? list.reduce((s, x) => s + x.total_amount, 0),
         count: list.length,
         created_at: rep.created_at,
@@ -319,7 +319,7 @@ export default function IssuedBillsPage() {
           <ModalHeader className="flex flex-col gap-0.5">
             <div className="flex items-center justify-between">
               <span className="font-bold bg-gradient-to-l from-black/90 to-yellow-600 bg-clip-text text-transparent">
-                ใบเสนอราคา {detailB?.issued_quotation?.code ?? detailB?.code}
+                ใบเสนอราคา {detailB?.code}
               </span>
               <span className={`text-xs font-bold px-2 py-0.5 rounded-full border-1 ${STATUS_COLOR[detailB?.status ?? 12]}`}>
                 {STATUS_LABEL[detailB?.status ?? 12]}
@@ -351,7 +351,7 @@ export default function IssuedBillsPage() {
                     <PreviewQuote
                       ref={previewRef}
                       hidePrint
-                      documentNo={detailB.issued_quotation?.code ?? detailB.code}
+                      documentNo={detailB.code}
                       date={
                         detailB.issued_quotation?.created_at ?? detailB.created_at
                       }

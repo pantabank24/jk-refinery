@@ -18,6 +18,9 @@ export interface QuotationItem {
 export interface QuotationData {
   id: number;
   code: string;
+  // Stable number shown to users. For a quotation issued from a bill this is
+  // the originating bill code; standalone documents fall back to code.
+  display_code?: string;
   status: number;
   note: string;
   reject_reason: string;
@@ -58,6 +61,9 @@ export interface QuotationData {
   payment_method?: string;
   created_at: string;
 }
+
+export const quotationDisplayCode = (quotation: Pick<QuotationData, "code" | "display_code">) =>
+  quotation.display_code || quotation.code;
 
 export interface MemberOption {
   id: number;

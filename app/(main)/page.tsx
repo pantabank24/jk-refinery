@@ -62,6 +62,7 @@ interface GoldPriceLite {
 interface RecentItem {
   id: number;
   code: string;
+  display_code?: string;
   status: number;
   total_amount: number;
   created_at: string;
@@ -454,7 +455,7 @@ export default function Home() {
                 >
                   <div className="flex flex-col">
                     <span className="font-bold text-sm text-black/80">
-                      {item.code}
+                      {item.display_code || item.code}
                     </span>
                     <span className="text-[10px] text-black/40">
                       {new Date(item.created_at).toLocaleDateString("th-TH")}

@@ -16,7 +16,7 @@ import {
 import { CalendarDate, today, getLocalTimeZone } from "@internationalized/date";
 import type { RangeValue } from "@react-types/shared";
 import { ArrowLeft, Coins, Pencil, Plus, Filter, Trash2, RotateCcw, Settings, ChevronLeft, ChevronRight } from "lucide-react";
-import { QuotationData, MemberOption as QuoteMemberOption } from "@/app/(main)/quote-list/_component/types";
+import { QuotationData, MemberOption as QuoteMemberOption, quotationDisplayCode } from "@/app/(main)/quote-list/_component/types";
 import { GoldType } from "@/lib/gold-calc";
 import { QuotationDetailPanel } from "@/app/(main)/quote-list/_component/quotationDetailPanel";
 import { BoxCard } from "@/components/boxcard";
@@ -74,6 +74,7 @@ interface QuotationItem {
 interface Quotation {
   id: number;
   code: string;
+  display_code?: string;
   status: number;
   total_amount: number;
   created_at: string;
@@ -388,7 +389,7 @@ export const MemberDetail = () => {
       if (to && created > to) return false;
       if (term) {
         const name = (q.signer_name || "").toLowerCase();
-        if (!q.code.toLowerCase().includes(term) && !name.includes(term)) return false;
+        if (!quotationDisplayCode(q).toLowerCase().includes(term) && !name.includes(term)) return false;
       }
       return true;
     });
@@ -639,7 +640,7 @@ export const MemberDetail = () => {
                   <TableBody emptyContent={isTodayOnly ? "ไม่มีรายการในวันนี้ กดปุ่ม ตัวกรอง เพื่อดูวันอื่น" : "ไม่พบใบเสนอราคา"}>
                     {pagedQuotations.map((q) => (
                       <TableRow key={q.id} className="hover:bg-white/50 cursor-pointer" onClick={() => handleQuoteRowClick(q)}>
-                        <TableCell>{q.code}</TableCell>
+                        <TableCell>{quotationDisplayCode(q)}</TableCell>
                         <TableCell>
                           {q.signer_name ? (
                             <span
@@ -926,7 +927,7 @@ export const MemberDetail = () => {
             <>
               <ModalHeader className="flex items-center gap-x-3 pr-10">
                 <span className="font-bold text-lg bg-gradient-to-l from-black/90 to-yellow-600 bg-clip-text text-transparent flex-1 truncate">
-                  {selectedQuotation?.code ?? "ใบเสนอราคา"}
+                  {selectedQuotation ? quotationDisplayCode(selectedQuotation) : "ใบเสนอราคา"}
                 </span>
                 {selectedQuotation && member?.user?.id && (
                   <Button

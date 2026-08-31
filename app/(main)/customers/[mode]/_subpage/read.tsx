@@ -46,7 +46,7 @@ interface Bill {
   // หนี้/เครดิตยกไปรอบหน้า /bills preload IssuedQuotation มาให้แล้ว
   total_amount: number;
   issued_quotation_id?: number | null;
-  issued_quotation?: { id: number; total_amount: number } | null;
+  issued_quotation?: { id: number; total_amount: number; created_at?: string } | null;
   gold_round?: string;
   created_at: string;
   items?: BillItem[];
@@ -117,6 +117,15 @@ const HISTORY_ROW_TONE: Record<number, string> = {
   14: "text-purple-600 line-through",
 };
 
+const HISTORY_STATUS_FILTER: Record<string, number | undefined> = {
+  all: undefined,
+  pending_issue: 10,
+  pending_review: 11,
+  completed: 12,
+  cancelled: 13,
+  cleared: 14,
+};
+
 const fmtDate = (s: string) =>
   new Date(s).toLocaleDateString("th-TH", { year: "numeric", month: "short", day: "numeric" });
 
@@ -183,6 +192,7 @@ export const CustomerDetail = ({ selfMode = false }: { selfMode?: boolean } = {}
   const [bills, setBills] = useState<Bill[]>([]);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState("bills");
+  const [historyStatus, setHistoryStatus] = useState("all");
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState("");
   const docRef = useRef<HTMLInputElement>(null);
@@ -357,8 +367,21 @@ export const CustomerDetail = ({ selfMode = false }: { selfMode?: boolean } = {}
   // history read as the wrong day. Sorting follows the same date, so the rows are
   // genuinely newest-first across bills instead of only bill-by-bill.
   const historyRows = bills
-    .flatMap((b) => (b.items ?? []).map((it) => ({ bill: b, it, at: it.created_at || b.created_at })))
-    .sort((a, b) => b.at.localeCompare(a.at));
+    .flatMap((b) => (b.items ?? []).map((it) => ({ bill: b, it, at: it.created_at || b.created_at })));
+  const selectedHistoryStatus = HISTORY_STATUS_FILTER[historyStatus];
+  // รอตรวจบิลเรียงตามวันที่ Admin บันทึกใบที่ออก ส่วนสถานะอื่นเรียงตามวันที่
+  // บันทึกรายการขายแต่ละรายการเหมือนเดิม
+  const historyRowDate = (row: (typeof historyRows)[number]) =>
+    historyStatus === "pending_review"
+      ? row.bill.issued_quotation?.created_at ?? row.at
+      : row.at;
+  const filteredHistoryRows = (selectedHistoryStatus === undefined
+    ? [...historyRows]
+    : historyRows.filter(({ bill }) => bill.status === selectedHistoryStatus)
+  ).sort((a, b) => {
+    const bySelectedDate = historyRowDate(b).localeCompare(historyRowDate(a));
+    return bySelectedDate || b.at.localeCompare(a.at);
+  });
 
   // สรุปรายการที่ลูกค้าส่งเข้ามา รวมทุกบิล: ยอดรวม จำนวนบิล น้ำหนักรวม และแยกตามประเภทโลหะ
   const overview = (() => {
@@ -541,7 +564,29 @@ export const CustomerDetail = ({ selfMode = false }: { selfMode?: boolean } = {}
             </div>
           ) : tab === "history" ? (
             <div className="flex flex-col md:flex-1 md:min-h-0 border-1 border-black/10 bg-white/20 backdrop-blur-xl rounded-xl shadow-xl overflow-hidden">
-              {historyRows.length === 0 ? (
+              {selfMode && (
+                <div className="shrink-0 px-3 border-b border-black/5">
+                  <Tabs
+                    aria-label="history status filter"
+                    selectedKey={historyStatus}
+                    onSelectionChange={(key) => setHistoryStatus(String(key))}
+                    color="warning"
+                    variant="underlined"
+                    classNames={{
+                      base: "w-full",
+                      tabList: "gap-4 w-full overflow-x-auto flex-nowrap scrollbar-hide",
+                    }}
+                  >
+                    <Tab key="all" title="ทั้งหมด" />
+                    <Tab key="pending_issue" title="รอออกบิล" />
+                    <Tab key="pending_review" title="รอตรวจบิล" />
+                    <Tab key="completed" title="สำเร็จ" />
+                    <Tab key="cleared" title="เคลียร์แล้ว" />
+                    <Tab key="cancelled" title="ยกเลิก" />
+                  </Tabs>
+                </div>
+              )}
+              {filteredHistoryRows.length === 0 ? (
                 <div className="flex items-center justify-center py-10 text-black/40 text-sm">ยังไม่มีรายการ</div>
               ) : (
                 <div className="overflow-auto scrollbar-hide">
@@ -555,7 +600,7 @@ export const CustomerDetail = ({ selfMode = false }: { selfMode?: boolean } = {}
                       </tr>
                     </thead>
                     <tbody>
-                      {historyRows.map(({ bill: b, it, at }) => {
+                      {filteredHistoryRows.map(({ bill: b, it, at }) => {
                         // Settled and cancelled lines are struck through so a long
                         // history reads at a glance: เคลียร์แล้ว ม่วง, ยกเลิก แดง,
                         // everything still in play stays black.
@@ -567,7 +612,9 @@ export const CustomerDetail = ({ selfMode = false }: { selfMode?: boolean } = {}
                             className="border-t border-black/5 hover:bg-white/40 cursor-pointer"
                           >
                             <td className={`px-4 py-2.5 font-bold ${tone || "text-black/70"}`}>{b.code}</td>
-                            <td className={`px-4 py-2.5 ${tone || "text-black/60"}`}><DateCell at={at} /></td>
+                            <td className={`px-4 py-2.5 ${tone || "text-black/60"}`}>
+                              <DateCell at={historyRowDate({ bill: b, it, at })} />
+                            </td>
                             <td className={`px-4 py-2.5 ${tone || "text-black/70"}`}>{it.type_name}</td>
                             <td className={`px-4 py-2.5 text-right tabular-nums ${tone || "text-black/60"}`}>
                               {it.weight.toLocaleString("th-TH", { minimumFractionDigits: 2 })}
@@ -625,7 +672,7 @@ export const CustomerDetail = ({ selfMode = false }: { selfMode?: boolean } = {}
           <ModalHeader className="flex flex-col gap-0.5">
             <div className="flex items-center justify-between">
               <span className="font-bold bg-gradient-to-l from-black/90 to-yellow-600 bg-clip-text text-transparent">
-                ใบเสนอราคา {detailB?.issued_quotation?.code ?? detailB?.code}
+                ใบเสนอราคา {detailB?.code}
               </span>
               <span className={`text-xs font-bold px-2 py-0.5 rounded-full border-1 ${STATUS_COLOR[detailB?.status ?? 12] || ""}`}>
                 {STATUS_LABEL[detailB?.status ?? 12] || detailB?.status}
@@ -659,7 +706,7 @@ export const CustomerDetail = ({ selfMode = false }: { selfMode?: boolean } = {}
                     <PreviewQuote
                       ref={previewRef}
                       hidePrint
-                      documentNo={detailB.issued_quotation?.code ?? detailB.code}
+                      documentNo={detailB.code}
                       date={
                         detailB.issued_quotation?.created_at ?? detailB.created_at
                       }

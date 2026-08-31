@@ -14,7 +14,7 @@ import { Input } from "@heroui/input";
 import { Modal, ModalContent, ModalBody } from "@heroui/modal";
 import { Tabs, Tab } from "@heroui/tabs";
 import { GoldType } from "@/lib/gold-calc";
-import { QuotationData, MemberOption } from "../_component/types";
+import { QuotationData, MemberOption, quotationDisplayCode } from "../_component/types";
 import {
   STATUS_LABEL,
   STATUS_COLOR,
@@ -97,7 +97,7 @@ export default function EmployeeQuoteListPage() {
     const q = search.trim().toLowerCase();
     return quotations.filter((item) => {
       if (s !== undefined && item.status !== s) return false;
-      if (q && !item.code.toLowerCase().includes(q)) return false;
+      if (q && !quotationDisplayCode(item).toLowerCase().includes(q)) return false;
       return true;
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -351,7 +351,7 @@ export default function EmployeeQuoteListPage() {
                 >
                   <div className="flex flex-row items-center justify-between">
                     <span className="font-bold text-sm bg-gradient-to-l from-black/90 to-yellow-600 bg-clip-text text-transparent">
-                      {item.code}
+                      {quotationDisplayCode(item)}
                     </span>
                     <span
                       className={`text-xs font-bold px-2 py-0.5 rounded-full border-1 ${STATUS_COLOR[item.status]}`}
