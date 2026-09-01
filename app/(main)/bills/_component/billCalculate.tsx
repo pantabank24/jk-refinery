@@ -171,14 +171,14 @@ export const BillCalculate = ({
   const effGold: GoldPrice | null =
     realtimeActive && rt && rt.bar_buy != null
       ? {
-          bar_buy: rt.bar_buy,
-          bar_sell: rt.bar_sell ?? rt.bar_buy,
-          ornament_buy: rt.bar_buy,
-          ornament_sell: rt.bar_sell ?? rt.bar_buy,
-          change_today: rt.change ?? 0,
-          gold_date: "",
-          gold_time: "",
-        }
+        bar_buy: rt.bar_buy,
+        bar_sell: rt.bar_sell ?? rt.bar_buy,
+        ornament_buy: rt.bar_buy,
+        ornament_sell: rt.bar_sell ?? rt.bar_buy,
+        change_today: rt.change ?? 0,
+        gold_date: "",
+        gold_time: "",
+      }
       : goldPrice;
 
   useEffect(() => {
@@ -189,19 +189,19 @@ export const BillCalculate = ({
         setGoldBar(types.find(isGoldBar) ?? null);
         setSilverType(types.find(isSilverType) ?? null);
       })
-      .catch(() => {});
+      .catch(() => { });
 
     api
       .get<GoldPrice>("/gold-prices/latest")
       .then((res) => setGoldPrice((res.data as unknown as GoldPrice) || null))
-      .catch(() => {});
+      .catch(() => { });
 
     api
       .get<SilverPrice>("/metal-prices/latest?symbol=XAG")
       .then((res) =>
         setSilverPrice((res.data as unknown as SilverPrice) || null),
       )
-      .catch(() => {});
+      .catch(() => { });
 
     api
       .get("/configs/silver-sell-status")
@@ -218,7 +218,7 @@ export const BillCalculate = ({
           tiers: d.tiers ?? [],
         });
       })
-      .catch(() => {});
+      .catch(() => { });
   }, []);
 
   // Auto-fill price from the active type's price source whenever the feed changes
@@ -257,12 +257,12 @@ export const BillCalculate = ({
   const silverFeedBase =
     silverType && silverPrice
       ? (
-          {
-            buy: silverPrice.buy,
-            sell: silverPrice.sell,
-            spot: silverPrice.spot,
-          } as Record<string, number>
-        )[silverType.price_source] ?? silverPrice.buy
+        {
+          buy: silverPrice.buy,
+          sell: silverPrice.sell,
+          spot: silverPrice.spot,
+        } as Record<string, number>
+      )[silverType.price_source] ?? silverPrice.buy
       : 0;
   const silverAutoBase =
     silverCfg.mode === "manual" ? silverCfg.manualPrice : silverFeedBase;
@@ -381,9 +381,8 @@ export const BillCalculate = ({
       className={`flex flex-col w-full min-w-0 ${fluid ? "" : "xl:w-[700px] mb-5"}`}
     >
       <div
-        className={`flex flex-col border-1 border-black/10 bg-black/5 backdrop-blur-xl rounded-4xl p-3 gap-y-2 ${
-          fluid ? "" : "md:h-full md:overflow-y-scroll md:scrollbar-hide"
-        }`}
+        className={`flex flex-col border-1 border-black/10 bg-black/5 backdrop-blur-xl rounded-4xl p-3 gap-y-2 ${fluid ? "" : "md:h-full md:overflow-y-scroll md:scrollbar-hide"
+          }`}
       >
         {metals.length > 1 && (
           <div className="w-full flex justify-center">
@@ -762,7 +761,7 @@ export const BillCalculate = ({
       <div
         onClick={handleAdd}
         aria-disabled={!canSubmit}
-        className={` xl:hidden fixed bottom-[calc(1.25rem+var(--bottom-nav-h,0px))] right-5 bg-gradient-to-br from-blue-600/50 to-transparent border-1 border-black/10 rounded-full text-blue-950 font-bold gap-x-2 px-4 h-14 flex items-center justify-center transition-all backdrop-blur-lg ${canSubmit ? "cursor-pointer hover:from-blue-600/70" : "opacity-40 cursor-not-allowed"}`}
+        className={` xl:hidden fixed bottom-[calc(0.1rem+var(--bottom-nav-h,0px))] right-5 bg-gradient-to-br from-blue-600/50 to-transparent border-1 border-black/10 rounded-full text-blue-950 font-bold gap-x-2 px-4 h-14 flex items-center justify-center transition-all backdrop-blur-lg ${canSubmit ? "cursor-pointer hover:from-blue-600/70" : "opacity-40 cursor-not-allowed"}`}
       >
         <Send size={20} />
         ส่งขาย

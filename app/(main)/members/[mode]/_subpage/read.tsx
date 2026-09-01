@@ -628,7 +628,7 @@ export const MemberDetail = () => {
                   isHeaderSticky
                   radius="sm"
                   removeWrapper
-                  classNames={{ base: "flex flex-col md:h-full overflow-x-auto md:overflow-y-auto scrollbar-hide", table: "min-w-[560px]" }}
+                  classNames={{ base: "hidden md:flex flex-col md:h-full overflow-x-auto md:overflow-y-auto scrollbar-hide", table: "min-w-[560px]" }}
                 >
                   <TableHeader>
                     <TableColumn>เลขที่</TableColumn>
@@ -677,6 +677,59 @@ export const MemberDetail = () => {
                     ))}
                   </TableBody>
                 </Table>
+
+                {/* Mobile: cards. The table needs 560px for five columns, which on
+                    a phone means dragging sideways to read one quotation. */}
+                <div className="flex md:hidden flex-col gap-y-2">
+                  {pagedQuotations.length === 0 ? (
+                    <div className="flex items-center justify-center py-10 px-4 text-center text-sm text-black/40">
+                      {isTodayOnly ? "ไม่มีรายการในวันนี้ กดปุ่ม ตัวกรอง เพื่อดูวันอื่น" : "ไม่พบใบเสนอราคา"}
+                    </div>
+                  ) : (
+                    pagedQuotations.map((q) => (
+                      <div
+                        key={q.id}
+                        onClick={() => handleQuoteRowClick(q)}
+                        className="flex flex-col gap-y-2 border-1 border-black/10 bg-black/5 backdrop-blur-xl rounded-2xl p-3 cursor-pointer active:bg-white/40"
+                      >
+                        <div className="flex items-center justify-between gap-x-2">
+                          <span className="font-bold text-sm bg-gradient-to-l from-black/90 to-yellow-600 bg-clip-text text-transparent truncate">
+                            {quotationDisplayCode(q)}
+                          </span>
+                          <Chip
+                            color={quotationStatusColor[String(q.status)] || "default"}
+                            size="sm"
+                            variant="dot"
+                            className="shrink-0"
+                          >
+                            {quotationStatusMap[String(q.status)] || String(q.status)}
+                          </Chip>
+                        </div>
+                        <div className="flex items-end justify-between gap-x-2">
+                          <div className="flex flex-col min-w-0">
+                            <span className="text-sm font-bold text-black/70 truncate">
+                              {q.signer_name || "-"}
+                            </span>
+                            <span className="text-[10px] text-black/40">
+                              {new Date(q.created_at).toLocaleString("th-TH", {
+                                day: "2-digit", month: "2-digit", year: "numeric",
+                                hour: "2-digit", minute: "2-digit",
+                              })}
+                            </span>
+                          </div>
+                          {/* The column header travels with the number — out of the
+                              table there is no header row left to read it against. */}
+                          <div className="flex flex-col items-end leading-tight shrink-0">
+                            <span className="text-[10px] font-bold text-black/40">ยอดรวม</span>
+                            <span className="font-bold text-sm text-[#c09c42] tabular-nums">
+                              {q.total_amount.toLocaleString()}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
               </div>
 
               {/* Pagination */}
@@ -717,7 +770,7 @@ export const MemberDetail = () => {
                 radius="sm"
                 removeWrapper
                 classNames={{
-                  base: "flex flex-col md:h-full md:overflow-y-auto md:scrollbar-hide",
+                  base: "hidden md:flex flex-col md:h-full md:overflow-y-auto md:scrollbar-hide",
                 }}
               >
                 <TableHeader>
@@ -762,6 +815,57 @@ export const MemberDetail = () => {
                   ))}
                 </TableBody>
               </Table>
+
+              {/* Mobile: cards — same reasoning as the ใบเสนอราคา tab. หมายเหตุ is
+                  the one field with no fixed width, so it drops to its own line
+                  instead of squeezing the two figures that matter. */}
+              <div className="flex md:hidden flex-col gap-y-2">
+                {pagedTransactions.length === 0 ? (
+                  <div className="flex items-center justify-center py-10 text-sm text-black/40">
+                    ยังไม่มีรายการ
+                  </div>
+                ) : (
+                  pagedTransactions.map((tx) => (
+                    <div
+                      key={tx.id}
+                      className="flex flex-col gap-y-2 border-1 border-black/10 bg-black/5 backdrop-blur-xl rounded-2xl p-3"
+                    >
+                      <div className="flex items-center justify-between gap-x-2">
+                        <Chip color={tx.action === 0 ? "success" : "danger"} size="sm" variant="flat">
+                          {tx.action === 0 ? "เพิ่มเครดิต" : "หักเครดิต"}
+                        </Chip>
+                        <span className="text-[10px] text-black/40 shrink-0">
+                          {new Date(tx.created_at).toLocaleDateString("th-TH")}
+                        </span>
+                      </div>
+                      <div className="flex items-end justify-between gap-x-3">
+                        <div className="flex flex-col leading-tight">
+                          <span className="text-[10px] font-bold text-black/40">จำนวน</span>
+                          <span
+                            className={`font-bold text-sm tabular-nums ${
+                              tx.action === 0 ? "text-green-600" : "text-red-500"
+                            }`}
+                          >
+                            {tx.action === 0 ? "+" : "-"}
+                            {tx.amount.toLocaleString()}
+                          </span>
+                        </div>
+                        <div className="flex flex-col items-end leading-tight">
+                          <span className="text-[10px] font-bold text-black/40">คงเหลือ</span>
+                          <span className="font-bold text-sm text-black/70 tabular-nums">
+                            {tx.balance.toLocaleString()}
+                          </span>
+                        </div>
+                      </div>
+                      {tx.description && (
+                        <span className="text-xs text-black/50 border-t border-black/5 pt-1.5">
+                          {tx.description}
+                        </span>
+                      )}
+                    </div>
+                  ))
+                )}
+              </div>
 
               {/* Pagination */}
               {cTotalPages > 1 && (

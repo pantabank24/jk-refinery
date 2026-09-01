@@ -199,16 +199,16 @@ export default function Home() {
 
   const creditsValue = stats
     ? stats.my_credits.toLocaleString(undefined, {
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2,
-      })
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    })
     : "—";
 
   // permissions.includes (not hasPermission) for bills.create — it's a customer-only
   // privilege, not something master should be auto-granted.
   const quickActions = [
     {
-      label: "+ ขาย",
+      label: "ขาย",
       href: "/bills/create",
       icon: <ShoppingBag size={18} />,
       show: permissions.includes("bills.create"),
@@ -315,10 +315,16 @@ export default function Home() {
         </motion.div>
       )}
 
+      <motion.div variants={sectionItem} className="flex flex-row gap-x-2 ">
+        <span className="text-sm font-bold text-[#c09c42]">
+          ทางลัด
+        </span>
+      </motion.div>
+
       {quickActions.length > 0 && (
         <motion.div
           variants={sectionItem}
-          className="flex flex-wrap gap-2 mb-2"
+          className="flex flex-row flex-wrap gap-2 mb-2"
         >
           {quickActions.map((a) => (
             <motion.button
@@ -326,10 +332,10 @@ export default function Home() {
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
               onClick={() => router.push(a.href)}
-              className="flex items-center gap-x-2 px-4 py-2.5 rounded-2xl border-1 border-black/10 bg-black/5 backdrop-blur-xl hover:bg-black/10 transition-colors"
+              className="flex flex-col w-20 h-20 items-center justify-center gap-x-2 px-4 py-2.5 rounded-full border-1 border-black/10 bg-black/5 backdrop-blur-xl hover:bg-black/10 transition-colors"
             >
               <span className="text-[#c09c42]">{a.icon}</span>
-              <span className="text-sm font-bold text-black/70">{a.label}</span>
+              <span className="text-[11px] font-bold text-black/70">{a.label}</span>
             </motion.button>
           ))}
         </motion.div>

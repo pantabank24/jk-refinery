@@ -307,20 +307,20 @@ export const CustomerDetail = ({ selfMode = false }: { selfMode?: boolean } = {}
         setCustomer(
           user
             ? {
-                id: user.id,
-                name: user.name,
-                email: user.email,
-                phone: user.phone,
-                avatar: user.avatar,
-                is_active: true,
-                store_name: user.store_name,
-                address: user.address,
-                tax_id: user.tax_id,
-                bank: user.bank ?? null,
-                bank_account_no: user.bank_account_no,
-                bank_account_name: user.bank_account_name,
-                verification_status: user.verification_status,
-              }
+              id: user.id,
+              name: user.name,
+              email: user.email,
+              phone: user.phone,
+              avatar: user.avatar,
+              is_active: true,
+              store_name: user.store_name,
+              address: user.address,
+              tax_id: user.tax_id,
+              bank: user.bank ?? null,
+              bank_account_no: user.bank_account_no,
+              bank_account_name: user.bank_account_name,
+              verification_status: user.verification_status,
+            }
             : null
         );
         setDocs((dRes?.data as unknown as CustomerDocument[]) || []);
@@ -552,7 +552,7 @@ export const CustomerDetail = ({ selfMode = false }: { selfMode?: boolean } = {}
             <ArrowLeft size={20} />
           </Button>
         )}
-        <div className="font-bold text-2xl bg-gradient-to-l from-black/90 to-yellow-600 bg-clip-text text-transparent flex-1">
+        <div className="font-bold text-2xl bg-gradient-to-l from-black/90 to-yellow-600 bg-clip-text text-transparent flex-1 truncate">
           {selfMode ? "โปรไฟล์ของฉัน" : "รายละเอียดลูกค้า"}
         </div>
         {/* Issue a quotation for this customer's pending sale — jumps to the quote

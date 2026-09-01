@@ -95,7 +95,7 @@ export default function CustomersPage() {
 
   return (
     <div className="flex flex-col md:h-full gap-y-3">
-      <div className="flex flex-row items-center justify-between shrink-0 px-1">
+      <div className="flex flex-row items-center justify-between shrink-0 min-h-10 px-1">
         <span className="font-bold text-2xl bg-gradient-to-l from-black/90 to-yellow-600 bg-clip-text text-transparent">
           {section === "docTypes" ? "ประเภทเอกสาร" : "ลูกค้า"}
         </span>
@@ -116,10 +116,14 @@ export default function CustomersPage() {
           <Tabs
             selectedKey={section}
             onSelectionChange={(k) => setSection(k as "customers" | "docTypes")}
-            color="warning"
             variant="solid"
+            radius="full"
+            // Same pill as the metal switcher in billCalculate: the selected tab is
+            // a gold gradient, not HeroUI's flat warning block. color="warning"
+            // painted it a solid yellow that belongs to no other control here.
             classNames={{
-              tabList: "border-1 border-black/10 bg-black/5 backdrop-blur-xl rounded-2xl",
+              tabList: "border-1 border-black/10 bg-black/5 backdrop-blur-xl",
+              cursor: "bg-gradient-to-l from-transparent to-yellow-600/50",
               tabContent: "font-bold",
             }}
           >
@@ -140,7 +144,7 @@ export default function CustomersPage() {
         </div>
       </div>
 
-      <div className="md:flex-1 md:overflow-y-auto md:scrollbar-hide">
+      <div className="md:flex-1 md:min-h-0 md:overflow-y-auto md:scrollbar-hide">
         {loading ? (
           <div className="flex items-center justify-center py-10"><Spinner size="lg" color="warning" /></div>
         ) : customers.length === 0 ? (

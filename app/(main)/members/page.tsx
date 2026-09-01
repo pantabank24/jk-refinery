@@ -14,7 +14,7 @@ import {
 } from "@heroui/react";
 import { Input } from "@heroui/input";
 import { Select, SelectItem } from "@heroui/select";
-import { Plus, Search } from "lucide-react";
+import { Filter, Plus, Search } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
@@ -71,6 +71,7 @@ export default function Members() {
   const [statusFilter, setStatusFilter] = useState("");
   const [memberType, setMemberType] = useState("");
   const [branchId, setBranchId] = useState("");
+  const [isFilterOpen, setIsFilterOpen] = useState(false);
 
   const buildQuery = useCallback(() => {
     const p = new URLSearchParams({ page: String(page), limit: String(LIMIT) });
@@ -104,7 +105,11 @@ export default function Members() {
   };
 
   const showStoreBranch = isMaster || isOwner;
-  const hasActiveFilter = !!(search || statusFilter || memberType || branchId);
+  // Counts only what is hidden behind the button. The search box is on screen
+  // either way, so folding it into the badge would report a filter the user can
+  // already see — and leave the badge stuck at 1 while the panel looked empty.
+  const filterCount =
+    (statusFilter !== "" ? 1 : 0) + (memberType !== "" ? 1 : 0) + (branchId !== "" ? 1 : 0);
 
   const columns: { key: ColKey; label: string }[] = [
     { key: "member", label: "สมาชิก" },
@@ -195,71 +200,96 @@ export default function Members() {
         )}
       </div>
 
-      {/* filter bar */}
-      <div className="flex flex-wrap gap-2 shrink-0">
-        <Input
-          placeholder="ค้นหาชื่อ / รหัส / เบอร์"
-          value={search}
-          onValueChange={handleFilterChange(setSearch)}
-          classNames={{ inputWrapper: inputStyle }}
-          startContent={<Search size={14} className="text-black/40" />}
-          className="w-56"
-          isClearable
-          onClear={() => handleFilterChange(setSearch)("")}
-        />
-
-        <Select
-          placeholder="สถานะทั้งหมด"
-          selectedKeys={statusFilter !== "" ? [statusFilter] : []}
-          onChange={(e) => handleFilterChange(setStatusFilter)(e.target.value)}
-          classNames={{ trigger: inputStyle }}
-          className="w-40"
-        >
-          <SelectItem key="0">ปกติ</SelectItem>
-          <SelectItem key="1">ระงับ</SelectItem>
-          <SelectItem key="2">รอตรวจ</SelectItem>
-        </Select>
-
-        <Select
-          placeholder="ประเภทสมาชิก"
-          selectedKeys={memberType !== "" ? [memberType] : []}
-          onChange={(e) => handleFilterChange(setMemberType)(e.target.value)}
-          classNames={{ trigger: inputStyle }}
-          className="w-44"
-        >
-          <SelectItem key="customer">ลูกค้าทั่วไป</SelectItem>
-          <SelectItem key="staff">มีบัญชีระบบ</SelectItem>
-        </Select>
-
-        {showStoreBranch && branches.length > 0 && (
-          <Select
-            placeholder="ทุกสาขา"
-            selectedKeys={branchId !== "" ? [branchId] : []}
-            onChange={(e) => handleFilterChange(setBranchId)(e.target.value)}
-            classNames={{ trigger: inputStyle }}
-            className="w-44"
-          >
-            {branches.map((b) => (
-              <SelectItem key={String(b.id)}>{b.name}</SelectItem>
-            ))}
-          </Select>
-        )}
-
-        {hasActiveFilter && (
+      {/* Search + filter toggle. Three dropdowns sitting open beside the search
+          box wrapped onto two rows on a laptop and four on a phone, pushing the
+          list itself below the fold. They fold behind one button instead, with a
+          count so a filter can never be left on unnoticed. Same shape as the
+          ตัวกรอง on the member detail screen. */}
+      <div className="flex flex-col gap-2 shrink-0">
+        <div className="flex flex-row gap-2">
+          <Input
+            placeholder="ค้นหาชื่อ / รหัส / เบอร์"
+            value={search}
+            onValueChange={handleFilterChange(setSearch)}
+            classNames={{ inputWrapper: inputStyle, base: "flex-1 md:max-w-sm" }}
+            startContent={<Search size={14} className="text-black/40" />}
+            isClearable
+            onClear={() => handleFilterChange(setSearch)("")}
+          />
           <Button
-            size="sm"
-            variant="light"
-            className="text-black/40 self-center"
-            onPress={() => {
-              setSearch("");
-              setStatusFilter("");
-              setMemberType("");
-              setBranchId("");
-              setPage(1);
-            }}
+            variant="flat"
+            startContent={<Filter size={15} />}
+            className={`shrink-0 border-1 border-black/10 ${filterCount > 0 ? "bg-yellow-200/60" : "bg-black/5"}`}
+            onPress={() => setIsFilterOpen((v) => !v)}
           >
-            ล้าง
+            ตัวกรอง{filterCount > 0 ? ` (${filterCount})` : ""}
           </Button>
+        </div>
+
+        {isFilterOpen && (
+          <div className="flex flex-col gap-2 border-1 border-black/10 bg-white/30 backdrop-blur-sm rounded-xl p-3">
+            {/* One row from sm up, stacked on a phone — a dropdown squeezed to a
+                third of a phone's width shows none of what is selected. */}
+            <div className="flex flex-col sm:flex-row gap-2">
+              <Select
+                size="sm"
+                label="สถานะ"
+                placeholder="ทั้งหมด"
+                selectedKeys={statusFilter !== "" ? [statusFilter] : []}
+                onChange={(e) => handleFilterChange(setStatusFilter)(e.target.value)}
+                classNames={{ trigger: inputStyle, base: "sm:flex-1" }}
+              >
+                <SelectItem key="0">ปกติ</SelectItem>
+                <SelectItem key="1">ระงับ</SelectItem>
+                <SelectItem key="2">รอตรวจ</SelectItem>
+              </Select>
+
+              <Select
+                size="sm"
+                label="ประเภทสมาชิก"
+                placeholder="ทั้งหมด"
+                selectedKeys={memberType !== "" ? [memberType] : []}
+                onChange={(e) => handleFilterChange(setMemberType)(e.target.value)}
+                classNames={{ trigger: inputStyle, base: "sm:flex-1" }}
+              >
+                <SelectItem key="customer">ลูกค้าทั่วไป</SelectItem>
+                <SelectItem key="staff">มีบัญชีระบบ</SelectItem>
+              </Select>
+
+              {showStoreBranch && branches.length > 0 && (
+                <Select
+                  size="sm"
+                  label="สาขา"
+                  placeholder="ทุกสาขา"
+                  selectedKeys={branchId !== "" ? [branchId] : []}
+                  onChange={(e) => handleFilterChange(setBranchId)(e.target.value)}
+                  classNames={{ trigger: inputStyle, base: "sm:flex-1" }}
+                >
+                  {branches.map((b) => (
+                    <SelectItem key={String(b.id)}>{b.name}</SelectItem>
+                  ))}
+                </Select>
+              )}
+            </div>
+
+            {filterCount > 0 && (
+              <div className="flex justify-end">
+                <Button
+                  size="sm"
+                  variant="light"
+                  color="danger"
+                  onPress={() => {
+                    setStatusFilter("");
+                    setMemberType("");
+                    setBranchId("");
+                    setPage(1);
+                  }}
+                >
+                  ล้างตัวกรอง
+                </Button>
+              </div>
+            )}
+          </div>
         )}
       </div>
 

@@ -37,10 +37,10 @@ interface MemberOption {
 }
 
 const SOURCE_TABS = [
-  { key: "all",      label: "ทั้งหมด" },
-  { key: "deposit",  label: "เติมเครดิต" },
+  { key: "all", label: "ทั้งหมด" },
+  { key: "deposit", label: "เติมเครดิต" },
   { key: "withdraw", label: "ลดเครดิต" },
-  { key: "quotation",label: "จากใบเสนอราคา" },
+  { key: "quotation", label: "จากใบเสนอราคา" },
 ];
 
 function TxIcon({ tx }: { tx: CreditTransaction }) {
@@ -103,7 +103,7 @@ export default function CreditManagementPage() {
   useEffect(() => {
     api.get<MemberOption[]>("/members?limit=200")
       .then((r) => setMembers((r.data as unknown as MemberOption[]) || []))
-      .catch(() => {});
+      .catch(() => { });
   }, []);
 
   const openAdd = () => {
@@ -149,7 +149,7 @@ export default function CreditManagementPage() {
   return (
     <div className="flex flex-col md:h-full gap-y-3">
       {/* Header */}
-      <div className="flex flex-row items-center justify-between shrink-0 px-1">
+      <div className="flex flex-row items-center justify-between shrink-0 min-h-10 px-1">
         <span className="font-bold text-2xl bg-gradient-to-l from-black/90 to-yellow-600 bg-clip-text text-transparent">
           {section === "banks" ? "จัดการธนาคาร" : "จัดการเครดิต"}
         </span>
@@ -170,10 +170,14 @@ export default function CreditManagementPage() {
           <Tabs
             selectedKey={section}
             onSelectionChange={(k) => setSection(k as "credits" | "banks")}
-            color="warning"
             variant="solid"
+            radius="full"
+            // Same pill as the metal switcher in billCalculate: the selected tab is
+            // a gold gradient, not HeroUI's flat warning block. color="warning"
+            // painted it a solid yellow that belongs to no other control here.
             classNames={{
-              tabList: "border-1 border-black/10 bg-black/5 backdrop-blur-xl rounded-2xl",
+              tabList: "border-1 border-black/10 bg-black/5 backdrop-blur-xl",
+              cursor: "bg-gradient-to-l from-transparent to-yellow-600/50",
               tabContent: "font-bold",
             }}
           >
@@ -186,92 +190,98 @@ export default function CreditManagementPage() {
       {section === "banks" ? (
         <BankManagement />
       ) : (
-      <>
-      {/* Search */}
-      <div className="shrink-0">
-        <CmpInput
-          placeholder="ค้นหาชื่อสมาชิก, รหัส, หมายเหตุ"
-          value={search}
-          onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSearch(e.target.value)}
-        />
-      </div>
-
-      {/* Tabs */}
-      <div className="shrink-0">
-        <Tabs
-          selectedKey={source}
-          onSelectionChange={(k) => setSource(String(k))}
-          color="warning"
-          variant="underlined"
-          classNames={{ tabList: "gap-4" }}
-        >
-          {SOURCE_TABS.map((t) => <Tab key={t.key} title={t.label} />)}
-        </Tabs>
-      </div>
-
-      {/* Transaction list */}
-      <div className="md:flex-1 md:overflow-y-auto md:scrollbar-hide">
-        {loading ? (
-          <div className="flex items-center justify-center py-10">
-            <Spinner size="lg" color="warning" />
+        <>
+          {/* Search */}
+          <div className="shrink-0">
+            <CmpInput
+              placeholder="ค้นหาชื่อสมาชิก, รหัส, หมายเหตุ"
+              value={search}
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSearch(e.target.value)}
+            />
           </div>
-        ) : transactions.length === 0 ? (
-          <div className="flex items-center justify-center py-10 text-black/40 text-sm">
-            ยังไม่มีรายการเครดิต
-          </div>
-        ) : (
-          <div className="flex flex-col gap-y-2 pb-4">
-            {transactions.map((tx) => (
-              <div
-                key={tx.id}
-                className="flex flex-col border-1 border-black/10 bg-black/5 backdrop-blur-xl rounded-2xl p-3 gap-y-2"
-              >
-                {/* Top row */}
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-x-2">
-                    <div className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 ${
-                      tx.action === 0 ? "bg-green-100" : tx.description?.includes("ใบเสนอราคา") ? "bg-yellow-100" : "bg-red-100"
-                    }`}>
-                      <TxIcon tx={tx} />
-                    </div>
-                    <div className="flex flex-col">
-                      <span className="font-bold text-sm text-black/80">
-                        {tx.member ? `${tx.member.fname} ${tx.member.lname}` : `สมาชิก #${tx.member_id}`}
-                      </span>
-                      {tx.member && (
-                        <span className="text-[10px] text-black/40">{tx.member.code} · โทร {tx.member.phone}</span>
-                      )}
-                    </div>
-                  </div>
-                  <TxBadge tx={tx} />
-                </div>
 
-                {/* Amount row */}
-                <div className="flex items-center justify-between px-1">
-                  <div className="flex flex-col">
-                    <span className="text-xs text-black/50">
-                      {tx.description || "—"}
-                    </span>
-                    <span className="text-[10px] text-black/30">
-                      {moment(tx.created_at).format("DD/MM/YY HH:mm")}
-                      {tx.creator && ` · โดย ${tx.creator.name}`}
-                    </span>
-                  </div>
-                  <div className="flex flex-col items-end">
-                    <span className={`font-bold text-base ${tx.action === 0 ? "text-green-600" : "text-red-500"}`}>
-                      {tx.action === 0 ? "+" : "-"}{tx.amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}
-                    </span>
-                    <span className="text-[10px] text-black/40">
-                      คงเหลือ {tx.balance.toLocaleString(undefined, { minimumFractionDigits: 2 })} บาท
-                    </span>
-                  </div>
-                </div>
+          {/* Tabs */}
+          <div className=" shrink-0">
+            <Tabs
+              selectedKey={source}
+              onSelectionChange={(k) => setSource(String(k))}
+              color="warning"
+              variant="underlined"
+              // Four labels do not fit a phone's width. They scroll sideways
+              // rather than wrap, the same way the bill-list and ประวัติ filters
+              // do; scrollbar-hide keeps the strip clean, since the cut-off label
+              // at the edge is the affordance.
+              classNames={{
+                base: "w-full",
+                tabList: "gap-4 w-full overflow-x-auto flex-nowrap scrollbar-hide",
+              }}
+            >
+              {SOURCE_TABS.map((t) => <Tab key={t.key} title={t.label} />)}
+            </Tabs>
+          </div>
+
+          {/* Transaction list */}
+          <div className="md:flex-1 md:min-h-0 md:overflow-y-auto md:scrollbar-hide">
+            {loading ? (
+              <div className="flex items-center justify-center py-10">
+                <Spinner size="lg" color="warning" />
               </div>
-            ))}
+            ) : transactions.length === 0 ? (
+              <div className="flex items-center justify-center py-10 text-black/40 text-sm">
+                ยังไม่มีรายการเครดิต
+              </div>
+            ) : (
+              <div className="flex flex-col gap-y-2 pb-4">
+                {transactions.map((tx) => (
+                  <div
+                    key={tx.id}
+                    className="flex flex-col border-1 border-black/10 bg-black/5 backdrop-blur-xl rounded-2xl p-3 gap-y-2"
+                  >
+                    {/* Top row */}
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-x-2">
+                        <div className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 ${tx.action === 0 ? "bg-green-100" : tx.description?.includes("ใบเสนอราคา") ? "bg-yellow-100" : "bg-red-100"
+                          }`}>
+                          <TxIcon tx={tx} />
+                        </div>
+                        <div className="flex flex-col">
+                          <span className="font-bold text-sm text-black/80">
+                            {tx.member ? `${tx.member.fname} ${tx.member.lname}` : `สมาชิก #${tx.member_id}`}
+                          </span>
+                          {tx.member && (
+                            <span className="text-[10px] text-black/40">{tx.member.code} · โทร {tx.member.phone}</span>
+                          )}
+                        </div>
+                      </div>
+                      <TxBadge tx={tx} />
+                    </div>
+
+                    {/* Amount row */}
+                    <div className="flex items-center justify-between px-1">
+                      <div className="flex flex-col">
+                        <span className="text-xs text-black/50">
+                          {tx.description || "—"}
+                        </span>
+                        <span className="text-[10px] text-black/30">
+                          {moment(tx.created_at).format("DD/MM/YY HH:mm")}
+                          {tx.creator && ` · โดย ${tx.creator.name}`}
+                        </span>
+                      </div>
+                      <div className="flex flex-col items-end">
+                        <span className={`font-bold text-base ${tx.action === 0 ? "text-green-600" : "text-red-500"}`}>
+                          {tx.action === 0 ? "+" : "-"}{tx.amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                        </span>
+                        <span className="text-[10px] text-black/40">
+                          คงเหลือ {tx.balance.toLocaleString(undefined, { minimumFractionDigits: 2 })} บาท
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
-        )}
-      </div>
-      </>
+        </>
       )}
 
       {/* ════════════════════════════════
