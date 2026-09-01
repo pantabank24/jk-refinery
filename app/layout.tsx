@@ -31,7 +31,7 @@ export default function RootLayout({
       <head />
       <body
         className={clsx(
-          "min-h-screen text-foreground bg-background bg-gradient-to-tl from-[#c09c42]/40 via-transparent to-transparent bg-fixed font-sans antialiased",
+          "min-h-screen text-foreground bg-background bg-gradient-to-tl from-[#c09c42]/40 via-transparent to-transparent md:bg-fixed font-sans antialiased",
           fontSans.variable
         )}
       >

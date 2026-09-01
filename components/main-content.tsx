@@ -10,10 +10,14 @@ export function MainContent({ children }: { children: React.ReactNode }) {
 
   return (
     <AuthGuard>
-      <div className="relative flex flex-col h-screen">
+      {/* Below md the document itself scrolls: no 100vh cap and no nested scroll
+          container, so a phone gets native page scrolling (and the address bar
+          collapses, giving back the height it was covering). From md up <main>
+          is still the scroller, which is what the desktop layouts size against. */}
+      <div className="relative flex flex-col md:h-screen">
         <Navbar onMenuClick={() => setSidebarOpen(true)} />
         <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
-        <main className="flex flex-col h-full w-full min-w-0 overflow-auto px-5 lg:pl-80 pt-20 pb-5">
+        <main className="flex flex-col w-full min-w-0 md:h-full md:overflow-auto px-5 lg:pl-80 pt-20 pb-5">
           {children}
         </main>
       </div>
