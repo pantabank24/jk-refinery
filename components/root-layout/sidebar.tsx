@@ -1,6 +1,6 @@
 "use client";
 
-import { Home, FileText, List, Users, Store, Settings, Shield, ScrollText, Gem, TrendingUp, Coins, SlidersHorizontal, X, Wallet, Receipt, UserCircle, Radio, MessageCircle, ShoppingBag, Target, ListChecks } from "lucide-react";
+import { Home, FileText, List, Users, Store, Settings, Shield, ScrollText, Gem, TrendingUp, Coins, SlidersHorizontal, X, Wallet, Receipt, UserCircle, Radio, MessageCircle, ShoppingBag, Target, ListChecks, ReceiptText } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useAuth } from "@/contexts/auth-context";
@@ -85,6 +85,7 @@ export const Sidebar = ({ isOpen = false, onClose }: SidebarProps) => {
     { id: 10, name: "ตั้งค่าระบบ", href: "/settings/config", icon: <SlidersHorizontal size={18} />, show: hasPermission("config.read") },
     { id: 20, name: "การแจ้งเตือน LINE", href: "/settings/line-notification", icon: <MessageCircle size={18} />, show: hasPermission("config.read") },
     { id: 11, name: "จัดการสิทธิ์", href: "/settings/roles", icon: <Shield size={18} />, show: hasPermission("roles.read") },
+    { id: 27, name: "บันทึกใบเสร็จ", href: "/receipts", icon: <ReceiptText size={18} />, show: hasPermission("receipts.read") },
     { id: 12, name: "Logs การใช้งาน", href: "/settings/logs", icon: <ScrollText size={18} />, show: hasPermission("logs.read") },
   ];
 
