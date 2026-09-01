@@ -4,15 +4,19 @@ import { useEffect, useState, useCallback, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@heroui/button";
 import { Checkbox } from "@heroui/checkbox";
+import { Input } from "@heroui/input";
 import { Spinner } from "@heroui/spinner";
 import { Tabs, Tab } from "@heroui/tabs";
 import { Modal, ModalContent, ModalHeader, ModalBody, ModalFooter, useDisclosure } from "@heroui/modal";
-import { ArrowLeft, Pencil, ShieldOff, Upload, FolderOpen, Trash2, Printer, Receipt } from "lucide-react";
+import { Select, SelectItem } from "@heroui/select";
+import { ArrowLeft, Pencil, ShieldOff, Upload, FolderOpen, Trash2, Printer, Receipt, ShieldAlert } from "lucide-react";
 import { api } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
 import { CustomerCard } from "../_components/customerCard";
 import { CustomerActivityLogs } from "../_components/activityLogs";
-import { DocumentList, DOC_ACCEPT, type CustomerDocument } from "../_components/documentList";
+import { DocumentList, DOC_ACCEPT, fmtSize, isPendingReview, type CustomerDocument } from "../_components/documentList";
+import { VerifyBadge } from "@/components/verifyBadge";
+import type { DocumentTypeDto } from "@/dtos/document-type-dto";
 import { PreviewQuote, PreviewQuoteHandle, type PayMethod } from "../../../quotation/_component/previewQuote";
 import { QuotationProps } from "../../../quotation/_component/quotation";
 import {
@@ -33,6 +37,7 @@ interface Customer {
   bank_account_name?: string;
   avatar?: string;
   is_active: boolean;
+  verification_status?: string;
   store_name?: string | null;
   store?: { id: number; name: string } | null;
 }
@@ -175,14 +180,19 @@ function StatCard({ title, value, unit, highlight, sub }: { title: string; value
 }
 
 // selfMode = ลูกค้าดูโปรไฟล์ของตัวเอง: ดึงข้อมูลจาก endpoint ที่ backend scope ตัวเองอัตโนมัติ
-// (customers.read เป็นสิทธิ์ของพนักงาน ลูกค้าเข้าไม่ได้) และซ่อน tab เอกสาร/ปุ่มแก้ไข
+// (customers.read เป็นสิทธิ์ของพนักงาน ลูกค้าเข้าไม่ได้) และซ่อนปุ่มแก้ไข
+// tab เอกสารเปิดให้ทั้งสองฝั่ง — ลูกค้าจัดการเอกสารของตัวเองผ่าน /customers/me/documents
 export const CustomerDetail = ({ selfMode = false }: { selfMode?: boolean } = {}) => {
   const router = useRouter();
   const searchParams = useSearchParams();
   const customerId = searchParams.get("id");
-  const { hasPermission, loading: authLoading, user, isCustomer } = useAuth();
+  const { hasPermission, loading: authLoading, user, isCustomer, refreshUser } = useAuth();
   const canRead = selfMode ? isCustomer : hasPermission("customers.read");
   const canUpdate = selfMode ? false : hasPermission("customers.update");
+  // ลูกค้าจัดการเอกสารของตัวเองได้เสมอ; ฝั่งพนักงานต้องมีสิทธิ์แก้ไขลูกค้า
+  const canManageDocs = selfMode ? true : canUpdate;
+  // ตรวจสอบเอกสารสำคัญเป็นสิทธิ์แยก พนักงานก็ทำได้ (migration 000094) — ลูกค้าไม่มีวันได้
+  const canApproveDocs = !selfMode && hasPermission("customers.approve_documents");
   // Logs are a back-office audit view: staff only, and only for staff holding
   // logs.read. A customer never sees the trail of their own account here.
   const canReadLogs = !selfMode && hasPermission("logs.read");
@@ -191,11 +201,26 @@ export const CustomerDetail = ({ selfMode = false }: { selfMode?: boolean } = {}
   const [docs, setDocs] = useState<CustomerDocument[]>([]);
   const [bills, setBills] = useState<Bill[]>([]);
   const [loading, setLoading] = useState(true);
-  const [tab, setTab] = useState("bills");
+  // ?tab=docs ให้ลิงก์ "ยืนยันบัญชีของคุณ" จากหน้าแรกเปิดมาที่แท็บเอกสารได้เลย
+  const [tab, setTab] = useState(searchParams.get("tab") === "docs" ? "docs" : "bills");
   const [historyStatus, setHistoryStatus] = useState("all");
   const [uploading, setUploading] = useState(false);
-  const [error, setError] = useState("");
   const docRef = useRef<HTMLInputElement>(null);
+
+  // Upload modal — ต้องเลือกประเภทเอกสารก่อนถึงจะอัปโหลดได้
+  const uploadDisc = useDisclosure();
+  const [docTypes, setDocTypes] = useState<DocumentTypeDto[]>([]);
+  const [uploadTypeId, setUploadTypeId] = useState("");
+  const [uploadFiles, setUploadFiles] = useState<File[]>([]);
+  const [uploadError, setUploadError] = useState("");
+  // เปลี่ยนเอกสารสำคัญ — ล็อกประเภทไว้ตามเอกสารเดิม ห้ามสลับไปประเภทอื่น
+  const [replacing, setReplacing] = useState<CustomerDocument | null>(null);
+
+  // Review actions (พนักงาน)
+  const rejectDisc = useDisclosure();
+  const [rejectTarget, setRejectTarget] = useState<CustomerDocument | null>(null);
+  const [rejectReason, setRejectReason] = useState("");
+  const [reviewing, setReviewing] = useState(false);
 
   const deleteDisc = useDisclosure();
   const [docTarget, setDocTarget] = useState<CustomerDocument | null>(null);
@@ -247,18 +272,36 @@ export const CustomerDetail = ({ selfMode = false }: { selfMode?: boolean } = {}
       });
   };
 
+  // ลูกค้าไม่มีสิทธิ์ customers.* จึงยิงผ่าน /customers/me/documents ที่ backend
+  // ผูกกับ user id ในโทเคนให้เอง ส่วนพนักงานยิงตาม id ของลูกค้าที่กำลังดู
+  const docsPath = selfMode ? "/customers/me/documents" : `/customers/${customerId}/documents`;
+
   const fetchDocs = useCallback(async () => {
-    if (!customerId) return;
-    const dRes = await api.get<CustomerDocument[]>(`/customers/${customerId}/documents`);
+    if (!selfMode && !customerId) return;
+    const dRes = await api.get<CustomerDocument[]>(docsPath);
     setDocs((dRes.data as unknown as CustomerDocument[]) || []);
-  }, [customerId]);
+  }, [customerId, selfMode, docsPath]);
+
+  // สถานะยืนยันตัวตนคำนวณจากเอกสารสำคัญ จึงเปลี่ยนทุกครั้งที่อัปโหลด/ตรวจสอบ —
+  // ดึงจากต้นทางใหม่แทนที่จะเดาเอง (ฝั่งลูกค้ามาจาก /auth/me)
+  const refreshCustomer = useCallback(async () => {
+    if (selfMode) { await refreshUser(); return; }
+    if (!customerId) return;
+    try {
+      const res = await api.get<Customer>(`/customers/${customerId}`);
+      setCustomer((res.data as unknown as Customer) || null);
+    } catch { /* ignore */ }
+  }, [selfMode, customerId, refreshUser]);
 
   const fetchAll = useCallback(async () => {
     setLoading(true);
     try {
       if (selfMode) {
         // ลูกค้าดูตัวเอง: /bills ถูก scope เป็นของลูกค้าที่ล็อกอินอยู่แล้ว
-        const bRes = await api.get<Bill[]>(`/bills?limit=100`).catch(() => null);
+        const [bRes, dRes] = await Promise.all([
+          api.get<Bill[]>(`/bills?limit=100`).catch(() => null),
+          api.get<CustomerDocument[]>(`/customers/me/documents`).catch(() => null),
+        ]);
         // ต้อง map ให้ครบทุกฟิลด์ที่ใบเสนอราคา/การ์ดลูกค้าใช้ — ที่อยู่ เลขผู้เสีย
         // ภาษี และบัญชีรับเงิน พิมพ์ลงใบจริง ถ้าตกไปช่องนั้นจะว่างเปล่า
         setCustomer(
@@ -276,10 +319,11 @@ export const CustomerDetail = ({ selfMode = false }: { selfMode?: boolean } = {}
                 bank: user.bank ?? null,
                 bank_account_no: user.bank_account_no,
                 bank_account_name: user.bank_account_name,
+                verification_status: user.verification_status,
               }
             : null
         );
-        setDocs([]);
+        setDocs((dRes?.data as unknown as CustomerDocument[]) || []);
         setBills((bRes?.data as unknown as Bill[]) || []);
         return;
       }
@@ -318,17 +362,80 @@ export const CustomerDetail = ({ selfMode = false }: { selfMode?: boolean } = {}
     } catch { /* silent */ }
   };
 
-  const handleUploadDocs = async (files: FileList | null) => {
-    if (!files || files.length === 0 || !customerId) return;
-    setError("");
+  // ประเภทเอกสารเป็น master data (ลูกค้า → ประเภทเอกสาร) — โหลดเฉพาะที่เปิดใช้งาน
+  // มาเป็นตัวเลือก ประเภทที่ถูกปิดจะยังแสดงบนเอกสารเก่าได้ แต่เลือกใหม่ไม่ได้
+  useEffect(() => {
+    if (!canManageDocs) return;
+    api.get<DocumentTypeDto[]>("/document-types")
+      .then((r) => setDocTypes(((r.data as unknown as DocumentTypeDto[]) || []).filter((t) => t.is_active)))
+      .catch(() => setDocTypes([]));
+  }, [canManageDocs]);
+
+  const openUpload = () => {
+    setReplacing(null);
+    setUploadTypeId("");
+    setUploadFiles([]);
+    setUploadError("");
+    if (docRef.current) docRef.current.value = "";
+    uploadDisc.onOpen();
+  };
+
+  // เอกสารสำคัญลบไม่ได้ แต่เปลี่ยนได้ — อัปโหลดใหม่ในประเภทเดิม แล้ว backend จะลบ
+  // ไฟล์เก่าทิ้งให้เอง และตั้งสถานะกลับไปเป็น "รอตรวจสอบ"
+  const openReplace = (d: CustomerDocument) => {
+    setReplacing(d);
+    setUploadTypeId(d.document_type_id ? String(d.document_type_id) : "");
+    setUploadFiles([]);
+    setUploadError("");
+    if (docRef.current) docRef.current.value = "";
+    uploadDisc.onOpen();
+  };
+
+  const handleApprove = async (d: CustomerDocument) => {
+    if (!customerId) return;
+    setReviewing(true);
+    try {
+      await api.put(`/customers/${customerId}/documents/${d.id}/approve`, {});
+      await Promise.all([fetchDocs(), refreshCustomer()]);
+    } catch { /* ignore */ } finally {
+      setReviewing(false);
+    }
+  };
+
+  const askReject = (d: CustomerDocument) => {
+    setRejectTarget(d);
+    setRejectReason("");
+    rejectDisc.onOpen();
+  };
+
+  const handleReject = async () => {
+    if (!rejectTarget || !customerId) return;
+    setReviewing(true);
+    try {
+      await api.put(`/customers/${customerId}/documents/${rejectTarget.id}/reject`, {
+        reason: rejectReason.trim(),
+      });
+      await Promise.all([fetchDocs(), refreshCustomer()]);
+      rejectDisc.onClose();
+    } catch { /* ignore */ } finally {
+      setReviewing(false);
+    }
+  };
+
+  const handleUploadDocs = async () => {
+    if (!uploadTypeId) return setUploadError("กรุณาเลือกประเภทเอกสาร");
+    if (uploadFiles.length === 0) return setUploadError("กรุณาเลือกไฟล์");
+    setUploadError("");
     setUploading(true);
     try {
       const fd = new FormData();
-      Array.from(files).forEach((f) => fd.append("files", f));
-      await api.upload(`/customers/${customerId}/documents`, fd);
-      await fetchDocs();
+      uploadFiles.forEach((f) => fd.append("files", f));
+      fd.append("document_type_id", uploadTypeId);
+      await api.upload(docsPath, fd);
+      await Promise.all([fetchDocs(), refreshCustomer()]);
+      uploadDisc.onClose();
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "อัปโหลดไม่สำเร็จ");
+      setUploadError(err instanceof Error ? err.message : "อัปโหลดไม่สำเร็จ");
     } finally {
       setUploading(false);
       if (docRef.current) docRef.current.value = "";
@@ -337,10 +444,10 @@ export const CustomerDetail = ({ selfMode = false }: { selfMode?: boolean } = {}
 
   const askDeleteDoc = (d: CustomerDocument) => { setDocTarget(d); deleteDisc.onOpen(); };
   const handleDeleteDoc = async () => {
-    if (!docTarget || !customerId) return;
+    if (!docTarget || (!selfMode && !customerId)) return;
     setDeleting(true);
     try {
-      await api.delete(`/customers/${customerId}/documents/${docTarget.id}`);
+      await api.delete(`${docsPath}/${docTarget.id}`);
       setDocs((prev) => prev.filter((d) => d.id !== docTarget.id));
       deleteDisc.onClose();
     } catch { /* ignore */ } finally {
@@ -420,6 +527,13 @@ export const CustomerDetail = ({ selfMode = false }: { selfMode?: boolean } = {}
   // master issues a quotation for their pending sale.
   const pendingBill = bills.find((b) => b.status === 10);
 
+  // เอกสารสำคัญที่ยังรอตรวจสอบ — คุมทั้งการ์ดแจ้งเตือนด้านบนและจุดแดงบน Tab เอกสาร
+  const pendingDocs = docs.filter(isPendingReview);
+
+  const selectedTypeIsHigh = docTypes.some(
+    (t) => String(t.id) === uploadTypeId && t.is_high_priority
+  );
+
   if (!customer) {
     return (
       <div className="flex flex-col items-center justify-center h-full gap-y-3 text-black/40">
@@ -465,6 +579,30 @@ export const CustomerDetail = ({ selfMode = false }: { selfMode?: boolean } = {}
         )}
       </div>
 
+      {/* รอตรวจสอบเอกสาร — พนักงานเห็นเป็นงานค้าง ลูกค้าเห็นเป็นสถานะของตัวเอง */}
+      {pendingDocs.length > 0 && (
+        <div className="flex flex-row items-center gap-x-3 shrink-0 mb-4 px-4 py-3 rounded-2xl border-1 border-yellow-500/40 bg-yellow-500/10 backdrop-blur-xl">
+          <ShieldAlert size={20} className="text-yellow-600 shrink-0" />
+          <div className="flex flex-col min-w-0 flex-1">
+            <span className="font-bold text-sm text-yellow-800">
+              รอตรวจสอบเอกสาร ({pendingDocs.length})
+            </span>
+            <span className="text-[11px] text-yellow-700 truncate">
+              {selfMode
+                ? `${pendingDocs.map((d) => d.document_type?.name).filter(Boolean).join(", ")} — รอพนักงานตรวจสอบ`
+                : `${pendingDocs.map((d) => d.document_type?.name).filter(Boolean).join(", ")} — กรุณาตรวจสอบและอนุมัติที่แท็บเอกสาร`}
+            </span>
+          </div>
+          <Button
+            size="sm"
+            className="bg-gradient-to-r from-[#c09c42] to-yellow-600 text-white font-bold rounded-2xl shrink-0"
+            onPress={() => setTab("docs")}
+          >
+            ดูเอกสาร
+          </Button>
+        </div>
+      )}
+
       <div className="flex flex-col md:flex-row w-full flex-1 min-h-0 gap-x-5 gap-y-4 overflow-y-auto md:overflow-hidden scrollbar-hide">
         {/* Left: card */}
         <div className="flex flex-col gap-y-3 md:w-72 shrink-0 md:overflow-y-auto md:min-h-0 scrollbar-hide">
@@ -479,6 +617,7 @@ export const CustomerDetail = ({ selfMode = false }: { selfMode?: boolean } = {}
             bankName={customer.bank?.name}
             bankAccountNo={customer.bank_account_no}
             bankAccountName={customer.bank_account_name}
+            verificationStatus={customer.verification_status}
             isActive={customer.is_active}
             canEdit={canUpdate}
             onImageUpload={handleAvatarUpload}
@@ -519,7 +658,17 @@ export const CustomerDetail = ({ selfMode = false }: { selfMode?: boolean } = {}
           >
             <Tab key="bills" title={`บิลที่ออก (${bills.length})`} />
             <Tab key="history" title={`ประวัติ (${historyRows.length})`} />
-            {!selfMode ? <Tab key="docs" title={`เอกสาร (${docs.length})`} /> : null}
+            <Tab
+              key="docs"
+              title={
+                <span className="flex items-center gap-x-1.5">
+                  เอกสาร ({docs.length})
+                  {pendingDocs.length > 0 && (
+                    <span className="w-2 h-2 rounded-full bg-red-500 shrink-0" />
+                  )}
+                </span>
+              }
+            />
             {canReadLogs ? <Tab key="logs" title="Logs" /> : null}
           </Tabs>
 
@@ -635,29 +784,31 @@ export const CustomerDetail = ({ selfMode = false }: { selfMode?: boolean } = {}
                 <div className="flex items-center gap-x-2 font-bold text-sm text-black/70">
                   <FolderOpen size={16} className="text-[#c09c42]" />
                   เอกสาร ({docs.length})
+                  {pendingDocs.length > 0 && (
+                    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full border-1 bg-red-500/15 text-red-700 border-red-500/40">
+                      รอตรวจสอบ {pendingDocs.length}
+                    </span>
+                  )}
                 </div>
-                {canUpdate && (
-                  <>
-                    <input ref={docRef} type="file" accept={DOC_ACCEPT} multiple className="hidden" onChange={(e) => handleUploadDocs(e.target.files)} />
-                    <Button
-                      size="sm"
-                      className="bg-gradient-to-r from-[#c09c42] to-yellow-600 text-white font-bold"
-                      startContent={<Upload size={14} />}
-                      isLoading={uploading}
-                      onPress={() => docRef.current?.click()}
-                    >
-                      อัปโหลด
-                    </Button>
-                  </>
+                {canManageDocs && (
+                  <Button
+                    size="sm"
+                    className="bg-gradient-to-r from-[#c09c42] to-yellow-600 text-white font-bold"
+                    startContent={<Upload size={14} />}
+                    onPress={openUpload}
+                  >
+                    อัปโหลด
+                  </Button>
                 )}
               </div>
-              {error && (
-                <div className="mx-4 mt-3 text-red-500 text-sm bg-red-50 border border-red-200 rounded-xl px-4 py-2">{error}</div>
-              )}
               <div className="overflow-y-auto scrollbar-hide p-2">
                 <DocumentList
                   docs={docs}
-                  onDelete={canUpdate ? askDeleteDoc : undefined}
+                  onDelete={canManageDocs ? askDeleteDoc : undefined}
+                  onReplace={canManageDocs ? openReplace : undefined}
+                  onApprove={canApproveDocs ? handleApprove : undefined}
+                  onReject={canApproveDocs ? askReject : undefined}
+                  canDeleteHighPriority={!selfMode && canUpdate}
                   emptyText="ยังไม่มีเอกสาร (รองรับ รูปภาพ, PDF, DOCX, XLSX)"
                 />
               </div>
@@ -754,6 +905,116 @@ export const CustomerDetail = ({ selfMode = false }: { selfMode?: boolean } = {}
               onPress={() => previewRef.current?.print({ includePage2: printPage2 })}
             >
               พิมพ์
+            </Button>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
+
+      {/* Upload document — ต้องระบุประเภทเอกสารทุกครั้ง */}
+      <Modal isOpen={uploadDisc.isOpen} onClose={uploadDisc.onClose} size="md">
+        <ModalContent>
+          <ModalHeader className="font-bold">
+            {replacing ? `เปลี่ยน${replacing.document_type?.name ?? "เอกสาร"}` : "อัปโหลดเอกสาร"}
+          </ModalHeader>
+          <ModalBody className="flex flex-col gap-y-3">
+            {/* ตอนเปลี่ยนเอกสารสำคัญ ประเภทถูกล็อกไว้ — ไม่งั้นจะกลายเป็นการอัปโหลด
+                เอกสารคนละใบแทนที่จะเปลี่ยนใบเดิม */}
+            <Select
+              label="ประเภทเอกสาร"
+              selectedKeys={uploadTypeId ? [uploadTypeId] : []}
+              onSelectionChange={(keys) => setUploadTypeId(String(Array.from(keys)[0] ?? ""))}
+              isRequired
+              isDisabled={!!replacing}
+              classNames={{ trigger: "bg-gradient-to-br from-black/10 to-transparent border-1 border-black/10 rounded-2xl" }}
+            >
+              {docTypes.map((t) => (
+                <SelectItem key={String(t.id)}>
+                  {t.is_high_priority ? `${t.name} (เอกสารสำคัญ)` : t.name}
+                </SelectItem>
+              ))}
+            </Select>
+            {docTypes.length === 0 && (
+              <span className="text-[11px] text-amber-700">
+                ยังไม่มีประเภทเอกสารที่เปิดใช้งาน — เพิ่มได้ที่หน้าลูกค้า → ประเภทเอกสาร
+              </span>
+            )}
+            {selectedTypeIsHigh && (
+              <div className="flex items-start gap-x-2 text-[11px] text-yellow-800 bg-yellow-500/10 border-1 border-yellow-500/30 rounded-xl px-3 py-2">
+                <ShieldAlert size={14} className="shrink-0 mt-0.5 text-yellow-600" />
+                <span>
+                  เอกสารสำคัญ — อัปโหลดได้ครั้งละ 1 ไฟล์ ไฟล์เดิมจะถูกแทนที่
+                  และต้องรอพนักงานตรวจสอบอีกครั้ง
+                </span>
+              </div>
+            )}
+
+            <input
+              ref={docRef}
+              type="file"
+              accept={DOC_ACCEPT}
+              multiple={!selectedTypeIsHigh}
+              className="hidden"
+              onChange={(e) => {
+                setUploadFiles(Array.from(e.target.files ?? []));
+                setUploadError("");
+              }}
+            />
+            <Button
+              variant="bordered"
+              className="border-1 border-black/10 bg-black/5 rounded-2xl font-bold"
+              startContent={<FolderOpen size={15} />}
+              onPress={() => docRef.current?.click()}
+            >
+              {uploadFiles.length > 0 ? `เลือกแล้ว ${uploadFiles.length} ไฟล์` : selectedTypeIsHigh ? "เลือกไฟล์ (1 ไฟล์)" : "เลือกไฟล์"}
+            </Button>
+            {uploadFiles.length > 0 && (
+              <div className="flex flex-col gap-y-0.5 max-h-32 overflow-y-auto scrollbar-hide">
+                {uploadFiles.map((f) => (
+                  <span key={f.name} className="text-[11px] text-black/50 truncate">
+                    {f.name} · {fmtSize(f.size)}
+                  </span>
+                ))}
+              </div>
+            )}
+            <span className="text-[11px] text-black/40">รองรับ รูปภาพ, PDF, DOCX, XLSX</span>
+            {uploadError && (
+              <div className="text-red-500 text-sm bg-red-50 border border-red-200 rounded-xl px-4 py-2">{uploadError}</div>
+            )}
+          </ModalBody>
+          <ModalFooter>
+            <Button variant="light" onPress={uploadDisc.onClose} isDisabled={uploading}>ยกเลิก</Button>
+            <Button
+              className="bg-gradient-to-r from-[#c09c42] to-yellow-600 text-white font-bold rounded-2xl"
+              onPress={handleUploadDocs}
+              isLoading={uploading}
+            >
+              {replacing ? "เปลี่ยนเอกสาร" : "อัปโหลด"}
+            </Button>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
+
+      {/* Reject document — เหตุผลจะถูกส่งไปให้ลูกค้าทางแจ้งเตือน */}
+      <Modal isOpen={rejectDisc.isOpen} onClose={rejectDisc.onClose} size="sm">
+        <ModalContent>
+          <ModalHeader className="font-bold text-amber-700">เอกสารไม่ผ่านการตรวจสอบ</ModalHeader>
+          <ModalBody className="flex flex-col gap-y-3">
+            <p className="text-sm text-black/70">
+              {rejectTarget?.document_type?.name} ของลูกค้ารายนี้ไม่ผ่านการตรวจสอบ
+              ลูกค้าจะได้รับแจ้งเตือนให้อัปโหลดใหม่
+            </p>
+            <Input
+              label="เหตุผล (ไม่บังคับ)"
+              value={rejectReason}
+              onValueChange={setRejectReason}
+              placeholder="เช่น รูปไม่ชัด, ข้อมูลไม่ตรง"
+              classNames={{ inputWrapper: "bg-gradient-to-br from-black/10 to-transparent border-1 border-black/10 rounded-2xl" }}
+            />
+          </ModalBody>
+          <ModalFooter>
+            <Button variant="light" onPress={rejectDisc.onClose} isDisabled={reviewing}>ยกเลิก</Button>
+            <Button color="warning" className="text-white font-bold" onPress={handleReject} isLoading={reviewing}>
+              ยืนยันไม่ผ่าน
             </Button>
           </ModalFooter>
         </ModalContent>

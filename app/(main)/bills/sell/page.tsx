@@ -4,6 +4,7 @@ import { BillCalculate } from "../_component/billCalculate";
 import { useState, useEffect, useCallback } from "react";
 import { QuotationProps } from "../../quotation/_component/quotation";
 import { api } from "@/lib/api";
+import { VerifyBadge } from "@/components/verifyBadge";
 import { useAuth } from "@/contexts/auth-context";
 import { ShieldOff, UserCircle, Search, Check } from "lucide-react";
 import { Spinner } from "@heroui/spinner";
@@ -29,6 +30,7 @@ interface SellCustomer {
   phone?: string;
   avatar?: string;
   store_name?: string | null;
+  verification_status?: string;
 }
 
 export default function SellForCustomerPage() {
@@ -113,8 +115,9 @@ export default function SellForCustomerPage() {
                 }
               />
               <div className="flex flex-col min-w-0">
-                <span className="text-sm font-bold text-black/70 truncate">
+                <span className="text-sm font-bold text-black/70 truncate flex items-center gap-x-1">
                   ขายแทน: {customer.name}
+                  <VerifyBadge status={customer.verification_status} size={13} />
                 </span>
                 <span className="text-[11px] text-black/40 truncate">
                   {customer.store_name || customer.email}
@@ -181,8 +184,9 @@ export default function SellForCustomerPage() {
                     <UserCircle size={14} className="text-[#c09c42]" />
                     <span>
                       ขายแทน{" "}
-                      <span className="font-bold text-black/80">
+                      <span className="font-bold text-black/80 inline-flex items-center gap-x-1">
                         {customer?.name}
+                        <VerifyBadge status={customer?.verification_status} size={13} />
                       </span>
                     </span>
                   </div>
@@ -316,8 +320,9 @@ function CustomerPicker({
                         src={c.avatar ? `${API_BASE}${c.avatar}` : undefined}
                       />
                       <div className="flex flex-col min-w-0">
-                        <span className="text-sm font-bold text-black/70 truncate">
+                        <span className="text-sm font-bold text-black/70 truncate flex items-center gap-x-1">
                           {c.name}
+                          <VerifyBadge status={c.verification_status} size={13} />
                         </span>
                         <span className="text-[11px] text-black/40 truncate">
                           {c.store_name || c.email}

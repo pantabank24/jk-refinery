@@ -17,13 +17,16 @@ import {
   ArrowUp,
   ArrowDown,
   Minus,
+  BadgeCheck,
 } from "lucide-react";
 import { BoxCard } from "@/components/boxcard";
 import { Avatar } from "@heroui/avatar";
 import { useAuth } from "@/contexts/auth-context";
+import { VerifyBadge } from "@/components/verifyBadge";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { api } from "@/lib/api";
+import type { DocumentTypeDto } from "@/dtos/document-type-dto";
 import { useSalesStatus } from "@/hooks/use-sales-status";
 import { SalesStatusBanner } from "@/components/sales-status-banner";
 import {
@@ -109,6 +112,8 @@ export default function Home() {
   };
   const [goldPrice, setGoldPrice] = useState<GoldPriceLite | null>(null);
   const [recentItems, setRecentItems] = useState<RecentItem[]>([]);
+  // ชื่อเอกสารสำคัญที่ลูกค้ายังไม่ได้ส่ง — ว่างไว้แปลว่าไม่ต้องเตือนอะไร
+  const [missingDocTypes, setMissingDocTypes] = useState<string[]>([]);
 
   useEffect(() => {
     if (!loading && !user) {
@@ -139,6 +144,34 @@ export default function Home() {
       )
       .catch(() => setRecentItems([]));
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, isCustomer]);
+
+  // เตือนแบบเบา ๆ ให้ลูกค้าส่งเอกสารยืนยันตัวตน ยังไม่ส่งก็ใช้งานได้ตามปกติ
+  // ชื่อเอกสารอ่านจาก master data ไม่ฮาร์ดโค้ด เผื่อร้านตั้งเอกสารสำคัญเพิ่ม
+  useEffect(() => {
+    if (!user || !isCustomer) {
+      setMissingDocTypes([]);
+      return;
+    }
+    type DocRow = { document_type_id?: number | null; approval_status?: string };
+    Promise.all([
+      api.get<DocumentTypeDto[]>("/document-types").catch(() => null),
+      api.get<DocRow[]>("/customers/me/documents").catch(() => null),
+    ]).then(([tRes, dRes]) => {
+      const types = ((tRes?.data as unknown as DocumentTypeDto[]) || []).filter(
+        (t) => t.is_active && t.is_high_priority,
+      );
+      const docs = (dRes?.data as unknown as DocRow[]) || [];
+      // นับว่ายังต้องส่งทั้งกรณีไม่เคยอัปโหลด และกรณีอัปโหลดแล้วไม่ผ่าน — ลูกค้า
+      // ต้องลงมืออย่างเดียวกัน ส่วนที่รอตรวจสอบอยู่ถือว่าส่งแล้ว ไม่ต้องเตือนซ้ำ
+      const missing = types.filter(
+        (t) =>
+          !docs.some(
+            (d) => d.document_type_id === t.id && d.approval_status !== "rejected",
+          ),
+      );
+      setMissingDocTypes(missing.map((t) => t.name));
+    });
   }, [user, isCustomer]);
 
   const openNews = (item: NewsData) => {
@@ -227,11 +260,34 @@ export default function Home() {
         />
         <div className="flex flex-col">
           <span className="font-bold text-lg text-black">สวัสดี</span>
-          <span className="font-bold text-2xl bg-gradient-to-r from-black/90 to-yellow-400 bg-clip-text text-transparent -mt-2">
+          <span className="font-bold text-2xl bg-gradient-to-r from-black/90 to-yellow-400 bg-clip-text text-transparent -mt-2 flex items-center gap-x-1.5">
             {user.name}
+            {/* พนักงานไม่มีเอกสารสำคัญ badge จึงขึ้นเฉพาะฝั่งลูกค้า */}
+            {isCustomer && <VerifyBadge status={user.verification_status} size={18} />}
           </span>
         </div>
       </motion.div>
+
+      {/* ยืนยันบัญชี — ตั้งใจให้เบา (โทนเทา ไม่ใช่สีเตือน) เพราะยังไม่ส่งเอกสาร
+          ก็ขายได้ตามปกติ เป็นคำชวน ไม่ใช่สิ่งกีดขวาง */}
+      {missingDocTypes.length > 0 && (
+        <motion.div variants={sectionItem} className="mb-3">
+          <button
+            type="button"
+            onClick={() => router.push("/account?tab=docs")}
+            className="w-full flex flex-row items-center gap-x-2.5 rounded-2xl border-1 border-black/10 bg-black/[0.03] px-3 py-2 text-left hover:bg-black/[0.07] transition-colors"
+          >
+            <BadgeCheck size={16} className="text-black/30 shrink-0" />
+            <span className="flex flex-col min-w-0 flex-1">
+              <span className="text-xs font-bold text-black/60">ยืนยันบัญชีของคุณ</span>
+              <span className="text-[11px] text-black/40 truncate">
+                อัปโหลด{missingDocTypes.join(" และ ")}เพื่อยืนยันบัญชี
+              </span>
+            </span>
+            <ChevronRight size={15} className="text-black/25 shrink-0" />
+          </button>
+        </motion.div>
+      )}
 
       {salesStatus?.enabled && (
         <motion.div variants={sectionItem} className="mb-3">

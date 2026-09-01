@@ -2,6 +2,7 @@ import { useRef } from "react";
 import { Avatar } from "@heroui/avatar";
 import { Chip } from "@heroui/chip";
 import { Camera, Phone, Building2, MapPin, Mail, ReceiptText, Landmark } from "lucide-react";
+import { VerifyBadge } from "@/components/verifyBadge";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL?.replace("/api/v1", "") || "http://localhost:8080";
 
@@ -17,13 +18,15 @@ interface Props {
   bankAccountNo?: string;
   bankAccountName?: string;
   isActive: boolean;
+  /** สถานะยืนยันตัวตนจากเอกสารสำคัญ — none / pending / verified / rejected */
+  verificationStatus?: string;
   canEdit?: boolean;
   onImageUpload?: (file: File) => void;
 }
 
 export const CustomerCard = ({
   name, email, avatar, phone, storeName, address, taxId,
-  bankName, bankAccountNo, bankAccountName, isActive, canEdit, onImageUpload,
+  bankName, bankAccountNo, bankAccountName, isActive, verificationStatus, canEdit, onImageUpload,
 }: Props) => {
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -54,9 +57,12 @@ export const CustomerCard = ({
       </div>
 
       <div className="flex flex-col items-center gap-y-1">
-        <span className="font-bold text-xl bg-gradient-to-r from-black/90 to-yellow-400 bg-clip-text text-transparent text-center">
-          {name}
-        </span>
+        <div className="flex items-center justify-center gap-x-1.5">
+          <span className="font-bold text-xl bg-gradient-to-r from-black/90 to-yellow-400 bg-clip-text text-transparent text-center">
+            {name}
+          </span>
+          <VerifyBadge status={verificationStatus} size={18} />
+        </div>
         <Chip color={isActive ? "success" : "danger"} variant="flat" size="sm" className="font-bold">
           {isActive ? "ใช้งาน" : "ปิดใช้งาน"}
         </Chip>

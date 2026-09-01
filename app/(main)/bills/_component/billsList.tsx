@@ -2,11 +2,12 @@
 
 import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import { Avatar } from "@heroui/avatar";
-import { CheckCircle, XCircle, FileUp, AlertCircle, Trash2, Store, Pencil, ChevronLeft, ChevronRight, Zap } from "lucide-react";
+import { CheckCircle, XCircle, FileUp, AlertCircle, Trash2, Store, Pencil, ChevronLeft, ChevronRight, ChevronDown, Zap } from "lucide-react";
 import { ConfirmDeleteModal } from "@/components/confirmDeleteModal";
 import moment from "moment";
 import { CmpInput } from "@/components/cmpInput";
 import { api } from "@/lib/api";
+import { VerifyBadge } from "@/components/verifyBadge";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/auth-context";
 import { Spinner } from "@heroui/spinner";
@@ -64,7 +65,7 @@ interface BillData {
   // the receipt-header fields, not just id/name.
   store?: StoreHeaderSnapshot & { id: number; name: string } | null;
   branch?: { id: number; name: string } | null;
-  creator?: { id: number; name: string; phone?: string; address?: string; tax_id?: string; bank?: { id: number; name: string } | null; bank_account_no?: string; bank_account_name?: string } | null;
+  creator?: { id: number; name: string; verification_status?: string; phone?: string; address?: string; tax_id?: string; bank?: { id: number; name: string } | null; bank_account_no?: string; bank_account_name?: string } | null;
   issued_quotation_id?: number | null;
   items?: BillItem[];
   images?: { id: number; image_url: string; type?: string }[];
@@ -94,6 +95,8 @@ interface BillGroup {
   status: number;
   total: number;
   rawTotal: number; // unadjusted total_amount before issued quotation
+  // The item lines the totals below were computed from — what the row expands to.
+  items: BillItem[];
   weight: number; // gold weight (baht) — kept for the melt/refinery metrics
   // Metal split: gold is weighed in baht, silver (and other metals) in grams, so
   // they are tracked separately and never summed into one figure.
@@ -178,6 +181,7 @@ const groupBills = (list: BillData[]): BillGroup[] => {
       total: group[0].issued_quotation?.total_amount
         ?? group.reduce((s, x) => s + x.total_amount, 0),
       rawTotal: group.reduce((s, x) => s + x.total_amount, 0),
+      items,
       weight: split.goldWeight,
       goldWeight: split.goldWeight,
       silverWeight: split.silverWeight,
@@ -273,6 +277,17 @@ export function BillsList({ metal }: { metal: BillMetal }) {
   const [totalPages, setTotalPages] = useState(1);
   // Totals for the whole filter (server-side) — independent of the page shown.
   const [summary, setSummary] = useState<BillSummary>(EMPTY_SUMMARY);
+  // Item lines show by default — the customer opens this list to check what a
+  // bill is made of. The set tracks the rows they have since folded away, so
+  // "expanded" is the absence of an entry rather than the presence of one.
+  const [collapsedKeys, setCollapsedKeys] = useState<Set<string>>(new Set());
+  const isExpanded = (key: string) => !collapsedKeys.has(key);
+  const toggleExpand = (key: string) =>
+    setCollapsedKeys((prev) => {
+      const next = new Set(prev);
+      if (!next.delete(key)) next.add(key);
+      return next;
+    });
 
   const detailDisc = useDisclosure();
   const [detailB, setDetailB] = useState<BillData | null>(null);
@@ -332,11 +347,13 @@ export function BillsList({ metal }: { metal: BillMetal }) {
   const billGroups: BillGroup[] = useMemo(() => {
     if (isCustomer) {
       return bills.map((b) => {
-        const split = metalSplit(b.issued_quotation?.items ?? b.items);
+        const items = b.issued_quotation?.items ?? b.items ?? [];
+        const split = metalSplit(items);
         return {
           key: `b${b.id}`, rep: b, billIds: [b.id], status: b.status,
           total: b.issued_quotation?.total_amount ?? b.total_amount,
           rawTotal: b.total_amount,
+          items,
           weight: split.goldWeight,
           goldWeight: split.goldWeight,
           silverWeight: split.silverWeight,
@@ -350,6 +367,30 @@ export function BillsList({ metal }: { metal: BillMetal }) {
     }
     return groupBills(bills);
   }, [bills, isCustomer]);
+
+  // Expanding is for the customer's own list: one row = one of their sells, and
+  // a รอออกบิล bill keeps accumulating items, so the lines behind the total are
+  // what they actually came to check. Staff rows combine several bills and lead
+  // to the issue/detail flow instead.
+  const canExpand = isCustomer;
+
+  // The table has no colspan (react-aria grid), so an expanded item is a normal
+  // row laid out on the same six columns as the bill row above it.
+  type BillRow =
+    | { key: string; kind: "bill"; g: BillGroup }
+    | { key: string; kind: "item"; it: BillItem };
+
+  const tableRows: BillRow[] = useMemo(() => {
+    const rows: BillRow[] = [];
+    for (const g of billGroups) {
+      rows.push({ key: g.key, kind: "bill", g });
+      if (!canExpand || collapsedKeys.has(g.key)) continue;
+      g.items.forEach((it, i) =>
+        rows.push({ key: `${g.key}-i${it.id || i}`, kind: "item", it }),
+      );
+    }
+    return rows;
+  }, [billGroups, collapsedKeys, canExpand]);
 
   // The query behind both the page of rows and the overview totals — they must
   // describe the same set, so it is built once.
@@ -782,43 +823,93 @@ export function BillsList({ metal }: { metal: BillMetal }) {
                   <TableColumn>สถานะ</TableColumn>
                   <TableColumn>วันที่</TableColumn>
                 </TableHeader>
-                <TableBody items={billGroups} emptyContent="ไม่พบข้อมูล">
-                  {(g) => (
+                <TableBody items={tableRows} emptyContent="ไม่พบข้อมูล">
+                  {(row) => row.kind === "item" ? (
+                    // Item line of the row above — same columns, dimmed and indented.
+                    <TableRow key={row.key} className="bg-black/[0.03]">
+                      <TableCell>
+                        <div className="flex items-center gap-x-1.5 pl-5 min-w-0">
+                          <span className="text-black/25 shrink-0">↳</span>
+                          <span className="text-xs font-bold text-black/60 truncate">{row.it.type_name}</span>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <span className="text-xs text-black/45">
+                          น้ำหนัก{" "}
+                          <span className="font-bold text-black/70">
+                            {(row.it.weight || 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                          </span>{" "}
+                          {itemWeightUnit(row.it.metal)}
+                        </span>
+                      </TableCell>
+                      <TableCell>
+                        <span className="text-xs font-bold text-yellow-700/80">
+                          {(row.it.total || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                        </span>
+                      </TableCell>
+                      <TableCell>
+                        <span className="text-xs text-black/45">
+                          ราคา {(row.it.price || 0).toLocaleString()}
+                        </span>
+                      </TableCell>
+                      <TableCell><span className="text-black/20">—</span></TableCell>
+                      <TableCell>
+                        <span className="text-xs text-black/40">
+                          {row.it.created_at ? moment(row.it.created_at).format("DD/MM/YY HH:mm") : "—"}
+                        </span>
+                      </TableCell>
+                    </TableRow>
+                  ) : (
                     <TableRow
-                      key={g.key}
+                      key={row.key}
                       className="cursor-pointer hover:bg-white/60 rounded-xl"
-                      onClick={() => handleRowClick(g)}
+                      onClick={() => handleRowClick(row.g)}
                     >
                       <TableCell>
                         <div className="flex items-center gap-x-1.5">
+                          {canExpand && row.g.items.length > 0 && (
+                            <button
+                              type="button"
+                              aria-label="รายการย่อย"
+                              // Stops the row's open-detail click — the chevron only unfolds.
+                              onClick={(e) => { e.stopPropagation(); toggleExpand(row.g.key); }}
+                              className="shrink-0 flex items-center text-[10px] font-bold text-[#8a6f22] hover:opacity-70"
+                            >
+                              {isExpanded(row.g.key) ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
+                              {row.g.items.length}
+                            </button>
+                          )}
                           <span className="font-bold text-sm bg-gradient-to-l from-black/90 to-yellow-600 bg-clip-text text-transparent">
-                            {g.rep.code}
-                            {g.count > 1 && <span className="ml-1 text-[10px] font-bold text-blue-600">รวม {g.count} บิล</span>}
+                            {row.g.rep.code}
+                            {row.g.count > 1 && <span className="ml-1 text-[10px] font-bold text-blue-600">รวม {row.g.count} บิล</span>}
                           </span>
-                          {g.autoSell && <AutoSellChip />}
+                          {row.g.autoSell && <AutoSellChip />}
                         </div>
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center gap-x-2">
-                          <Avatar size="sm" name={g.rep.creator?.name} />
-                          <span className="text-sm font-bold text-black/70">{g.rep.creator?.name ?? "ไม่ระบุลูกค้า"}</span>
+                          <Avatar size="sm" name={row.g.rep.creator?.name} />
+                          <span className="text-sm font-bold text-black/70 flex items-center gap-x-1">
+                            {row.g.rep.creator?.name ?? "ไม่ระบุลูกค้า"}
+                            {row.g.rep.creator && <VerifyBadge status={row.g.rep.creator.verification_status} size={14} />}
+                          </span>
                         </div>
                       </TableCell>
                       <TableCell>
-                        <span className="font-bold text-yellow-700">{g.rawTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                        <span className="font-bold text-yellow-700">{row.g.rawTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
                       </TableCell>
                       <TableCell>
-                        {g.total !== g.rawTotal
-                          ? <span className="font-bold text-black/70">{g.total.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                        {row.g.total !== row.g.rawTotal
+                          ? <span className="font-bold text-black/70">{row.g.total.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
                           : <span className="text-black/25">—</span>
                         }
                       </TableCell>
                       <TableCell>
-                        <span className={`text-xs font-bold px-2 py-0.5 rounded-full border-1 ${STATUS_COLOR[g.status]}`}>
-                          {STATUS_LABEL[g.status]}
+                        <span className={`text-xs font-bold px-2 py-0.5 rounded-full border-1 ${STATUS_COLOR[row.g.status]}`}>
+                          {STATUS_LABEL[row.g.status]}
                         </span>
                       </TableCell>
-                      <TableCell>{dateCell(g)}</TableCell>
+                      <TableCell>{dateCell(row.g)}</TableCell>
                     </TableRow>
                   )}
                 </TableBody>
@@ -850,8 +941,9 @@ export function BillsList({ metal }: { metal: BillMetal }) {
                   <div className="flex flex-row items-center justify-between">
                     <div className="flex flex-row items-center gap-x-2">
                       <Avatar size="sm" name={g.rep.creator ? g.rep.creator.name : undefined} />
-                      <span className="text-sm font-bold text-black/70">
+                      <span className="text-sm font-bold text-black/70 flex items-center gap-x-1">
                         {g.rep.creator ? g.rep.creator.name : "ไม่ระบุลูกค้า"}
+                        {g.rep.creator && <VerifyBadge status={g.rep.creator.verification_status} size={14} />}
                       </span>
                     </div>
                     <div className="flex flex-col items-end">
@@ -866,6 +958,43 @@ export function BillsList({ metal }: { metal: BillMetal }) {
                       {dateCell(g, true)}
                     </div>
                   </div>
+
+                  {/* รายการย่อย — the item lines the total is made of */}
+                  {canExpand && g.items.length > 0 && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); toggleExpand(g.key); }}
+                        className="self-start flex items-center gap-x-0.5 text-[10px] font-bold text-[#8a6f22]"
+                      >
+                        {isExpanded(g.key) ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+                        รายการย่อย {g.items.length} รายการ
+                      </button>
+                      {isExpanded(g.key) && (
+                        <div
+                          // Tapping a line shouldn't open the bill's detail modal.
+                          onClick={(e) => e.stopPropagation()}
+                          className="flex flex-col gap-y-1.5 border-t border-black/10 pt-2"
+                        >
+                          {g.items.map((it, i) => (
+                            <div key={it.id || i} className="flex flex-row items-start justify-between gap-x-2">
+                              <div className="flex flex-col min-w-0">
+                                <span className="text-xs font-bold text-black/70 truncate">{it.type_name}</span>
+                                <span className="text-[10px] text-black/40">
+                                  {(it.weight || 0).toLocaleString(undefined, { maximumFractionDigits: 2 })} {itemWeightUnit(it.metal)}
+                                  {` · ราคา ${(it.price || 0).toLocaleString()}`}
+                                  {it.created_at ? ` · ${moment(it.created_at).format("DD/MM/YY HH:mm")}` : ""}
+                                </span>
+                              </div>
+                              <span className="shrink-0 text-xs font-bold text-yellow-700/80">
+                                {(it.total || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </>
+                  )}
                 </div>
               ))}
             </div>
@@ -905,9 +1034,14 @@ export function BillsList({ metal }: { metal: BillMetal }) {
                 {STATUS_LABEL[detailB?.status ?? 10]}
               </span>
             </div>
-            <span className="text-xs font-normal text-black/50">
+            <span className="text-xs font-normal text-black/50 inline-flex items-center gap-x-1 flex-wrap">
               {detailB && moment(detailB.created_at).format("DD/MM/YYYY HH:mm")}
-              {detailB?.creator && ` · โดย ${detailB.creator.name}`}
+              {detailB?.creator && (
+                <>
+                  <span>· โดย {detailB.creator.name}</span>
+                  <VerifyBadge status={detailB.creator.verification_status} size={12} />
+                </>
+              )}
               {detailB?.store && ` · ${detailB.store.name}`}
               {detailB?.branch && ` / ${detailB.branch.name}`}
             </span>
@@ -1325,6 +1459,9 @@ export function BillsList({ metal }: { metal: BillMetal }) {
                         <div className="flex items-center gap-x-2 px-1">
                           <Avatar size="sm" name={name} className="w-5 h-5 text-[10px]" />
                           <span className="text-xs font-bold text-black/60">{name}</span>
+                          {groups[0]?.rep.creator && (
+                            <VerifyBadge status={groups[0].rep.creator.verification_status} size={12} />
+                          )}
                         </div>
                         {groups.map((g) => (
                           <div key={g.key} className="flex items-center justify-between bg-white/70 border border-black/10 rounded-xl px-2.5 py-1.5">

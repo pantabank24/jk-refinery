@@ -37,6 +37,7 @@ import {
 import { Button } from "@heroui/button";
 import { Input } from "@heroui/input";
 import { Checkbox } from "@heroui/checkbox";
+import { Tabs, Tab } from "@heroui/tabs";
 import { Spinner } from "@heroui/spinner";
 import { useStore } from "@/contexts/store-context";
 import { StoreBranchSelector } from "@/components/store-branch-selector";
@@ -196,6 +197,9 @@ export default function QuotationPage() {
   const beforeImages = beforeFiles.map((f) => URL.createObjectURL(f));
   const afterImages = afterFiles.map((f) => URL.createObjectURL(f));
   const [listOpen, setListOpen] = useState(false);
+  // Which half of the mobile drawer is showing: what the customer submitted, or
+  // what has been keyed into this quotation. Desktop stacks both, a phone can't.
+  const [listTab, setListTab] = useState<"reference" | "saved">("saved");
 
   // When a master issues a customer's bill, this page is opened with ?billId=X:
   // pre-fill the sold items and the customer's name as the signer.
@@ -982,8 +986,12 @@ export default function QuotationPage() {
     });
   };
 
+  // The customer's submitted lines only exist in bill mode. Without them the
+  // drawer has a single list and needs no tab strip.
+  const hasReference = !!billId && referenceItems.length > 0;
+
   const renderReferenceCard = (extraClass = "") => {
-    if (!billId || referenceItems.length === 0) return null;
+    if (!hasReference) return null;
     const allSelected = selectedItemIds.size === referenceItems.length;
     return (
       <div
@@ -1162,7 +1170,12 @@ export default function QuotationPage() {
         <div className="flex flex-col w-full min-w-0 items-start">
           <Calculate
             onAdd={handleAddItem}
-            onOpenList={() => setListOpen(true)}
+            onOpenList={() => {
+              // Nothing keyed yet means the master is still working from the
+              // customer's list — open there instead of on an empty tab.
+              setListTab(hasReference && quotation.length === 0 ? "reference" : "saved");
+              setListOpen(true);
+            }}
             quotationCount={quotation.length}
             lockMeltType={!!billId}
             // Issuing a bill opens on that bill's metal (bills are single-metal).
@@ -1199,13 +1212,17 @@ export default function QuotationPage() {
         }`}
       />
 
-      {/* Mobile right drawer */}
-      <div
-        className={`lg:hidden fixed top-0 right-0 z-50 h-full w-80 pt-5 pb-5 px-4 flex flex-col transition-transform duration-300 ease-in-out ${
-          listOpen ? "translate-x-0" : "translate-x-full"
-        }`}
-      >
-        <div className="flex flex-col h-full border-1 border-black/10 bg-white/75 shadow-2xl backdrop-blur-xs rounded-4xl p-4 gap-y-2">
+      {/* Mobile drawer — full screen. A 20rem panel left the reference card and
+          the keyed items fighting over the same few hundred pixels.
+          The wrapper clips the panel while it sits off-screen (at full width it
+          would otherwise add a viewport of horizontal scroll to the page) and
+          lets clicks through, so the margin around it still hits the backdrop. */}
+      <div className="lg:hidden fixed inset-0 z-50 p-2 overflow-hidden pointer-events-none">
+        <div
+          className={`pointer-events-auto flex flex-col h-full border-1 border-black/10 bg-white/90 shadow-2xl backdrop-blur-xs rounded-3xl p-3 gap-y-2 transition-transform duration-300 ease-in-out ${
+            listOpen ? "translate-x-0" : "translate-x-[calc(100%+0.5rem)]"
+          }`}
+        >
           {/* Header */}
           <div className="flex items-center justify-between px-1 mb-1">
             <span className="font-bold text-base bg-gradient-to-l from-black/90 to-yellow-600 bg-clip-text text-transparent">
@@ -1219,11 +1236,49 @@ export default function QuotationPage() {
             </button>
           </div>
 
+          {/* One list at a time — desktop shows both stacked, a phone gets tabs */}
+          {hasReference && (
+            <div className="w-full flex justify-center">
+              <Tabs
+                aria-label="รายการ"
+                selectedKey={listTab}
+                onSelectionChange={(k) => setListTab(k as "reference" | "saved")}
+                variant="solid"
+                radius="full"
+                classNames={{
+                  tabList: "bg-black/5 border-1 border-black/10",
+                  cursor: "bg-gradient-to-l from-transparent to-yellow-600/50",
+                }}
+              >
+                <Tab
+                  key="reference"
+                  title={
+                    <span className="font-bold text-xs">
+                      ลูกค้าส่งมา ({referenceItems.length})
+                    </span>
+                  }
+                />
+                <Tab
+                  key="saved"
+                  title={
+                    <span className="font-bold text-xs">
+                      รายการที่บันทึก ({quotation.length})
+                    </span>
+                  }
+                />
+              </Tabs>
+            </div>
+          )}
+
           {/* Reference card — same customer-submitted items shown on desktop */}
-          {renderReferenceCard("max-h-[45%]")}
+          {hasReference && listTab === "reference" && renderReferenceCard("flex-1 min-h-0")}
 
           {/* Items */}
-          <div className="flex flex-col gap-y-2 overflow-y-auto flex-1 scrollbar-hide">
+          <div
+            className={`flex-col gap-y-2 overflow-y-auto flex-1 scrollbar-hide ${
+              hasReference && listTab === "reference" ? "hidden" : "flex"
+            }`}
+          >
             {quotation.length === 0 ? (
               <div className="flex items-center justify-center py-10 text-black/40 text-sm">
                 กด + เพื่อเพิ่มรายการ

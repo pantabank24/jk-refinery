@@ -10,6 +10,9 @@ import { useAuth } from "@/contexts/auth-context";
 import { Spinner } from "@heroui/spinner";
 import { Button } from "@heroui/button";
 import { Modal, ModalContent, ModalHeader, ModalBody, ModalFooter, useDisclosure } from "@heroui/modal";
+import { Tabs, Tab } from "@heroui/tabs";
+import { VerifyBadge } from "@/components/verifyBadge";
+import { DocumentTypeManagement } from "./_components/documentTypeManagement";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL?.replace("/api/v1", "") || "http://localhost:8080";
 
@@ -21,6 +24,8 @@ interface Customer {
   address?: string;
   avatar?: string;
   is_active: boolean;
+  // สถานะยืนยันตัวตนจากเอกสารสำคัญ คำนวณฝั่ง API (internal/verification)
+  verification_status?: string;
   store_name?: string | null;
   store?: { id: number; name: string } | null;
 }
@@ -32,6 +37,10 @@ export default function CustomersPage() {
   const canCreate = hasPermission("customers.create");
   const canUpdate = hasPermission("customers.update");
   const canDelete = hasPermission("customers.delete");
+  // ประเภทเอกสาร is master data for the document uploader — managed here as a second
+  // section rather than its own sidebar page, same as ธนาคาร under จัดการเครดิต.
+  const canReadDocTypes = hasPermission("document_types.read");
+  const [section, setSection] = useState<"customers" | "docTypes">("customers");
 
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(true);
@@ -88,9 +97,9 @@ export default function CustomersPage() {
     <div className="flex flex-col h-full gap-y-3">
       <div className="flex flex-row items-center justify-between shrink-0 px-1">
         <span className="font-bold text-2xl bg-gradient-to-l from-black/90 to-yellow-600 bg-clip-text text-transparent">
-          ลูกค้า
+          {section === "docTypes" ? "ประเภทเอกสาร" : "ลูกค้า"}
         </span>
-        {canCreate && (
+        {section === "customers" && canCreate && (
           <Button
             className="bg-gradient-to-r from-[#c09c42] to-yellow-600 text-white font-bold"
             startContent={<Plus size={16} />}
@@ -101,6 +110,29 @@ export default function CustomersPage() {
         )}
       </div>
 
+      {/* Section menu — ลูกค้า / ประเภทเอกสาร */}
+      {canReadDocTypes && (
+        <div className="shrink-0">
+          <Tabs
+            selectedKey={section}
+            onSelectionChange={(k) => setSection(k as "customers" | "docTypes")}
+            color="warning"
+            variant="solid"
+            classNames={{
+              tabList: "border-1 border-black/10 bg-black/5 backdrop-blur-xl rounded-2xl",
+              tabContent: "font-bold",
+            }}
+          >
+            <Tab key="customers" title="ลูกค้า" />
+            <Tab key="docTypes" title="ประเภทเอกสาร" />
+          </Tabs>
+        </div>
+      )}
+
+      {section === "docTypes" ? (
+        <DocumentTypeManagement />
+      ) : (
+      <>
       <div className="flex flex-row items-center gap-x-2 shrink-0">
         <div className="flex-1">
           <CmpInput placeholder="ค้นหาชื่อหรืออีเมล" value={search}
@@ -124,8 +156,10 @@ export default function CustomersPage() {
                 <div className="flex flex-row items-center gap-x-3">
                   <Avatar size="sm" name={c.name} src={c.avatar ? `${API_BASE}${c.avatar}` : undefined} />
                   <div className="flex flex-col">
-                    <span className="text-sm font-bold text-black/70">{c.name}
-                      {!c.is_active && <span className="ml-2 text-[10px] text-red-500">(ปิดใช้งาน)</span>}
+                    <span className="text-sm font-bold text-black/70 flex items-center gap-x-1">
+                      {c.name}
+                      <VerifyBadge status={c.verification_status} size={14} />
+                      {!c.is_active && <span className="ml-1 text-[10px] text-red-500">(ปิดใช้งาน)</span>}
                     </span>
                     <span className="text-[11px] text-black/40">{c.email}</span>
                     {(c.store_name || c.store?.name) && (
@@ -155,6 +189,8 @@ export default function CustomersPage() {
           </div>
         )}
       </div>
+      </>
+      )}
 
       {/* DELETE CONFIRM */}
       <Modal isOpen={deleteDisc.isOpen} onClose={deleteDisc.onClose} size="sm">

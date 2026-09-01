@@ -11,6 +11,8 @@ interface AuthUser {
   phone: string;
   avatar?: string;
   is_active: boolean;
+  // Derived from the customer's high-priority documents — drives VerifyBadge.
+  verification_status?: string;
   // Customer's own record — the same fields the shop keeps on them, editable by
   // the customer at /profile. They print on the receipt and are paid out to.
   store_name?: string;

@@ -11,6 +11,7 @@ import { Spinner } from "@heroui/spinner";
 import { ArrowLeft, Camera, Eye, EyeOff, Save, Upload, X } from "lucide-react";
 import { api } from "@/lib/api";
 import type { BankDto } from "@/dtos/bank-dto";
+import type { DocumentTypeDto } from "@/dtos/document-type-dto";
 import {
   DocumentList, DOC_ACCEPT, fmtSize, type CustomerDocument,
 } from "../_components/documentList";
@@ -66,9 +67,13 @@ export const CustomerAction = () => {
   const [bankAccountName, setBankAccountName] = useState("");
 
   // Documents: existing (edit) live-managed; pending (create) queued until save.
+  // Every attachment carries the type it was picked under, so a queued file keeps
+  // its label all the way to the upload that happens after the customer exists.
   const [docs, setDocs] = useState<CustomerDocument[]>([]);
-  const [pendingFiles, setPendingFiles] = useState<File[]>([]);
+  const [pendingFiles, setPendingFiles] = useState<{ file: File; typeId: string }[]>([]);
   const [docUploading, setDocUploading] = useState(false);
+  const [docTypes, setDocTypes] = useState<DocumentTypeDto[]>([]);
+  const [attachTypeId, setAttachTypeId] = useState("");
 
   const [initLoading, setInitLoading] = useState(isEdit);
   const [loading, setLoading] = useState(false);
@@ -79,6 +84,10 @@ export const CustomerAction = () => {
       .get<BankDto[]>("/banks")
       .then((res) => setBanks((res.data as unknown as BankDto[]) || []))
       .catch(() => setBanks([]));
+    api
+      .get<DocumentTypeDto[]>("/document-types")
+      .then((res) => setDocTypes(((res.data as unknown as DocumentTypeDto[]) || []).filter((t) => t.is_active)))
+      .catch(() => setDocTypes([]));
   }, []);
 
   useEffect(() => {
@@ -115,6 +124,11 @@ export const CustomerAction = () => {
   // on — otherwise editing them would silently drop their bank.
   const bankOptions = banks.filter((b) => b.is_active || String(b.id) === bankId);
 
+  const attachTypeIsHigh = docTypes.some(
+    (t) => String(t.id) === attachTypeId && t.is_high_priority
+  );
+  const typeNameOf = (id: string) => docTypes.find((t) => String(t.id) === id)?.name ?? "ไม่ระบุประเภท";
+
   const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -125,6 +139,11 @@ export const CustomerAction = () => {
 
   const handleDocSelect = async (files: FileList | null) => {
     if (!files || files.length === 0) return;
+    if (!attachTypeId) {
+      setError("กรุณาเลือกประเภทเอกสารก่อนแนบไฟล์");
+      if (docRef.current) docRef.current.value = "";
+      return;
+    }
     const arr = Array.from(files);
     if (isEdit && customerId) {
       // Upload immediately in edit mode.
@@ -133,6 +152,7 @@ export const CustomerAction = () => {
       try {
         const fd = new FormData();
         arr.forEach((f) => fd.append("files", f));
+        fd.append("document_type_id", attachTypeId);
         await api.upload(`/customers/${customerId}/documents`, fd);
         const dRes = await api.get<CustomerDocument[]>(`/customers/${customerId}/documents`);
         setDocs((dRes.data as unknown as CustomerDocument[]) || []);
@@ -142,7 +162,16 @@ export const CustomerAction = () => {
         setDocUploading(false);
       }
     } else {
-      setPendingFiles((prev) => [...prev, ...arr]);
+      setError("");
+      const queued = arr.map((file) => ({ file, typeId: attachTypeId }));
+      setPendingFiles((prev) =>
+        // A high-priority type stands for one document, so a second pick under the
+        // same type replaces the queued one rather than queueing a duplicate the
+        // API would reject on save.
+        attachTypeIsHigh
+          ? [...prev.filter((p) => p.typeId !== attachTypeId), queued[0]]
+          : [...prev, ...queued]
+      );
     }
     if (docRef.current) docRef.current.value = "";
   };
@@ -200,9 +229,17 @@ export const CustomerAction = () => {
         targetId = String((res.data as unknown as { id: number })?.id);
         // Upload queued documents now that we have an id.
         if (targetId && pendingFiles.length > 0) {
-          const fd = new FormData();
-          pendingFiles.forEach((f) => fd.append("files", f));
-          await api.upload(`/customers/${targetId}/documents`, fd);
+          // One request per type — the API labels a whole batch with a single type.
+          const byType: Record<string, File[]> = {};
+          for (const p of pendingFiles) {
+            byType[p.typeId] = [...(byType[p.typeId] ?? []), p.file];
+          }
+          for (const typeId of Object.keys(byType)) {
+            const fd = new FormData();
+            byType[typeId].forEach((f) => fd.append("files", f));
+            fd.append("document_type_id", typeId);
+            await api.upload(`/customers/${targetId}/documents`, fd);
+          }
         }
       }
 
@@ -350,38 +387,68 @@ export const CustomerAction = () => {
 
             {/* เอกสาร */}
             <div className="flex flex-col gap-y-2">
-              <div className="flex items-center justify-between">
-                <span className="font-bold text-md bg-gradient-to-r from-black/90 to-yellow-400 bg-clip-text text-transparent">
-                  เอกสาร
-                </span>
+              <span className="font-bold text-md bg-gradient-to-r from-black/90 to-yellow-400 bg-clip-text text-transparent">
+                เอกสาร
+              </span>
+              {/* ประเภทต้องเลือกก่อนแนบ ไม่งั้นไฟล์จะขึ้นเป็น "ไม่ระบุประเภท" */}
+              <div className="flex items-end gap-x-2">
+                <Select
+                  size="sm"
+                  label="ประเภทเอกสาร"
+                  className="flex-1"
+                  selectedKeys={attachTypeId ? [attachTypeId] : []}
+                  onSelectionChange={(keys) => setAttachTypeId(String(Array.from(keys)[0] ?? ""))}
+                  classNames={{ trigger: inputStyle }}
+                >
+                  {docTypes.map((t) => (
+                    <SelectItem key={String(t.id)}>
+                      {t.is_high_priority ? `${t.name} (เอกสารสำคัญ)` : t.name}
+                    </SelectItem>
+                  ))}
+                </Select>
                 <Button
                   size="sm" variant="flat"
-                  className="border-1 border-black/10 bg-black/5 font-bold"
+                  className="border-1 border-black/10 bg-black/5 font-bold h-10 shrink-0"
                   startContent={<Upload size={14} />}
                   isLoading={docUploading}
+                  isDisabled={!attachTypeId}
                   onPress={() => docRef.current?.click()}
                 >
                   แนบไฟล์
                 </Button>
-                <input ref={docRef} type="file" accept={DOC_ACCEPT} multiple className="hidden" onChange={(e) => handleDocSelect(e.target.files)} />
+                <input
+                  ref={docRef}
+                  type="file"
+                  accept={DOC_ACCEPT}
+                  multiple={!attachTypeIsHigh}
+                  className="hidden"
+                  onChange={(e) => handleDocSelect(e.target.files)}
+                />
               </div>
-              <span className="text-[11px] text-black/40 -mt-1">รองรับ รูปภาพ, PDF, DOCX, XLSX</span>
+              <span className="text-[11px] text-black/40 -mt-1">
+                รองรับ รูปภาพ, PDF, DOCX, XLSX
+                {attachTypeIsHigh && " — เอกสารสำคัญแนบได้ 1 ไฟล์ และต้องผ่านการตรวจสอบ"}
+              </span>
 
               {/* Existing docs (edit) */}
               {isEdit && docs.length > 0 && (
                 <div className="border-1 border-black/10 rounded-2xl bg-white/30">
-                  <DocumentList docs={docs} onDelete={deleteExistingDoc} />
+                  {/* หน้าจัดการลูกค้าเป็นฝั่งพนักงาน จึงลบเอกสารสำคัญได้ */}
+                  <DocumentList docs={docs} onDelete={deleteExistingDoc} canDeleteHighPriority />
                 </div>
               )}
 
               {/* Pending files (create) */}
               {pendingFiles.length > 0 && (
                 <div className="flex flex-col gap-y-1">
-                  {pendingFiles.map((f, i) => (
+                  {pendingFiles.map((p, i) => (
                     <div key={i} className="flex items-center justify-between text-sm border-1 border-black/10 bg-white/30 rounded-xl px-3 py-2">
-                      <span className="truncate text-black/70 font-bold">{f.name}</span>
+                      <div className="flex flex-col min-w-0">
+                        <span className="truncate text-black/70 font-bold">{p.file.name}</span>
+                        <span className="text-[10px] text-[#8a6f2a]">{typeNameOf(p.typeId)}</span>
+                      </div>
                       <div className="flex items-center gap-x-2 shrink-0">
-                        <span className="text-[10px] text-black/40">{fmtSize(f.size)}</span>
+                        <span className="text-[10px] text-black/40">{fmtSize(p.file.size)}</span>
                         <button type="button" onClick={() => removePending(i)} className="text-red-500">
                           <X size={15} />
                         </button>
