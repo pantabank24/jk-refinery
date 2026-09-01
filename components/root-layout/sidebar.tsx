@@ -131,34 +131,32 @@ export const Sidebar = ({ isOpen = false, onClose }: SidebarProps) => {
         </div>
       </div>
 
-      {/* ── Mobile backdrop ── */}
+      {/* ── Mobile menu — a full, frosted screen ──
+          No backdrop: a panel edge to edge leaves nothing behind it to dim, and
+          nothing outside it to tap. That also takes the dark bg-black/50 off the
+          page, which is the thing iOS Safari was sampling to tint its status-bar
+          and floating-bar strips grey — the panel is still frosted, but it is a
+          light frost, so what gets sampled stays light. Closing is the ✕ or
+          picking an item (navigation closes it — see the currentPath effect). */}
       <div
-        className={`lg:hidden fixed inset-0 z-40 bg-black/50 backdrop-blur-sm transition-opacity duration-300 ${isOpen ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"
-          }`}
-        onClick={onClose}
-      />
-
-      {/* ── Mobile drawer ── */}
-      <div
-        className={`lg:hidden fixed top-0 left-0 z-50 h-full w-72 pt-5 pb-5 px-4 flex flex-col transition-transform duration-300 ease-in-out ${isOpen ? "translate-x-0" : "-translate-x-full"
+        className={`lg:hidden fixed inset-0 z-50 flex flex-col bg-white/85 backdrop-blur-xl transition-transform duration-300 ease-in-out ${isOpen ? "translate-x-0" : "-translate-x-full"
           }`}
       >
-        <div className="flex flex-col h-full border-1 border-black/10 bg-white/75 shadow-2xl backdrop-blur-xs rounded-4xl p-4 gap-y-1">
-          {/* Header */}
-          <div className="flex items-center justify-between mb-2 px-1">
-            <span className="font-bold text-base bg-[#c09c42] bg-clip-text text-transparent">
-              เมนู
-            </span>
-            <button
-              onClick={onClose}
-              className="p-2 rounded-xl hover:bg-black/10 transition-colors text-black/50"
-            >
-              <X size={18} />
-            </button>
-          </div>
-          <div className="flex flex-col gap-y-1 overflow-y-auto scrollbar-hide flex-1">
-            <MenuItems />
-          </div>
+        {/* Header — same height as the navbar it replaces, so the ✕ lands where
+            the ☰ was and the menu does not appear to jump. */}
+        <div className="flex items-center justify-between h-20 shrink-0 px-6">
+          <span className="font-bold text-lg bg-[#c09c42] bg-clip-text text-transparent">
+            เมนู
+          </span>
+          <button
+            onClick={onClose}
+            className="p-2 rounded-xl hover:bg-black/10 transition-colors text-black/50"
+          >
+            <X size={22} />
+          </button>
+        </div>
+        <div className="flex flex-col gap-y-1 overflow-y-auto scrollbar-hide flex-1 px-4 pb-6">
+          <MenuItems />
         </div>
       </div>
     </>

@@ -1,3 +1,20 @@
 @import "tailwindcss";
 
-@config "../tailwind.config.js"
+@config "../tailwind.config.js";
+
+/* iOS Safari zooms the whole page in when you focus a form control whose
+   font-size is under 16px — and it does not zoom back out on blur, so one tap on
+   a search box leaves the layout stranded. The usual answer found online is
+   maximum-scale=1 / user-scalable=no in the viewport meta, but that takes
+   pinch-zoom away from everyone, permanently, to fix a phone-only annoyance.
+   Holding the controls themselves at 16px on phones removes the trigger instead.
+   Above md the design's smaller sizes are kept as-is. Checkboxes and radios are
+   excluded: HeroUI renders those through a hidden input whose font-size is
+   irrelevant, and sizing them here would only risk shifting their layout. */
+@media (max-width: 767px) {
+  input:not([type="checkbox"]):not([type="radio"]),
+  select,
+  textarea {
+    font-size: 16px;
+  }
+}
