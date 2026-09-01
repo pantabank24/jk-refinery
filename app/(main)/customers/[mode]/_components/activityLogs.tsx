@@ -193,7 +193,8 @@ function LineTable({ title, lines }: { title?: string; lines?: LogLine[] }) {
   return (
     <div className="flex flex-col gap-1">
       {title && <span className="text-[10px] font-bold text-black/50">{title}</span>}
-      <div className="overflow-x-auto border-1 border-black/10 bg-white/60 rounded-lg">
+      {/* Desktop: table */}
+      <div className="hidden md:block overflow-x-auto border-1 border-black/10 bg-white/60 rounded-lg">
         <table className="w-full text-[11px] min-w-[440px]">
           <thead className="bg-black/5">
             <tr className="text-left text-black/40">
@@ -224,6 +225,33 @@ function LineTable({ title, lines }: { title?: string; lines?: LogLine[] }) {
             ))}
           </tbody>
         </table>
+      </div>
+
+      {/* Mobile: cards. Six columns need 440px, so on a phone the table scrolls
+          sideways inside a timeline entry that is already scrolling — two nested
+          scrollers over eleven-pixel text. One card per line instead, with the
+          headline figures on top and the workings underneath as Facts, the same
+          label/value pairs the rest of a log entry uses. */}
+      <div className="flex md:hidden flex-col gap-y-1.5">
+        {lines.map((line, i) => (
+          <div key={i} className="flex flex-col gap-y-1.5 border-1 border-black/10 bg-white/60 rounded-lg p-2">
+            <div className="flex items-baseline justify-between gap-x-2">
+              <span className="text-[11px] font-bold text-black/70 truncate">{line.type_name || "—"}</span>
+              <span className="shrink-0 text-[11px] font-bold tabular-nums text-black/80">
+                {money(line.total)}
+                <span className="text-[9px] text-black/35 ml-1">บาท</span>
+              </span>
+            </div>
+            <Facts
+              items={[
+                ["ราคาที่กด", `${money(line.price)} ${priceUnit(line.metal)}`],
+                ["%", plain(line.percent)],
+                ["บวก", plain(line.plus)],
+                ["น้ำหนัก", `${plain(line.weight)} ${weightUnit(line.metal)}`],
+              ]}
+            />
+          </div>
+        ))}
       </div>
     </div>
   );

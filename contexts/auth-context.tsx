@@ -32,6 +32,14 @@ interface AuthUser {
   role?: { id: number; name: string; display_name: string } | null;
 }
 
+// ความยินยอม PDPA ที่ยังค้างอยู่. เซิร์ฟเวอร์ส่งมาเฉพาะตอนที่ "ยังต้องขอ" เท่านั้น —
+// null จึงแปลว่าไม่มีอะไรต้องถาม ไม่ต้องมาตีความ required ที่เป็น false อีกชั้น
+export interface PDPAStatus {
+  required: boolean;
+  version: number;
+  text: string;
+}
+
 interface AuthContextType {
   user: AuthUser | null;
   permissions: string[];
@@ -47,6 +55,8 @@ interface AuthContextType {
   refreshUser: () => Promise<void>;
   refreshUnfinishedBills: () => Promise<void>;
   hasPermission: (permission: string) => boolean;
+  pdpa: PDPAStatus | null;
+  acceptPdpa: () => Promise<void>;
   isMaster: boolean;
   isOwner: boolean;
   isEmployee: boolean;
@@ -63,6 +73,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [unfinishedBills, setUnfinishedBills] = useState(0);
   const [unfinishedGoldBills, setUnfinishedGoldBills] = useState(0);
   const [unfinishedSilverBills, setUnfinishedSilverBills] = useState(0);
+  const [pdpa, setPdpa] = useState<PDPAStatus | null>(null);
   const router = useRouter();
 
   // Pull the count of bills that are not yet completed/cancelled (for the
@@ -89,11 +100,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setLoading(false);
         return;
       }
-      const res = await api.get<{ user: AuthUser; permissions: string[]; credits: number }>("/auth/me");
+      const res = await api.get<{ user: AuthUser; permissions: string[]; credits: number; pdpa?: PDPAStatus }>("/auth/me");
       if (res.data) {
         setUser(res.data.user);
         setPermissions(res.data.permissions || []);
         setCredits(res.data.credits ?? 0);
+        setPdpa(res.data.pdpa ?? null);
         // Only customers/staff with bills.read get a meaningful count; the
         // endpoint is permission-gated so a 403 just yields 0.
         const perms = res.data.permissions || [];
@@ -106,6 +118,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setUser(null);
       setPermissions([]);
       setCredits(0);
+      setPdpa(null);
     } finally {
       setLoading(false);
     }
@@ -116,7 +129,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [refreshUser]);
 
   const login = async (email: string, password: string) => {
-    const res = await api.post<{ token: string; user: AuthUser; permissions: string[]; credits: number }>(
+    const res = await api.post<{ token: string; user: AuthUser; permissions: string[]; credits: number; pdpa?: PDPAStatus }>(
       "/auth/login",
       { email, password }
     );
@@ -125,6 +138,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setUser(res.data.user);
       setPermissions(res.data.permissions || []);
       setCredits(res.data.credits ?? 0);
+      // Comes back on login too, so the modal is up on the very first screen
+      // rather than one /auth/me later.
+      setPdpa(res.data.pdpa ?? null);
       void refreshUnfinishedBills();
       router.push("/");
     }
@@ -135,7 +151,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(null);
     setPermissions([]);
     setCredits(0);
+    setPdpa(null);
     router.push("/auth");
+  };
+
+  // Let the error through: the modal is the only way past this screen, so a
+  // failed save has to be visible rather than swallowed into a modal that
+  // silently refuses to close.
+  const acceptPdpa = async () => {
+    await api.post("/auth/pdpa-consent");
+    setPdpa(null);
   };
 
   const hasPermission = (permission: string) => {
@@ -160,6 +185,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         refreshUser,
         refreshUnfinishedBills,
         hasPermission,
+        pdpa,
+        acceptPdpa,
         isMaster: roleName === "master",
         isOwner: roleName === "owner",
         isEmployee: roleName === "employee",

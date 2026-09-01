@@ -193,7 +193,8 @@ export default function RealtimeGoldPage() {
             <div className="px-5 py-3 font-bold text-sm bg-black/5">
               รายการล่าสุด ({ticks.length})
             </div>
-            <div className="overflow-x-auto">
+            {/* Desktop: table */}
+            <div className="hidden md:block overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="text-left text-black/40 border-b border-black/10">
@@ -239,6 +240,54 @@ export default function RealtimeGoldPage() {
                   ))}
                 </tbody>
               </table>
+            </div>
+
+            {/* Mobile: cards. Five columns of numbers squeezed into a phone's
+                width left nothing readable, and the direction arrow — the one
+                thing you glance at — was last in the row. Here it leads. */}
+            <div className="flex md:hidden flex-col gap-y-2 p-3">
+              {ticks.map((t) => (
+                <div
+                  key={t.v}
+                  className="flex items-center justify-between gap-x-3 border-1 border-black/10 bg-black/5 rounded-2xl px-3 py-2.5"
+                >
+                  <div className="flex items-center gap-x-2 min-w-0">
+                    <span
+                      className={`shrink-0 ${
+                        t.dir === "up"
+                          ? "text-emerald-600"
+                          : t.dir === "down"
+                          ? "text-red-600"
+                          : "text-black/30"
+                      }`}
+                    >
+                      {t.dir === "up" ? (
+                        <ArrowUp size={16} />
+                      ) : t.dir === "down" ? (
+                        <ArrowDown size={16} />
+                      ) : (
+                        <Minus size={16} />
+                      )}
+                    </span>
+                    <div className="flex flex-col leading-tight min-w-0">
+                      <span className="text-xs font-bold text-black/60">{fmtTime(t.ts)}</span>
+                      <span className="text-[10px] text-black/40 tabular-nums">
+                        XAU/USD {t.spot.toLocaleString("en-US", { minimumFractionDigits: 2 })}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="flex gap-x-4 shrink-0">
+                    <div className="flex flex-col items-end leading-tight">
+                      <span className="text-[10px] font-bold text-black/40">รับซื้อ</span>
+                      <span className="text-xs font-bold tabular-nums text-black/70">{baht(t.bar_buy)}</span>
+                    </div>
+                    <div className="flex flex-col items-end leading-tight">
+                      <span className="text-[10px] font-bold text-black/40">ขายออก</span>
+                      <span className="text-xs font-bold tabular-nums text-amber-700">{baht(t.bar_sell)}</span>
+                    </div>
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
         </>

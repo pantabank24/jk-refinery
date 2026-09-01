@@ -10,7 +10,7 @@ import { BadgeCheck } from "lucide-react";
 export type VerificationStatus = "none" | "pending" | "verified" | "rejected";
 
 const STYLE: Record<VerificationStatus, { color: string; label: string }> = {
-  none:     { color: "text-black/25",   label: "ยังไม่มีเอกสารยืนยันตัวตน" },
+  none:     { color: "text-black/30",   label: "ยังไม่มีเอกสารยืนยันตัวตน" },
   pending:  { color: "text-yellow-500", label: "เอกสารรอตรวจสอบ" },
   verified: { color: "text-sky-500",    label: "ยืนยันตัวตนแล้ว" },
   rejected: { color: "text-red-500",    label: "เอกสารไม่ผ่านการตรวจสอบ" },
@@ -27,13 +27,20 @@ interface Props {
 export function VerifyBadge({ status, size = 16, showLabel, className = "" }: Props) {
   const style = STYLE[(status as VerificationStatus) ?? "none"] ?? STYLE.none;
 
+  // Solid rather than outlined: the badge shape is filled with the state's colour
+  // and the tick is knocked out of it in white. At 12–18px an outline icon loses
+  // its colour to the stroke and every state washes out to the same pale mark —
+  // filled, the colour is the whole shape, so a glance is enough.
+  //
+  // fill and stroke override lucide's own (fill="none", stroke="currentColor").
+  // currentColor still comes from the text-* class, so one class drives the fill.
   const icon = (
     <BadgeCheck
       size={size}
       className={`${style.color} shrink-0 ${className}`}
-      // Yellow reads as "something is happening" — the pulse says it is waiting on
-      // someone rather than settled.
-      strokeWidth={2.2}
+      fill="currentColor"
+      stroke="white"
+      strokeWidth={2.5}
     />
   );
 

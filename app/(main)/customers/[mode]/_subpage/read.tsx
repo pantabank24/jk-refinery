@@ -677,38 +677,78 @@ export const CustomerDetail = ({ selfMode = false }: { selfMode?: boolean } = {}
               {bills.length === 0 ? (
                 <div className="flex items-center justify-center py-10 text-black/40 text-sm">ยังไม่มีบิล</div>
               ) : (
-                <div className="overflow-auto scrollbar-hide">
-                  <table className="w-full text-sm min-w-[560px]">
-                    <thead className="sticky top-0 bg-black/5 backdrop-blur-xl">
-                      <tr className="text-left text-black/40 text-xs">
-                        <th className="px-4 py-2.5 font-bold">เลขที่บิล</th>
-                        <th className="px-4 py-2.5 font-bold">วันที่ / เวลา</th>
-                        <th className="px-4 py-2.5 font-bold text-center">สถานะ</th>
-                        <th className="px-4 py-2.5 font-bold text-right">ยอดที่จ่าย (บาท)</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {bills.map((b) => (
-                        <tr
-                          key={b.id}
-                          onClick={() => openBill(b)}
-                          className="border-t border-black/5 hover:bg-white/40 cursor-pointer"
-                        >
-                          <td className="px-4 py-2.5 font-bold text-black/70">{b.code}</td>
-                          <td className="px-4 py-2.5 text-black/60"><DateCell at={b.created_at} /></td>
-                          <td className="px-4 py-2.5 text-center">
-                            <span className={`text-xs font-bold px-2 py-0.5 rounded-full border-1 ${STATUS_COLOR[b.status] || ""}`}>
-                              {STATUS_LABEL[b.status] || b.status}
-                            </span>
-                          </td>
-                          <td className="px-4 py-2.5 text-right font-bold tabular-nums">
-                            {fmtMoney(paidAmount(b))}
-                          </td>
+                <>
+                  {/* Desktop: table */}
+                  <div className="hidden md:block overflow-auto scrollbar-hide">
+                    <table className="w-full text-sm min-w-[560px]">
+                      <thead className="sticky top-0 bg-black/5 backdrop-blur-xl">
+                        <tr className="text-left text-black/40 text-xs">
+                          <th className="px-4 py-2.5 font-bold">เลขที่บิล</th>
+                          <th className="px-4 py-2.5 font-bold">วันที่ / เวลา</th>
+                          <th className="px-4 py-2.5 font-bold text-center">สถานะ</th>
+                          <th className="px-4 py-2.5 font-bold text-right">ยอดที่จ่าย (บาท)</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                      </thead>
+                      <tbody>
+                        {bills.map((b) => (
+                          <tr
+                            key={b.id}
+                            onClick={() => openBill(b)}
+                            className="border-t border-black/5 hover:bg-white/40 cursor-pointer"
+                          >
+                            <td className="px-4 py-2.5 font-bold text-black/70">{b.code}</td>
+                            <td className="px-4 py-2.5 text-black/60"><DateCell at={b.created_at} /></td>
+                            <td className="px-4 py-2.5 text-center">
+                              <span className={`text-xs font-bold px-2 py-0.5 rounded-full border-1 ${STATUS_COLOR[b.status] || ""}`}>
+                                {STATUS_LABEL[b.status] || b.status}
+                              </span>
+                            </td>
+                            <td className="px-4 py-2.5 text-right font-bold tabular-nums">
+                              {fmtMoney(paidAmount(b))}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {/* Mobile: cards — the table holds its four columns apart with
+                      min-w-[560px], which on a phone means scrolling sideways to
+                      read one bill. A card puts the same four facts in a block
+                      that fits the screen. */}
+                  <div className="flex md:hidden flex-col gap-y-2 p-3 overflow-auto scrollbar-hide">
+                    {bills.map((b) => (
+                      <div
+                        key={b.id}
+                        onClick={() => openBill(b)}
+                        className="flex flex-col gap-y-2 border-1 border-black/10 bg-black/5 backdrop-blur-xl rounded-2xl p-3 cursor-pointer active:bg-white/40"
+                      >
+                        <div className="flex items-center justify-between gap-x-2">
+                          <span className="font-bold text-sm bg-gradient-to-l from-black/90 to-yellow-600 bg-clip-text text-transparent truncate">
+                            {b.code}
+                          </span>
+                          <span className={`shrink-0 text-xs font-bold px-2 py-0.5 rounded-full border-1 ${STATUS_COLOR[b.status] || ""}`}>
+                            {STATUS_LABEL[b.status] || b.status}
+                          </span>
+                        </div>
+                        <div className="flex items-end justify-between gap-x-2">
+                          <div className="text-xs text-black/60">
+                            <DateCell at={b.created_at} />
+                          </div>
+                          {/* The column header has to travel with the number: out
+                              of the table there is no header row left to read it
+                              against. */}
+                          <div className="flex flex-col items-end leading-tight shrink-0">
+                            <span className="text-[10px] font-bold text-black/40">ยอดที่จ่าย (บาท)</span>
+                            <span className="font-bold text-sm text-yellow-700 tabular-nums">
+                              {fmtMoney(paidAmount(b))}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </>
               )}
             </div>
           ) : tab === "history" ? (
@@ -738,42 +778,86 @@ export const CustomerDetail = ({ selfMode = false }: { selfMode?: boolean } = {}
               {filteredHistoryRows.length === 0 ? (
                 <div className="flex items-center justify-center py-10 text-black/40 text-sm">ยังไม่มีรายการ</div>
               ) : (
-                <div className="overflow-auto scrollbar-hide">
-                  <table className="w-full text-sm min-w-[560px]">
-                    <thead className="sticky top-0 bg-black/5 backdrop-blur-xl">
-                      <tr className="text-left text-black/40 text-xs">
-                        <th className="px-4 py-2.5 font-bold">เลขที่บิล</th>
-                        <th className="px-4 py-2.5 font-bold">วันที่ / เวลา</th>
-                        <th className="px-4 py-2.5 font-bold">รายการ</th>
-                        <th className="px-4 py-2.5 font-bold text-right">น้ำหนัก (กรัม)</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {filteredHistoryRows.map(({ bill: b, it, at }) => {
-                        // Settled and cancelled lines are struck through so a long
-                        // history reads at a glance: เคลียร์แล้ว ม่วง, ยกเลิก แดง,
-                        // everything still in play stays black.
-                        const tone = HISTORY_ROW_TONE[b.status] ?? "";
-                        return (
-                          <tr
-                            key={`${b.id}-${it.id}`}
-                            onClick={() => openBill(b)}
-                            className="border-t border-black/5 hover:bg-white/40 cursor-pointer"
-                          >
-                            <td className={`px-4 py-2.5 font-bold ${tone || "text-black/70"}`}>{b.code}</td>
-                            <td className={`px-4 py-2.5 ${tone || "text-black/60"}`}>
-                              <DateCell at={historyRowDate({ bill: b, it, at })} />
-                            </td>
-                            <td className={`px-4 py-2.5 ${tone || "text-black/70"}`}>{it.type_name}</td>
-                            <td className={`px-4 py-2.5 text-right tabular-nums ${tone || "text-black/60"}`}>
-                              {it.weight.toLocaleString("th-TH", { minimumFractionDigits: 2 })}
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
+                <>
+                  {/* Desktop: table */}
+                  <div className="hidden md:block overflow-auto scrollbar-hide">
+                    <table className="w-full text-sm min-w-[560px]">
+                      <thead className="sticky top-0 bg-black/5 backdrop-blur-xl">
+                        <tr className="text-left text-black/40 text-xs">
+                          <th className="px-4 py-2.5 font-bold">เลขที่บิล</th>
+                          <th className="px-4 py-2.5 font-bold">วันที่ / เวลา</th>
+                          <th className="px-4 py-2.5 font-bold">รายการ</th>
+                          <th className="px-4 py-2.5 font-bold text-right">น้ำหนัก (กรัม)</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {filteredHistoryRows.map(({ bill: b, it, at }) => {
+                          // Settled and cancelled lines are struck through so a long
+                          // history reads at a glance: เคลียร์แล้ว ม่วง, ยกเลิก แดง,
+                          // everything still in play stays black.
+                          const tone = HISTORY_ROW_TONE[b.status] ?? "";
+                          return (
+                            <tr
+                              key={`${b.id}-${it.id}`}
+                              onClick={() => openBill(b)}
+                              className="border-t border-black/5 hover:bg-white/40 cursor-pointer"
+                            >
+                              <td className={`px-4 py-2.5 font-bold ${tone || "text-black/70"}`}>{b.code}</td>
+                              <td className={`px-4 py-2.5 ${tone || "text-black/60"}`}>
+                                <DateCell at={historyRowDate({ bill: b, it, at })} />
+                              </td>
+                              <td className={`px-4 py-2.5 ${tone || "text-black/70"}`}>{it.type_name}</td>
+                              <td className={`px-4 py-2.5 text-right tabular-nums ${tone || "text-black/60"}`}>
+                                {it.weight.toLocaleString("th-TH", { minimumFractionDigits: 2 })}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {/* Mobile: cards. Same reasoning as the บิลที่ออก tab — and the
+                      status, which the table only hints at through the struck-out
+                      row tone, gets a chip here where there is room for it. */}
+                  <div className="flex md:hidden flex-col gap-y-2 p-3 overflow-auto scrollbar-hide">
+                    {filteredHistoryRows.map(({ bill: b, it, at }) => {
+                      const tone = HISTORY_ROW_TONE[b.status] ?? "";
+                      return (
+                        <div
+                          key={`${b.id}-${it.id}`}
+                          onClick={() => openBill(b)}
+                          className="flex flex-col gap-y-2 border-1 border-black/10 bg-black/5 backdrop-blur-xl rounded-2xl p-3 cursor-pointer active:bg-white/40"
+                        >
+                          <div className="flex items-center justify-between gap-x-2">
+                            <span className={`font-bold text-sm truncate ${tone || "text-black/70"}`}>
+                              {b.code}
+                            </span>
+                            <span className={`shrink-0 text-xs font-bold px-2 py-0.5 rounded-full border-1 ${STATUS_COLOR[b.status] || ""}`}>
+                              {STATUS_LABEL[b.status] || b.status}
+                            </span>
+                          </div>
+                          <div className="flex items-end justify-between gap-x-2">
+                            <div className="flex flex-col min-w-0">
+                              <span className={`text-sm font-bold truncate ${tone || "text-black/70"}`}>
+                                {it.type_name}
+                              </span>
+                              <div className={`text-xs ${tone || "text-black/60"}`}>
+                                <DateCell at={historyRowDate({ bill: b, it, at })} />
+                              </div>
+                            </div>
+                            <div className="flex flex-col items-end leading-tight shrink-0">
+                              <span className="text-[10px] font-bold text-black/40">น้ำหนัก (กรัม)</span>
+                              <span className={`font-bold text-sm tabular-nums ${tone || "text-black/70"}`}>
+                                {it.weight.toLocaleString("th-TH", { minimumFractionDigits: 2 })}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </>
               )}
             </div>
           ) : tab === "logs" && canReadLogs && customerId ? (

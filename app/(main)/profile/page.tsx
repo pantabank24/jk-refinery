@@ -11,6 +11,7 @@ import { ArrowLeft, Camera, Eye, EyeOff, KeyRound, Save } from "lucide-react";
 import { api } from "@/lib/api";
 import type { BankDto } from "@/dtos/bank-dto";
 import { useAuth } from "@/contexts/auth-context";
+import { MarketingConsentCard } from "@/components/marketing-consent-card";
 
 const API_BASE =
   process.env.NEXT_PUBLIC_API_URL?.replace("/api/v1", "") ||
@@ -369,6 +370,9 @@ export default function ProfilePage() {
               </Button>
             </form>
           </div>
+
+          {/* ความยินยอมด้านการตลาด — ให้ถอนได้ที่เดียวกับที่แก้ข้อมูลตัวเอง */}
+          <MarketingConsentCard className="w-full max-w-xl" />
 
           {/* เปลี่ยนรหัสผ่าน */}
           <div className="w-full max-w-xl border-1 border-black/10 bg-black/5 backdrop-blur-xl rounded-3xl p-6">

@@ -762,7 +762,7 @@ export const BillCalculate = ({
       <div
         onClick={handleAdd}
         aria-disabled={!canSubmit}
-        className={` xl:hidden fixed bottom-5 right-5 bg-gradient-to-br from-blue-600/50 to-transparent border-1 border-black/10 rounded-full text-blue-950 font-bold gap-x-2 px-4 h-14 flex items-center justify-center transition-all backdrop-blur-lg ${canSubmit ? "cursor-pointer hover:from-blue-600/70" : "opacity-40 cursor-not-allowed"}`}
+        className={` xl:hidden fixed bottom-[calc(1.25rem+var(--bottom-nav-h,0px))] right-5 bg-gradient-to-br from-blue-600/50 to-transparent border-1 border-black/10 rounded-full text-blue-950 font-bold gap-x-2 px-4 h-14 flex items-center justify-center transition-all backdrop-blur-lg ${canSubmit ? "cursor-pointer hover:from-blue-600/70" : "opacity-40 cursor-not-allowed"}`}
       >
         <Send size={20} />
         ส่งขาย

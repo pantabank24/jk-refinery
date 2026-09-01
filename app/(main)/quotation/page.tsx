@@ -154,15 +154,15 @@ export default function QuotationPage() {
   const headerStore =
     selectedBranch && !noHeader
       ? {
-          name: selectedBranch.header_name,
-          branch: selectedBranch.name,
-          address: selectedBranch.address,
-          phone: selectedBranch.phone,
-          tax_id: selectedBranch.tax_id,
-          tax_name: selectedBranch.tax_name,
-          website: selectedBranch.website,
-          logo: selectedBranch.logo,
-        }
+        name: selectedBranch.header_name,
+        branch: selectedBranch.name,
+        address: selectedBranch.address,
+        phone: selectedBranch.phone,
+        tax_id: selectedBranch.tax_id,
+        tax_name: selectedBranch.tax_name,
+        website: selectedBranch.website,
+        logo: selectedBranch.logo,
+      }
       : undefined;
   const { status: salesStatus } = useSalesStatus();
   const salesClosed = !!salesStatus?.enabled && !salesStatus.is_open;
@@ -269,7 +269,7 @@ export default function QuotationPage() {
     api
       .get<GoldType[]>("/gold-types")
       .then((r) => setGoldTypes((r.data as unknown as GoldType[]) || []))
-      .catch(() => {});
+      .catch(() => { });
   }, [billId]);
 
   type BillItemLite = {
@@ -386,7 +386,7 @@ export default function QuotationPage() {
                 setUsingPrevSig(true);
               }
             })
-            .catch(() => {});
+            .catch(() => { });
         }
         // Edit mode: fixing an already-issued quote. Use the stashed bill group and
         // the previously-issued items (pre-filled into the calculator), and do NOT
@@ -416,9 +416,9 @@ export default function QuotationPage() {
               gid === clicked?.id
                 ? Promise.resolve(clicked)
                 : api
-                    .get(`/bills/${gid}`)
-                    .then((r) => r.data as unknown as BillLite)
-                    .catch(() => null),
+                  .get(`/bills/${gid}`)
+                  .then((r) => r.data as unknown as BillLite)
+                  .catch(() => null),
             ),
           );
           const editRef: ReferenceItem[] = [];
@@ -507,12 +507,11 @@ export default function QuotationPage() {
       );
       const deleted =
         (res.data as unknown as { deleted?: boolean })?.deleted ?? false;
-      setReferenceItems((prev) => prev.filter((r) => r.itemId !== ref.itemId));
-      setSelectedItemIds((prev) => {
-        const next = new Set(prev);
-        next.delete(ref.itemId);
-        return next;
-      });
+      const nextRef = referenceItems.filter((r) => r.itemId !== ref.itemId);
+      const nextTicked = new Set(selectedItemIds);
+      nextTicked.delete(ref.itemId);
+      setReferenceItems(nextRef);
+      setSelectedItemIds(nextTicked);
       setRemovingRef(null);
       if (deleted) {
         setBillIds((prev) => prev.filter((id) => id !== ref.billId));
@@ -522,6 +521,10 @@ export default function QuotationPage() {
           return;
         }
       }
+      // The deleted line was part of this round's locked average, so lines already
+      // keyed at the old rate no longer add up to what the customer has submitted —
+      // move them exactly the way a sale does.
+      repriceKeyedLines(nextRef, nextTicked);
     } catch {
       /* ignore */
     } finally {
@@ -887,10 +890,10 @@ export default function QuotationPage() {
       const logTargetBill = editIssued
         ? Number(billId)
         : tickedBillIds.find((bid) =>
-            referenceItems
-              .filter((r) => r.billId === bid)
-              .every((r) => selectedItemIds.has(r.itemId)),
-          );
+          referenceItems
+            .filter((r) => r.billId === bid)
+            .every((r) => selectedItemIds.has(r.itemId)),
+        );
       if (logTargetBill && quotation.length > 0) {
         const goldFinal = quotation.filter(isGoldItem);
         const w = goldFinal.reduce((s, i) => s + (i.weight || 0), 0);
@@ -955,7 +958,7 @@ export default function QuotationPage() {
         .patch(`/quotations/${savedQuotation.id}/payment-method`, {
           payment_method: m ?? "",
         })
-        .catch(() => {});
+        .catch(() => { });
     }
   };
 
@@ -1034,9 +1037,9 @@ export default function QuotationPage() {
             <span className="font-bold text-sm text-yellow-700 pl-1">
               {selAvgPrice > 0
                 ? selAvgPrice.toLocaleString(undefined, {
-                    minimumFractionDigits: 2,
-                    maximumFractionDigits: 2,
-                  })
+                  minimumFractionDigits: 2,
+                  maximumFractionDigits: 2,
+                })
                 : "-"}
             </span>
           </div>
@@ -1112,40 +1115,45 @@ export default function QuotationPage() {
     <div className="h-full flex flex-col gap-y-3">
       {salesClosed && <SalesStatusBanner status={salesStatus} />}
       {billId && (
-        <div className="flex items-center gap-x-2 bg-blue-50 border-1 border-blue-200 rounded-2xl p-3 flex-wrap">
-          <Receipt size={16} className="text-blue-600 shrink-0" />
-          <span className="text-sm font-bold text-blue-700 flex-1 min-w-0">
-            ออกบิลให้ลูกค้า{billCustomer ? ` : ${billCustomer}` : ""}
-            {billIds.length > 1 ? ` (${billIds.length} รายการ)` : ""} —
-            กรอกรายการใหม่จากทองที่หลอมเสร็จ
-          </span>
+        <div className="flex items-center gap-x-2 bg-blue-50 border-1 border-blue-200 rounded-2xl p-3 max-md:flex-col">
+          <div className="flex items-center gap-x-2 w-full">
+            <Receipt size={16} className="text-blue-600 shrink-0" />
+            <span className="text-sm font-bold text-blue-700 flex-1 min-w-0 w-full truncate text-ellipsis">
+              ออกบิลให้ลูกค้า{billCustomer ? ` : ${billCustomer}` : ""}
+              {billIds.length > 1 ? ` (${billIds.length} รายการ)` : ""} —
+              กรอกรายการใหม่จากทองที่หลอมเสร็จ
+            </span>
+          </div>
+
           {/* Hidden while fixing an already-issued quote: that bill is no longer
               "รอออกบิล", so a sale would land in a different bill entirely. */}
-          {!editIssued && billCustomerId && hasPermission("bills.sell") && (
-            <Button
-              size="sm"
-              className="shrink-0 bg-gradient-to-r from-[#c09c42] to-yellow-600 text-white font-bold"
-              startContent={<ShoppingBag size={14} />}
-              onPress={() => {
-                setSellError("");
-                sellDisc.onOpen();
-              }}
-            >
-              ขายแทนลูกค้า
-            </Button>
-          )}
-          {hasPermission("bills.approve") && (
-            <Button
-              size="sm"
-              color="danger"
-              variant="flat"
-              startContent={<Trash2 size={14} />}
-              onPress={deleteBillDisc.onOpen}
-              className="shrink-0"
-            >
-              ลบบิล
-            </Button>
-          )}
+          <div className="flex  gap-x-2 max-md:mt-1">
+            {!editIssued && billCustomerId && hasPermission("bills.sell") && (
+              <Button
+                size="sm"
+                className="shrink-0 bg-gradient-to-r from-[#c09c42] to-yellow-600 text-white font-bold"
+                startContent={<ShoppingBag size={14} />}
+                onPress={() => {
+                  setSellError("");
+                  sellDisc.onOpen();
+                }}
+              >
+                ขายแทนลูกค้า
+              </Button>
+            )}
+            {hasPermission("bills.approve") && (
+              <Button
+                size="sm"
+                color="danger"
+                variant="flat"
+                startContent={<Trash2 size={14} />}
+                onPress={deleteBillDisc.onOpen}
+                className="shrink-0"
+              >
+                ลบบิล
+              </Button>
+            )}
+          </div>
         </div>
       )}
 
@@ -1205,11 +1213,10 @@ export default function QuotationPage() {
       {/* Mobile backdrop */}
       <div
         onClick={() => setListOpen(false)}
-        className={`lg:hidden fixed inset-0 z-40 bg-black/50 backdrop-blur-sm transition-opacity duration-300 ${
-          listOpen
-            ? "opacity-100 pointer-events-auto"
-            : "opacity-0 pointer-events-none"
-        }`}
+        className={`lg:hidden fixed inset-0 z-40 bg-black/50 backdrop-blur-sm transition-opacity duration-300 ${listOpen
+          ? "opacity-100 pointer-events-auto"
+          : "opacity-0 pointer-events-none"
+          }`}
       />
 
       {/* Mobile drawer — full screen. A 20rem panel left the reference card and
@@ -1219,9 +1226,8 @@ export default function QuotationPage() {
           lets clicks through, so the margin around it still hits the backdrop. */}
       <div className="lg:hidden fixed inset-0 z-50 p-2 overflow-hidden pointer-events-none">
         <div
-          className={`pointer-events-auto flex flex-col h-full border-1 border-black/10 bg-white/90 shadow-2xl backdrop-blur-xs rounded-3xl p-3 gap-y-2 transition-transform duration-300 ease-in-out ${
-            listOpen ? "translate-x-0" : "translate-x-[calc(100%+0.5rem)]"
-          }`}
+          className={`pointer-events-auto flex flex-col h-full border-1 border-black/10 bg-white/90 shadow-2xl backdrop-blur-xs rounded-3xl p-3 gap-y-2 transition-transform duration-300 ease-in-out ${listOpen ? "translate-x-0" : "translate-x-[calc(100%+0.5rem)]"
+            }`}
         >
           {/* Header */}
           <div className="flex items-center justify-between px-1 mb-1">
@@ -1275,9 +1281,8 @@ export default function QuotationPage() {
 
           {/* Items */}
           <div
-            className={`flex-col gap-y-2 overflow-y-auto flex-1 scrollbar-hide ${
-              hasReference && listTab === "reference" ? "hidden" : "flex"
-            }`}
+            className={`flex-col gap-y-2 overflow-y-auto flex-1 scrollbar-hide ${hasReference && listTab === "reference" ? "hidden" : "flex"
+              }`}
           >
             {quotation.length === 0 ? (
               <div className="flex items-center justify-center py-10 text-black/40 text-sm">

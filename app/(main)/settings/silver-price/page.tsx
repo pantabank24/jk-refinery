@@ -211,7 +211,8 @@ export default function SilverPricePage() {
                   ประวัติราคาเงิน
                 </span>
               </div>
-              <div className="md:overflow-y-auto md:flex-1">
+              {/* Desktop: table */}
+              <div className="hidden md:block md:overflow-y-auto md:flex-1">
                 <table className="w-full text-xs">
                   <thead className="sticky top-0 bg-black/5 backdrop-blur-xl">
                     <tr className="text-black/50">
@@ -236,6 +237,41 @@ export default function SilverPricePage() {
                     ))}
                   </tbody>
                 </table>
+              </div>
+
+              {/* Mobile: cards — same treatment as ประวัติราคาทอง. ที่มา rides
+                  next to the date as a chip rather than taking a column of its
+                  own for one of two words. */}
+              <div className="flex md:hidden flex-col gap-y-2 p-3">
+                {history.map((row) => (
+                  <div
+                    key={row.id}
+                    className="flex flex-col gap-y-2 border-1 border-black/10 bg-black/5 rounded-2xl p-3"
+                  >
+                    <div className="flex items-center justify-between gap-x-2">
+                      <span className="text-xs font-bold text-black/60 truncate">
+                        {row.price_date} {row.price_time}
+                      </span>
+                      <span className="shrink-0 text-[10px] font-bold px-2 py-0.5 rounded-full border-1 border-black/10 bg-black/5 text-black/50">
+                        {row.source === "manual" ? "กรอกมือ" : "อัตโนมัติ"}
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-3 gap-x-3">
+                      {([
+                        ["รับซื้อ", row.buy],
+                        ["ขาย", row.sell],
+                        ["Spot", row.spot],
+                      ] as [string, number][]).map(([label, value]) => (
+                        <div key={label} className="flex flex-col leading-tight">
+                          <span className="text-[10px] text-black/40">{label}</span>
+                          <span className="text-xs font-bold tabular-nums text-black/70">
+                            {value.toLocaleString()}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
           )}

@@ -221,7 +221,8 @@ export default function GoldPricePage() {
                   ประวัติราคาทอง
                 </span>
               </div>
-              <div className="md:overflow-y-auto md:flex-1">
+              {/* Desktop: table */}
+              <div className="hidden md:block md:overflow-y-auto md:flex-1">
                 <table className="w-full text-xs">
                   <thead className="sticky top-0 bg-black/5 backdrop-blur-xl">
                     <tr className="text-black/50">
@@ -250,6 +251,43 @@ export default function GoldPricePage() {
                     ))}
                   </tbody>
                 </table>
+              </div>
+
+              {/* Mobile: cards. Six columns of prices at text-xs is a wall of
+                  digits on a phone; the four prices get a labelled 2×2 grid
+                  instead, with the date and the day's change — the two things
+                  you scan a history for — on the top line. */}
+              <div className="flex md:hidden flex-col gap-y-2 p-3">
+                {history.map((row) => (
+                  <div
+                    key={row.id}
+                    className="flex flex-col gap-y-2 border-1 border-black/10 bg-black/5 rounded-2xl p-3"
+                  >
+                    <div className="flex items-center justify-between gap-x-2">
+                      <span className="text-xs font-bold text-black/60 truncate">
+                        {row.gold_date} {row.gold_time} {row.gold_round}
+                      </span>
+                      <span className={`shrink-0 text-xs font-bold ${changeColor(row.change_today)}`}>
+                        {row.change_today > 0 ? "+" : ""}{row.change_today}
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-x-3 gap-y-1.5">
+                      {([
+                        ["รับซื้อแท่ง", row.bar_buy],
+                        ["ขายแท่ง", row.bar_sell],
+                        ["รับซื้อรูปพรรณ", row.ornament_buy],
+                        ["ขายรูปพรรณ", row.ornament_sell],
+                      ] as [string, number][]).map(([label, value]) => (
+                        <div key={label} className="flex items-baseline justify-between gap-x-2">
+                          <span className="text-[10px] text-black/40 truncate">{label}</span>
+                          <span className="text-xs font-bold tabular-nums text-black/70">
+                            {value.toLocaleString()}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
           )}

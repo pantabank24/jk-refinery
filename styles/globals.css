@@ -18,3 +18,19 @@
     font-size: 16px;
   }
 }
+
+/* The customer's bottom pill nav (components/root-layout/bottom-nav.tsx) floats
+   over the page, so anything anchored to the bottom edge offsets by its height
+   instead of disappearing underneath it. The variable is published by the layout
+   only for users who get a bar, and falls back to 0px for everyone else. From lg
+   up the bar is hidden — the sidebar is on screen instead — so the reservation
+   has to go away too, or every customer's desktop page would end in dead space. */
+[data-bottom-nav="1"] {
+  --bottom-nav-h: 5rem;
+}
+
+@media (min-width: 1024px) {
+  [data-bottom-nav="1"] {
+    --bottom-nav-h: 0px;
+  }
+}
