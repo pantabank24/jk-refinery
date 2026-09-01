@@ -1,7 +1,9 @@
+import { useMemo, useState } from "react";
 import { Button } from "@heroui/button";
+import { ImageViewer } from "@/components/image-viewer";
 import {
   FileText, FileSpreadsheet, Image as ImageIcon, File as FileIcon,
-  ExternalLink, Trash2, RefreshCw, Check, X, ShieldAlert,
+  ExternalLink, Maximize2, Trash2, RefreshCw, Check, X, ShieldAlert,
 } from "lucide-react";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL?.replace("/api/v1", "") || "http://localhost:8080";
@@ -74,6 +76,12 @@ export const DocumentList = ({
   docs, onDelete, onReplace, onApprove, onReject,
   canDeleteHighPriority = false, emptyText = "ยังไม่มีเอกสาร",
 }: Props) => {
+  // Images open in the viewer; pdf/docx/xlsx still go to a new tab, since there is
+  // nothing here that can render them. The viewer walks the image documents only,
+  // so paging through it never lands on a file it cannot show.
+  const imageDocs = useMemo(() => docs.filter((d) => IMAGE_EXTS.includes(d.file_ext)), [docs]);
+  const [viewing, setViewing] = useState<number | null>(null);
+
   if (docs.length === 0) {
     return (
       <div className="flex items-center justify-center py-8 text-black/40 text-sm">{emptyText}</div>
@@ -91,13 +99,25 @@ export const DocumentList = ({
 
         return (
           <div key={d.id} className="flex items-center justify-between px-3 py-2.5 hover:bg-black/[0.03] rounded-xl gap-x-2">
-            <a
-              href={`${API_BASE}${d.file_path}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center gap-x-3 min-w-0 flex-1 group"
+            {(() => {
+              const isImage = IMAGE_EXTS.includes(d.file_ext);
+              const Wrapper = isImage ? "button" : "a";
+              const wrapperProps = isImage
+                ? {
+                    type: "button" as const,
+                    onClick: () => setViewing(imageDocs.findIndex((x) => x.id === d.id)),
+                  }
+                : {
+                    href: `${API_BASE}${d.file_path}`,
+                    target: "_blank",
+                    rel: "noopener noreferrer",
+                  };
+              return (
+            <Wrapper
+              {...wrapperProps}
+              className="flex items-center gap-x-3 min-w-0 flex-1 group text-left"
             >
-              {IMAGE_EXTS.includes(d.file_ext) ? (
+              {isImage ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img
                   src={`${API_BASE}${d.file_path}`}
@@ -112,7 +132,11 @@ export const DocumentList = ({
               <div className="flex flex-col min-w-0 gap-y-0.5">
                 <span className="text-sm font-bold text-black/70 truncate group-hover:text-[#c09c42] flex items-center gap-x-1">
                   {d.file_name}
-                  <ExternalLink size={11} className="opacity-0 group-hover:opacity-60 shrink-0" />
+                  {isImage ? (
+                    <Maximize2 size={11} className="opacity-0 group-hover:opacity-60 shrink-0" />
+                  ) : (
+                    <ExternalLink size={11} className="opacity-0 group-hover:opacity-60 shrink-0" />
+                  )}
                 </span>
                 <div className="flex items-center gap-x-1.5 min-w-0 flex-wrap">
                   <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full border-1 shrink-0 max-w-[140px] truncate bg-[#c09c42]/10 text-[#8a6f2a] border-[#c09c42]/30 flex items-center gap-x-1">
@@ -132,7 +156,9 @@ export const DocumentList = ({
                   <span className="text-[10px] text-red-600 truncate">เหตุผล: {d.reject_reason}</span>
                 )}
               </div>
-            </a>
+            </Wrapper>
+              );
+            })()}
 
             <div className="flex items-center shrink-0">
               {onApprove && status === "pending" && (
@@ -159,6 +185,15 @@ export const DocumentList = ({
           </div>
         );
       })}
+
+      <ImageViewer
+        images={imageDocs.map((d) => ({
+          url: `${API_BASE}${d.file_path}`,
+          name: d.file_name,
+        }))}
+        index={viewing}
+        onClose={() => setViewing(null)}
+      />
     </div>
   );
 };
