@@ -274,7 +274,7 @@ export default function LineNotificationPage() {
   if (!authLoading && !canRead) return null;
 
   return (
-    <div className="flex flex-col h-full gap-y-4 pt-5 px-1 overflow-y-auto pb-8">
+    <div className="flex flex-col md:h-full gap-y-4 pt-5 px-1 md:overflow-y-auto pb-8">
       {/* Header */}
       <div className="flex items-center gap-x-3 shrink-0">
         <MessageCircle size={22} className="text-[#c09c42]" />

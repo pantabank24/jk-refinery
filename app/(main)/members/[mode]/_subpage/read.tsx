@@ -460,7 +460,7 @@ export const MemberDetail = () => {
     : "ทุกวันที่";
 
   return (
-    <div className="flex flex-col w-full h-full">
+    <div className="flex flex-col w-full md:h-full">
       <div className="flex flex-row items-center gap-x-3 shrink-0 py-5">
         <Button
           isIconOnly
@@ -492,7 +492,7 @@ export const MemberDetail = () => {
         )}
       </div>
 
-      <div className="flex flex-col md:flex-row w-full flex-1 min-h-0 gap-x-5 gap-y-4 overflow-y-auto md:overflow-hidden scrollbar-hide">
+      <div className="flex flex-col md:flex-row w-full md:flex-1 md:min-h-0 gap-x-5 gap-y-4 md:overflow-hidden">
         {/* Left: Member Info */}
         <div className="flex flex-col gap-y-3 md:w-72 shrink-0 md:overflow-y-auto md:min-h-0 scrollbar-hide">
           <MemberCard
@@ -717,7 +717,7 @@ export const MemberDetail = () => {
                 radius="sm"
                 removeWrapper
                 classNames={{
-                  base: "flex flex-col h-full overflow-y-auto scrollbar-hide",
+                  base: "flex flex-col md:h-full md:overflow-y-auto md:scrollbar-hide",
                 }}
               >
                 <TableHeader>

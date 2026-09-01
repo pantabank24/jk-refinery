@@ -149,7 +149,7 @@ export default function SellForCustomerPage() {
         </div>
       )}
 
-      <div className="flex flex-row justify-start flex-1 min-h-0">
+      <div className="flex flex-row justify-start md:flex-1 md:min-h-0">
         <BillCalculate onAdd={handleAdd} staffMode />
       </div>
 

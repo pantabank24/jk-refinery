@@ -163,14 +163,14 @@ export default function CustomerSellSettingsPage() {
   const today = new Date();
 
   return (
-    <div className="flex flex-col h-full gap-y-4">
+    <div className="flex flex-col md:h-full gap-y-4">
       <div className="flex flex-row items-center justify-between shrink-0 py-5">
         <div className="font-bold text-2xl bg-gradient-to-l from-black/90 to-yellow-600 bg-clip-text text-transparent pl-2">
           ตั้งค่าลูกค้าขาย
         </div>
       </div>
 
-      <div className="flex flex-col gap-y-4 overflow-y-auto pb-6">
+      <div className="flex flex-col gap-y-4 md:overflow-y-auto pb-6">
         {/* Open/close customer bills */}
         <div className={`flex flex-col border-1 backdrop-blur-xl rounded-3xl p-5 gap-y-1 ${billsOpen ? "border-black/10 bg-black/5" : "border-red-300/50 bg-red-50/60"}`}>
           <div className="flex flex-row items-center justify-between">

@@ -575,7 +575,7 @@ export function CustomerActivityLogs({ customerId }: { customerId: string }) {
           ยังไม่มีประวัติการใช้งาน
         </div>
       ) : (
-        <div className="flex flex-col gap-y-2 p-2 overflow-y-auto scrollbar-hide">
+        <div className="flex flex-col gap-y-2 p-2 md:overflow-y-auto md:scrollbar-hide">
           {shown.map((item) =>
             item.login ? (
               <LoginRow key={item.key} log={item.login} />

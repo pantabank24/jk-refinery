@@ -82,7 +82,7 @@ export default function ConfigPage() {
   }
 
   return (
-    <div className="flex flex-col h-full gap-y-4">
+    <div className="flex flex-col md:h-full gap-y-4">
       <div className="flex flex-row items-center justify-between shrink-0 py-5">
         <div className="font-bold text-2xl bg-gradient-to-l from-black/90 to-yellow-600 bg-clip-text text-transparent pl-2">
           ตั้งค่าระบบ
@@ -99,7 +99,7 @@ export default function ConfigPage() {
         )}
       </div>
 
-      <div className="flex flex-col gap-y-4 overflow-y-auto pb-4">
+      <div className="flex flex-col gap-y-4 md:overflow-y-auto pb-4">
         {/* Gold price cron section */}
         <div className="flex flex-col border-1 border-black/10 bg-black/5 backdrop-blur-xl rounded-3xl p-5 gap-y-4">
           <span className="font-bold text-md bg-gradient-to-l from-black/90 to-yellow-600 bg-clip-text text-transparent">

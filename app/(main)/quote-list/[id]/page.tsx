@@ -211,7 +211,7 @@ export default function EmployeeQuoteListPage() {
   );
 
   return (
-    <div className="flex flex-col h-full gap-y-3">
+    <div className="flex flex-col md:h-full gap-y-3">
       {/* Header */}
       <div className="flex flex-row items-center gap-x-2 shrink-0 px-1">
         <Button
@@ -308,7 +308,7 @@ export default function EmployeeQuoteListPage() {
       <div className="shrink-0 md:hidden">{tabsEl}</div>
 
       {/* Scroll region — Overview ลงไป (Header + ค้นหา + Filter ตรึงไว้ด้านบน) */}
-      <div className="flex-1 min-h-0 flex flex-col gap-y-3 overflow-y-auto md:overflow-hidden scrollbar-hide">
+      <div className="md:flex-1 md:min-h-0 flex flex-col gap-y-3 md:overflow-hidden">
       <div className="shrink-0 flex flex-col gap-y-1">
         {/*<span className="text-xs font-bold text-[#c09c42] px-1">📊 {overviewLabel}</span>*/}
         <QuoteOverview totals={totals} />

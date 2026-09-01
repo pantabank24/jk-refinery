@@ -261,7 +261,7 @@ export const CustomerAction = () => {
   const displayAvatar = avatarPreview || (existingAvatar ? `${API_BASE}${existingAvatar}` : "");
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col md:h-full">
       <div className="flex flex-row items-center gap-x-3 shrink-0 py-5">
         <Button isIconOnly variant="light" onPress={() => router.back()} className="text-[#c09c42]">
           <ArrowLeft size={20} />
@@ -274,7 +274,7 @@ export const CustomerAction = () => {
       {initLoading ? (
         <div className="flex items-center justify-center flex-1"><Spinner size="lg" color="warning" /></div>
       ) : (
-        <div className="w-full max-w-xl border-1 border-black/10 bg-black/5 backdrop-blur-xl rounded-3xl p-6 overflow-y-auto">
+        <div className="w-full max-w-xl border-1 border-black/10 bg-black/5 backdrop-blur-xl rounded-3xl p-6 md:overflow-y-auto">
           <form onSubmit={handleSubmit} className="flex flex-col gap-y-5">
             {/* Avatar */}
             <div className="flex justify-center">

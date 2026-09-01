@@ -44,7 +44,7 @@ export default function StoresPage() {
   }, []);
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col md:h-full">
       <div className="flex flex-row items-center justify-between shrink-0 py-5">
         <div className="flex font-bold text-2xl bg-gradient-to-l from-black/90 to-yellow-600 bg-clip-text text-transparent pl-2">
           ร้านค้าและสาขา
@@ -73,7 +73,7 @@ export default function StoresPage() {
           <span className="text-black/40 text-lg">ยังไม่มีร้านค้า</span>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 overflow-y-auto scrollbar-hide pb-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 md:overflow-y-auto md:scrollbar-hide pb-4">
           {stores.map((store) => (
             <div
               key={store.id}

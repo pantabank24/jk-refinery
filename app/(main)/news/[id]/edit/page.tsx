@@ -89,7 +89,7 @@ export default function EditNewsPage() {
   };
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col md:h-full">
       <div className="flex flex-row items-center gap-x-3 shrink-0 py-5">
         <Button isIconOnly variant="light" onPress={() => router.back()} className="text-[#c09c42]">
           <ArrowLeft size={20} />

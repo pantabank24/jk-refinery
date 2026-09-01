@@ -122,7 +122,7 @@ export default function RoleDetailPage() {
   }
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col md:h-full">
       <div className="flex flex-row items-center justify-between shrink-0 py-5">
         <div className="flex items-center gap-x-3">
           <Button isIconOnly variant="light" onPress={() => router.back()} className="text-[#c09c42]">
@@ -145,7 +145,7 @@ export default function RoleDetailPage() {
         </Button>
       </div>
 
-      <div className="overflow-y-auto pb-4 space-y-4">
+      <div className="md:overflow-y-auto pb-4 space-y-4">
         {Object.entries(grouped).map(([group, perms]) => (
           <div
             key={group}

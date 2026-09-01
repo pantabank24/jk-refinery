@@ -61,7 +61,7 @@ export default function ManagementPage() {
   ];
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col md:h-full">
       <div className="flex flex-row items-center justify-between shrink-0 py-5">
         <div className="font-bold text-2xl bg-gradient-to-l from-black/90 to-yellow-600 bg-clip-text text-transparent pl-2">
           การจัดการ

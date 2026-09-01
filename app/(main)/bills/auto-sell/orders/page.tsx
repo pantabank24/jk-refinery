@@ -133,7 +133,7 @@ export default function AutoSellOrdersPage() {
     <div className="flex flex-col gap-y-3">
       {/* Same width discipline as the sell screen — a list of short rows must not
           stretch across a desktop monitor. */}
-      <div className="flex flex-row justify-start flex-1 min-h-0">
+      <div className="flex flex-row justify-start md:flex-1 md:min-h-0">
         <div className="flex flex-col w-full min-w-0 xl:w-[700px] mb-5 gap-y-3">
           {/* Header */}
           <div className="flex flex-row items-center justify-between gap-x-2 px-1">

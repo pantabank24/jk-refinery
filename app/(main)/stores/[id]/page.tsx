@@ -76,7 +76,7 @@ export default function StoreDetailPage() {
   if (!store) return null;
 
   return (
-    <div className="flex flex-col h-full gap-y-4">
+    <div className="flex flex-col md:h-full gap-y-4">
       <div className="flex flex-row items-center justify-between shrink-0 py-5">
         <div className="flex items-center gap-x-3">
           <Button isIconOnly variant="light" onPress={() => router.back()} className="text-[#c09c42]">
@@ -151,7 +151,7 @@ export default function StoreDetailPage() {
         )}
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 overflow-y-auto pb-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 md:overflow-y-auto pb-4">
         {store.branches?.map((branch) => (
           <div
             key={branch.id}

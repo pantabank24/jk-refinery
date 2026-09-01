@@ -714,7 +714,7 @@ export function BillsList({ metal }: { metal: BillMetal }) {
   );
 
   return (
-    <div className="flex flex-col h-full gap-y-3">
+    <div className="flex flex-col md:h-full gap-y-3">
       {/* Header */}
       <div className="flex flex-row items-center justify-between shrink-0 px-1">
         <span className="font-bold text-2xl bg-gradient-to-l from-black/90 to-yellow-600 bg-clip-text text-transparent">
@@ -754,7 +754,7 @@ export function BillsList({ metal }: { metal: BillMetal }) {
       <div className="shrink-0 md:hidden">{tabsRow}</div>
 
       {/* Scroll region — มือถือ: Overview→list เลื่อนพร้อมกัน / desktop: Overview,Tabs ตรึง ให้ content scroll เอง */}
-      <div className="flex-1 min-h-0 overflow-y-auto md:overflow-hidden scrollbar-hide flex flex-col gap-y-3">
+      <div className="md:flex-1 md:min-h-0 md:overflow-hidden flex flex-col gap-y-3">
 
       {/* Overview — totals for EVERY bill matching the filter, not just this page.
           Two columns on mobile; on desktop every card sits on one row (5 wide when

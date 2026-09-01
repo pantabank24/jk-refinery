@@ -223,7 +223,7 @@ export default function GoldTypesPage() {
   };
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col md:h-full">
       <div className="flex flex-row items-center justify-between shrink-0 py-5">
         <div className="font-bold text-2xl bg-gradient-to-l from-black/90 to-yellow-600 bg-clip-text text-transparent pl-2">
           ประเภททองและสูตรคำนวณ
@@ -233,7 +233,7 @@ export default function GoldTypesPage() {
       {loading ? (
         <div className="flex items-center justify-center h-full"><Spinner size="lg" color="warning" /></div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 overflow-y-auto pb-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 md:overflow-y-auto pb-4">
           {types.map((gt) => {
             const gtSteps = parseSteps(gt.formula_steps);
             return (

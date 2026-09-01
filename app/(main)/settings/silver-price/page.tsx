@@ -114,7 +114,7 @@ export default function SilverPricePage() {
     v > 0 ? "text-green-600" : v < 0 ? "text-red-600" : "text-black/40";
 
   return (
-    <div className="flex flex-col h-full gap-y-4">
+    <div className="flex flex-col md:h-full gap-y-4">
       <div className="flex flex-row items-center justify-between shrink-0 py-5">
         <div className="flex flex-col">
           <div className="font-bold text-2xl bg-gradient-to-l from-black/90 to-slate-500 bg-clip-text text-transparent pl-2">
@@ -205,13 +205,13 @@ export default function SilverPricePage() {
 
           {/* History table */}
           {hasPermission("metal_prices.read") && history.length > 0 && (
-            <div className="flex flex-col flex-1 min-h-0 border-1 border-black/10 bg-black/5 backdrop-blur-xl rounded-3xl overflow-hidden">
+            <div className="flex flex-col md:flex-1 md:min-h-0 border-1 border-black/10 bg-black/5 backdrop-blur-xl rounded-3xl overflow-hidden">
               <div className="px-5 pt-4 pb-2 shrink-0">
                 <span className="font-bold text-md bg-gradient-to-l from-black/90 to-slate-500 bg-clip-text text-transparent">
                   ประวัติราคาเงิน
                 </span>
               </div>
-              <div className="overflow-y-auto flex-1">
+              <div className="md:overflow-y-auto md:flex-1">
                 <table className="w-full text-xs">
                   <thead className="sticky top-0 bg-black/5 backdrop-blur-xl">
                     <tr className="text-black/50">

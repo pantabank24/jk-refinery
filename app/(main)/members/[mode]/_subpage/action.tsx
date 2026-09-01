@@ -321,7 +321,7 @@ export const Action = () => {
   const displayAvatar = avatarPreview || (existingImage ? `${API_BASE}${existingImage}` : "");
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col md:h-full">
       <div className="flex flex-row items-center gap-x-3 shrink-0 py-5">
         <Button
           isIconOnly
@@ -341,7 +341,7 @@ export const Action = () => {
           <div className="w-8 h-8 rounded-full border-2 border-[#c09c42] border-t-transparent animate-spin" />
         </div>
       ) : (
-        <div className="w-full max-w-xl border-1 border-black/10 bg-black/5 backdrop-blur-xl rounded-3xl p-6 overflow-y-auto">
+        <div className="w-full max-w-xl border-1 border-black/10 bg-black/5 backdrop-blur-xl rounded-3xl p-6 md:overflow-y-auto">
           <form onSubmit={handleSubmit} className="flex flex-col gap-y-5">
 
             {/* รูปโปรไฟล์ */}

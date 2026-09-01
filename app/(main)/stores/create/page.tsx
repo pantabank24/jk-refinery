@@ -47,7 +47,7 @@ export default function CreateStorePage() {
   };
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col md:h-full">
       <div className="flex flex-row items-center gap-x-3 shrink-0 py-5">
         <Button
           isIconOnly

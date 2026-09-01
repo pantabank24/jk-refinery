@@ -175,7 +175,7 @@ export default function Members() {
   if (!authLoading && !canRead) return null;
 
   return (
-    <div className="flex flex-col h-full gap-y-3">
+    <div className="flex flex-col md:h-full gap-y-3">
       {/* header */}
       <div className="flex flex-row items-center justify-between shrink-0">
         <div className="flex font-bold text-2xl bg-gradient-to-l from-black/90 to-yellow-600 bg-clip-text text-transparent pl-2">
@@ -274,7 +274,7 @@ export default function Members() {
             radius="sm"
             removeWrapper
             classNames={{
-              base: "hidden md:flex flex-col flex-1 min-h-0 overflow-y-scroll scrollbar-hide border-1 border-black/10 bg-black/5 backdrop-blur-xl rounded-2xl p-2",
+              base: "hidden md:flex flex-col md:flex-1 md:min-h-0 overflow-y-scroll scrollbar-hide border-1 border-black/10 bg-black/5 backdrop-blur-xl rounded-2xl p-2",
             }}
           >
             <TableHeader columns={columns}>
@@ -296,7 +296,7 @@ export default function Members() {
           </Table>
 
           {/* Mobile: card list */}
-          <div className="flex md:hidden flex-col gap-y-2 flex-1 min-h-0 overflow-y-auto scrollbar-hide pb-2">
+          <div className="flex md:hidden flex-col gap-y-2 pb-2">
             {members.length === 0 ? (
               <div className="flex items-center justify-center py-10 text-black/40 text-sm">ไม่พบข้อมูล</div>
             ) : members.map((m) => (

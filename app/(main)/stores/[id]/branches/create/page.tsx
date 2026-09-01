@@ -75,7 +75,7 @@ export default function CreateBranchPage() {
   };
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col md:h-full">
       <div className="flex flex-row items-center gap-x-3 shrink-0 py-5">
         <Button isIconOnly variant="light" onPress={() => router.back()} className="text-[#c09c42]">
           <ArrowLeft size={20} />
@@ -85,7 +85,7 @@ export default function CreateBranchPage() {
         </div>
       </div>
 
-      <div className="w-full max-w-xl border-1 border-black/10 bg-black/5 backdrop-blur-xl rounded-3xl p-6 overflow-y-auto">
+      <div className="w-full max-w-xl border-1 border-black/10 bg-black/5 backdrop-blur-xl rounded-3xl p-6 md:overflow-y-auto">
         <form onSubmit={handleSubmit} className="flex flex-col gap-y-4">
           <Input label="ชื่อสาขา" placeholder="เช่น สาขาลาดพร้าว" value={name} onValueChange={setName}
             classNames={wrapCls} isRequired />

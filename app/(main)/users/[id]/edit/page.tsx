@@ -137,7 +137,7 @@ export default function EditUserPage() {
   const inputStyle = "bg-gradient-to-br from-black/10 to-transparent border-1 border-black/10 rounded-2xl";
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col md:h-full">
       <div className="flex flex-row items-center justify-between shrink-0 py-5">
         <div className="flex items-center gap-x-3">
           <Button isIconOnly variant="light" onPress={() => router.back()} className="text-[#c09c42]">

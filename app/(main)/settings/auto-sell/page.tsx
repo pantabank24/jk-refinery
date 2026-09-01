@@ -186,7 +186,7 @@ export default function AutoSellSettingsPage() {
   );
 
   return (
-    <div className="flex flex-col h-full gap-y-4">
+    <div className="flex flex-col md:h-full gap-y-4">
       <div className="flex flex-row items-center justify-between gap-x-2 shrink-0 py-5">
         <div className="font-bold text-2xl bg-gradient-to-l from-black/90 to-yellow-600 bg-clip-text text-transparent pl-2 truncate min-w-0">
           ตั้งค่าขายอัตโนมัติ
@@ -206,7 +206,7 @@ export default function AutoSellSettingsPage() {
         )}
       </div>
 
-      <div className="flex flex-col gap-y-4 overflow-y-auto pb-6">
+      <div className="flex flex-col gap-y-4 md:overflow-y-auto pb-6">
         {saveError && (
           <div className="flex items-center gap-x-2 text-sm text-red-600 bg-red-50 border-1 border-red-200 rounded-2xl px-4 py-2">
             <AlertTriangle size={15} /> {saveError}

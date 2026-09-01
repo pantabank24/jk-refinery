@@ -225,7 +225,7 @@ export function DocumentTypeManagement() {
   };
 
   return (
-    <div className="flex flex-col flex-1 min-h-0">
+    <div className="flex flex-col md:flex-1 md:min-h-0">
       <div className="flex flex-row items-center justify-between shrink-0 pb-3">
         <span className="text-sm text-black/50">
           ประเภทเอกสารที่เลือกได้ตอนอัปโหลดเอกสารลูกค้า

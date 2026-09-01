@@ -544,7 +544,7 @@ export const CustomerDetail = ({ selfMode = false }: { selfMode?: boolean } = {}
   }
 
   return (
-    <div className="flex flex-col w-full h-full">
+    <div className="flex flex-col w-full md:h-full">
       {/* Header */}
       <div className="flex flex-row items-center gap-x-3 shrink-0 py-5">
         {!selfMode && (
@@ -603,7 +603,7 @@ export const CustomerDetail = ({ selfMode = false }: { selfMode?: boolean } = {}
         </div>
       )}
 
-      <div className="flex flex-col md:flex-row w-full flex-1 min-h-0 gap-x-5 gap-y-4 overflow-y-auto md:overflow-hidden scrollbar-hide">
+      <div className="flex flex-col md:flex-row w-full md:flex-1 md:min-h-0 gap-x-5 gap-y-4 md:overflow-hidden">
         {/* Left: card */}
         <div className="flex flex-col gap-y-3 md:w-72 shrink-0 md:overflow-y-auto md:min-h-0 scrollbar-hide">
           <CustomerCard
@@ -801,7 +801,7 @@ export const CustomerDetail = ({ selfMode = false }: { selfMode?: boolean } = {}
                   </Button>
                 )}
               </div>
-              <div className="overflow-y-auto scrollbar-hide p-2">
+              <div className="md:overflow-y-auto md:scrollbar-hide p-2">
                 <DocumentList
                   docs={docs}
                   onDelete={canManageDocs ? askDeleteDoc : undefined}

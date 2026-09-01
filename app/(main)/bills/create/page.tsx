@@ -174,7 +174,7 @@ export default function CreateBillPage() {
       {/* Gold sales-hours banner is gold-only — don't show it when gold is closed
           but silver is still open (that would look like the whole shop is closed). */}
       {goldOpen && <SalesStatusBanner status={salesStatus} />}
-      <div className="flex flex-row justify-start flex-1 min-h-0">
+      <div className="flex flex-row justify-start md:flex-1 md:min-h-0">
         <BillCalculate
           onAdd={handleAdd}
           allowGold={goldOpen}

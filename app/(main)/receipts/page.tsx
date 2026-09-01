@@ -98,7 +98,7 @@ export default function ReceiptsPage() {
   if (!authLoading && !canRead) return null;
 
   return (
-    <div className="flex flex-col h-full min-h-0">
+    <div className="flex flex-col md:h-full md:min-h-0">
       <div className="flex flex-row items-center justify-between shrink-0 py-5 gap-x-3">
         <div className="font-bold text-2xl bg-gradient-to-l from-black/90 to-yellow-600 bg-clip-text text-transparent pl-2 truncate">
           บันทึกใบเสร็จ
@@ -145,7 +145,7 @@ export default function ReceiptsPage() {
         />
       </div>
 
-      <div className="flex flex-col flex-1 min-h-0 overflow-y-auto scrollbar-hide">
+      <div className="flex flex-col md:flex-1 md:min-h-0 md:overflow-y-auto md:scrollbar-hide">
         {loading ? (
           <div className="flex items-center justify-center py-10">
             <Spinner size="lg" color="warning" />

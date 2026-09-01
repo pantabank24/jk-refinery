@@ -121,7 +121,7 @@ export default function LogsPage() {
   const activityTotalPages = Math.ceil(activityTotal / LIMIT);
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col md:h-full">
       <div className="flex flex-row items-center shrink-0 py-5">
         <div className="font-bold text-2xl bg-gradient-to-l from-black/90 to-yellow-600 bg-clip-text text-transparent pl-2">
           Logs การใช้งาน
@@ -162,7 +162,7 @@ export default function LogsPage() {
 
       {/* ====== LOGIN LOGS ====== */}
       {activeTab === "login" && (
-        <div className="flex flex-col flex-1 min-h-0 border-1 border-black/10 bg-black/5 backdrop-blur-xl rounded-2xl p-4 gap-y-3">
+        <div className="flex flex-col md:flex-1 md:min-h-0 border-1 border-black/10 bg-black/5 backdrop-blur-xl rounded-2xl p-4 gap-y-3">
           {/* Filter */}
           <div className="flex flex-row gap-x-2 shrink-0">
             {[
@@ -193,7 +193,7 @@ export default function LogsPage() {
               ยังไม่มี Login logs
             </div>
           ) : (
-            <div className="flex flex-col gap-y-2 overflow-y-auto scrollbar-hide flex-1">
+            <div className="flex flex-col gap-y-2 md:overflow-y-auto md:scrollbar-hide md:flex-1">
               {loginLogs.map((log) => (
                 <div
                   key={log.id}
@@ -249,7 +249,7 @@ export default function LogsPage() {
 
       {/* ====== ACTIVITY LOGS ====== */}
       {activeTab === "activity" && (
-        <div className="flex flex-col flex-1 min-h-0 border-1 border-black/10 bg-black/5 backdrop-blur-xl rounded-2xl p-4 gap-y-3">
+        <div className="flex flex-col md:flex-1 md:min-h-0 border-1 border-black/10 bg-black/5 backdrop-blur-xl rounded-2xl p-4 gap-y-3">
           {/* Method filter */}
           <div className="flex flex-row gap-x-2 shrink-0">
             {["", "GET", "POST", "PUT", "DELETE"].map((m) => (
@@ -276,7 +276,7 @@ export default function LogsPage() {
               ยังไม่มี Activity logs
             </div>
           ) : (
-            <div className="flex flex-col gap-y-2 overflow-y-auto scrollbar-hide flex-1">
+            <div className="flex flex-col gap-y-2 md:overflow-y-auto md:scrollbar-hide md:flex-1">
               {activityLogs.map((log) => (
                 <div
                   key={log.id}

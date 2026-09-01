@@ -186,7 +186,7 @@ export default function AutoSellPage() {
     <div className="flex flex-col gap-y-3">
       {/* Same width discipline as the sell screen: a form this narrow must not
           stretch across a desktop monitor. */}
-      <div className="flex flex-row justify-start flex-1 min-h-0">
+      <div className="flex flex-row justify-start md:flex-1 md:min-h-0">
         <div className="flex flex-col w-full min-w-0 xl:w-[700px] mb-5 gap-y-3">
           {/* Why nothing will fire right now — the engine's own reason, verbatim. */}
           {status && !status.can_fire_now && status.blocked_reason && (

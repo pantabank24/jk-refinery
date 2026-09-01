@@ -107,7 +107,7 @@ export default function UsersPage() {
   const inputStyle = "bg-gradient-to-br from-black/10 to-transparent border-1 border-black/10 rounded-xl";
 
   return (
-    <div className="flex flex-col h-full gap-y-3">
+    <div className="flex flex-col md:h-full gap-y-3">
       {/* header */}
       <div className="flex flex-row items-center justify-between shrink-0">
         <div className="flex font-bold text-2xl bg-gradient-to-l from-black/90 to-yellow-600 bg-clip-text text-transparent pl-2">
@@ -277,7 +277,7 @@ export default function UsersPage() {
           </Table>
 
           {/* Mobile: card list */}
-          <div className="flex md:hidden flex-col gap-y-2 flex-1 min-h-0 overflow-y-auto scrollbar-hide pb-2">
+          <div className="flex md:hidden flex-col gap-y-2 pb-2">
             {users.map((u) => (
               <div
                 key={u.id}

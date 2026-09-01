@@ -382,7 +382,7 @@ export const BillCalculate = ({
     >
       <div
         className={`flex flex-col border-1 border-black/10 bg-black/5 backdrop-blur-xl rounded-4xl p-3 gap-y-2 ${
-          fluid ? "" : "h-full overflow-y-scroll scrollbar-hide"
+          fluid ? "" : "md:h-full md:overflow-y-scroll md:scrollbar-hide"
         }`}
       >
         {metals.length > 1 && (
