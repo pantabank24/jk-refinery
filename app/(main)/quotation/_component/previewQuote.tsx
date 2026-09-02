@@ -1070,7 +1070,14 @@ export const PreviewQuote = React.forwardRef<PreviewQuoteHandle, Props>(
                               <img
                                 src={signatureImage}
                                 alt="ลายเซ็น"
-                                className="h-12 object-contain"
+                                // Cap the WIDTH, not just the height: the pad
+                                // exports the ink cropped, so a signature
+                                // written across a fullscreen canvas is very
+                                // wide and would push "เจ้าของสินค้า" off the
+                                // 320px column. max-h/max-w together keep the
+                                // aspect ratio and let the box shrink so the
+                                // signature still sits on its line.
+                                className="max-h-12 max-w-[120px] object-contain"
                               />
                               <span className="border-t border-gray-500 px-2 text-[8px] leading-tight">
                                 {signerName ? `( ${signerName} )` : ""}
@@ -1273,7 +1280,7 @@ export const PreviewQuote = React.forwardRef<PreviewQuoteHandle, Props>(
                       <img
                         src={signatureImage}
                         alt="ลายเซ็น"
-                        className="h-10 object-contain"
+                        className="max-h-10 max-w-[120px] object-contain"
                       />
                     ) : (
                       <span>...........................................</span>

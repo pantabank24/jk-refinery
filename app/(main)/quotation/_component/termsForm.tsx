@@ -101,7 +101,11 @@ export const TermsForm = ({ signatureImage, signerName, onPrint }: Props) => {
             <div className="flex flex-col items-center gap-y-1">
               {signatureImage ? (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src={signatureImage} alt="ลายเซ็น" className="h-14 object-contain" />
+                <img
+                  src={signatureImage}
+                  alt="ลายเซ็น"
+                  className="max-h-14 max-w-[160px] object-contain"
+                />
               ) : (
                 <div className="h-14 flex items-end">
                   <span>....................................................</span>
