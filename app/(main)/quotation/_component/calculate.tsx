@@ -10,6 +10,7 @@ import { QuotationProps } from "./quotation";
 import { api } from "@/lib/api";
 import { Tabs, Tab } from "@heroui/tabs";
 import { useSalesStatus } from "@/hooks/use-sales-status";
+import { useAuth } from "@/contexts/auth-context";
 import { useRealtimeGold } from "@/hooks/use-realtime-gold";
 import { PriceModeChip } from "@/components/sales-status-banner";
 import {
@@ -217,7 +218,10 @@ export const Calculate = ({
   const [typeId, setTypeId] = useState("");
   const [percent, setPercent] = useState(0);
   const [plus, setPlus] = useState(0);
-  const [plusType, setPlusType] = useState(0); // 0=บาท, 1=%
+  // master ตั้งราคาบวกเป็นเปอร์เซ็นต์เป็นหลัก จึง default ช่องราคาบวกเป็น % ให้เลย
+  // (ยังกดสลับกลับเป็น ฿ ได้) ส่วน role อื่นใช้ค่าที่ตั้งไว้ในชนิดสินค้าตามเดิม
+  const { isMaster, loading: authLoading } = useAuth();
+  const [plusType, setPlusType] = useState(isMaster ? 1 : 0); // 0=บาท, 1=%
   const [weight, setWeight] = useState(0);
 
   // Real-time pricing: when the shop is outside association hours and real-time
@@ -226,6 +230,13 @@ export const Calculate = ({
   // The shop's schedule picks the default feed; the user can override it per
   // quotation (null = still following the schedule).
   const [goldSource, setGoldSource] = useState<GoldPriceSource | null>(null);
+  // เฉพาะ master เท่านั้นที่เริ่มตามตารางเวลาของร้าน (อาจเป็นเรียลไทม์) — role อื่น
+  // ให้ default เป็นราคาสมาคมเสมอ แล้วค่อยกดสลับเป็นเรียลไทม์เองเฉพาะใบนั้น.
+  // /auth/me ตอบกลับหลัง mount จึงตั้งค่าตอน auth โหลดเสร็จ (ยิงครั้งเดียว).
+  useEffect(() => {
+    if (authLoading) return;
+    setGoldSource(isMaster ? null : "association");
+  }, [authLoading, isMaster]);
   const effGoldSource = resolveGoldSource(goldSource, salesStatus);
   const realtimeActive = effGoldSource === "realtime" && metal === "gold";
   // อัปเดตทุก 10 วินาที — ตอนออกใบเสนอราคาไม่ต้องรัวเท่าหน้าดูราคาสด
@@ -335,9 +346,16 @@ export const Calculate = ({
     }
     setPercent(0);
     setPlus(gt.default_plus);
-    setPlusType(gt.plus_type ?? 0);
+    setPlusType(isMaster ? 1 : (gt.plus_type ?? 0));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [typeId, goldTypes, goldPrice, silverPrice, forcedPrice, metal]);
+  }, [typeId, goldTypes, goldPrice, silverPrice, forcedPrice, metal, isMaster]);
+
+  // /auth/me resolves after mount, so isMaster can flip to true once the product
+  // type has already applied its own plus_type — re-assert the master default when
+  // it lands.
+  useEffect(() => {
+    if (isMaster) setPlusType(1);
+  }, [isMaster]);
 
   // Real-time tick / price-source switch: live-update ONLY the base price (leave
   // percent/plus/weight untouched so the user's inputs survive each refresh and

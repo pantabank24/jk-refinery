@@ -12,6 +12,8 @@ import { ArrowLeft, Camera, Eye, EyeOff, Save, Upload, X } from "lucide-react";
 import { api } from "@/lib/api";
 import type { BankDto } from "@/dtos/bank-dto";
 import type { DocumentTypeDto } from "@/dtos/document-type-dto";
+import { useAuth } from "@/contexts/auth-context";
+import { useStore } from "@/contexts/store-context";
 import {
   DocumentList, DOC_ACCEPT, fmtSize, type CustomerDocument,
 } from "../_components/documentList";
@@ -31,6 +33,8 @@ interface Customer {
   avatar?: string;
   is_active: boolean;
   store_name?: string | null;
+  // ร้านที่ลูกค้าสังกัด (ไม่ใช่ store_name ซึ่งเป็นชื่อร้านของลูกค้าเองบนใบเสร็จ)
+  store_id?: number | null;
 }
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -60,11 +64,23 @@ export const CustomerAction = () => {
   const [taxId, setTaxId] = useState("");
   const [isActive, setIsActive] = useState(true);
 
+  // ร้านที่ลูกค้าสังกัด — ลูกค้าเป็นข้อมูลระดับร้าน พนักงานร้านอื่นต้องไม่เห็น.
+  // staff ผูกกับร้านตัวเองอยู่แล้ว (backend เป็นคนกำหนด ไม่รับจาก body) มีแต่ master
+  // ที่ต้องเลือก เพราะ master ไม่ได้สังกัดร้านไหน
+  const { isMaster } = useAuth();
+  const { stores, selectedStore } = useStore();
+  const [storeId, setStoreId] = useState("");
+
   // Payout account. bankId is the Select's key — "" means ไม่ระบุ.
   const [banks, setBanks] = useState<BankDto[]>([]);
   const [bankId, setBankId] = useState("");
   const [bankAccountNo, setBankAccountNo] = useState("");
   const [bankAccountName, setBankAccountName] = useState("");
+
+  // ตั้งค่าเริ่มต้นเป็นร้านที่ master เลือกไว้ใน store context (ค่าเริ่มต้นคือร้านหลัก)
+  useEffect(() => {
+    if (isMaster && !storeId && selectedStore) setStoreId(String(selectedStore.id));
+  }, [isMaster, storeId, selectedStore]);
 
   // Documents: existing (edit) live-managed; pending (create) queued until save.
   // Every attachment carries the type it was picked under, so a queued file keeps
@@ -105,6 +121,7 @@ export const CustomerAction = () => {
         setStoreName(c.store_name || "");
         setAddress(c.address || "");
         setTaxId(c.tax_id || "");
+        setStoreId(c.store_id ? String(c.store_id) : "");
         setBankId(c.bank_id ? String(c.bank_id) : "");
         setBankAccountNo(c.bank_account_no || "");
         setBankAccountName(c.bank_account_name || "");
@@ -197,6 +214,9 @@ export const CustomerAction = () => {
     if (!isEdit && !password) return setError("กรุณากำหนดรหัสผ่าน");
     if (password && password.length < 6) return setError("รหัสผ่านต้องมีอย่างน้อย 6 ตัวอักษร");
     if (password && password !== confirmPassword) return setError("รหัสผ่านไม่ตรงกัน");
+    // master ไม่ได้สังกัดร้าน จึงต้องเลือกให้ลูกค้าเอง ไม่งั้นลูกค้าจะไม่โผล่ในลิสต์
+    // ของร้านไหนเลย (เห็นได้เฉพาะ master)
+    if (isMaster && stores.length > 1 && !storeId) return setError("กรุณาเลือกร้านของลูกค้า");
 
     setError("");
     setLoading(true);
@@ -207,6 +227,7 @@ export const CustomerAction = () => {
           name, email,
           ...(password ? { password } : {}),
           phone,
+          store_id: isMaster && storeId ? Number(storeId) : undefined,
           store_name: storeName,
           address,
           tax_id: taxId,
@@ -219,6 +240,7 @@ export const CustomerAction = () => {
       } else {
         const res = await api.post<{ id: number }>("/customers", {
           name, email, password, phone,
+          store_id: isMaster && storeId ? Number(storeId) : undefined,
           store_name: storeName || undefined,
           address: address || undefined,
           tax_id: taxId || undefined,
@@ -315,6 +337,26 @@ export const CustomerAction = () => {
                 </div>
               )}
             </div>
+
+            {/* ร้านที่สังกัด — master เท่านั้น (staff ผูกกับร้านตัวเองโดยอัตโนมัติ) */}
+            {isMaster && (
+              <Select
+                label="ร้านที่สังกัด"
+                placeholder="เลือกร้าน"
+                description="พนักงานและเจ้าของร้านนี้เท่านั้นที่จะเห็นลูกค้ารายนี้"
+                selectedKeys={storeId ? new Set([storeId]) : new Set([])}
+                onSelectionChange={(keys) =>
+                  setStoreId((Array.from(keys)[0] as string) ?? "")
+                }
+                classNames={{ trigger: inputStyle }}
+              >
+                {stores.map((st) => (
+                  <SelectItem key={String(st.id)} textValue={st.name}>
+                    {st.name}
+                  </SelectItem>
+                ))}
+              </Select>
+            )}
 
             {/* บัญชีธนาคาร */}
             <div className="flex flex-col gap-y-3">

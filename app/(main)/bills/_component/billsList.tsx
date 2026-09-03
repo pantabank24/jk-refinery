@@ -745,7 +745,7 @@ export function BillsList({ metal }: { metal: BillMetal }) {
       {/* Filter bar */}
       <div className="flex flex-row items-center gap-x-2 shrink-0">
         <div className="flex-1">
-          <CmpInput placeholder="ค้นหาเลขที่" value={search}
+          <CmpInput placeholder="ค้นหาเลขที่ / ชื่อลูกค้า" value={search}
             onChange={(e: React.ChangeEvent<HTMLInputElement>) => { setSearch(e.target.value); setPage(1); }} />
         </div>
       </div>
