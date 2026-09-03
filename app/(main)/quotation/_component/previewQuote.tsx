@@ -1133,7 +1133,7 @@ export const PreviewQuote = React.forwardRef<PreviewQuoteHandle, Props>(
                         <p className="text-[8px] font-semibold mb-1">
                           รูปภาพประกอบ
                         </p>
-                        <div>
+                        <div className="grid grid-cols-2 gap-2">
                           {attachmentImages.map((img, i) => (
                             <div
                               key={`${img.name}-${i}`}
@@ -1147,18 +1147,13 @@ export const PreviewQuote = React.forwardRef<PreviewQuoteHandle, Props>(
                                   openImageViewer(i);
                                 }
                               }}
-                              className="inline-flex flex-col items-center align-top cursor-zoom-in focus:outline-none focus:ring-2 focus:ring-[#c09c42] rounded"
-                              style={{
-                                marginRight: "4px",
-                                marginBottom: "4px",
-                              }}
+                              className="flex min-w-0 w-full flex-col items-center cursor-zoom-in focus:outline-none focus:ring-2 focus:ring-[#c09c42] rounded"
                             >
                               {/* eslint-disable-next-line @next/next/no-img-element */}
                               <img
                                 src={img.src}
                                 alt={img.name}
-                                className="w-auto object-contain rounded border border-gray-300"
-                                style={{ height: "90px" }}
+                                className="aspect-[4/3] w-full object-contain rounded border border-gray-300 bg-gray-50"
                               />
                               <span className="text-[6px] text-gray-500 leading-tight">
                                 {img.label}
