@@ -611,8 +611,8 @@ export const PreviewQuote = React.forwardRef<PreviewQuoteHandle, Props>(
       isGoldLine(it)
         ? linePerGram(it).toLocaleString()
         : linePerGram(it).toLocaleString(undefined, {
-            maximumFractionDigits: 2,
-          });
+          maximumFractionDigits: 2,
+        });
     // รวมกรัมของทั้งใบ = ผลบวกของคอลัมน์ที่พิมพ์จริง (ทองที่แปลงแล้ว + กรัมของโลหะอื่น)
     // ถ้ามีบรรทัดที่แปลงไม่ได้ ให้ทั้งช่องตกกลับไปใช้น้ำหนักรวมที่เก็บไว้แทน
     const page2TotalGrams: number | null = page2Items.reduce<number | null>(
@@ -1133,7 +1133,7 @@ export const PreviewQuote = React.forwardRef<PreviewQuoteHandle, Props>(
                         <p className="text-[8px] font-semibold mb-1">
                           รูปภาพประกอบ
                         </p>
-                        <div className="grid grid-cols-2 gap-2">
+                        <div>
                           {attachmentImages.map((img, i) => (
                             <div
                               key={`${img.name}-${i}`}
@@ -1147,13 +1147,18 @@ export const PreviewQuote = React.forwardRef<PreviewQuoteHandle, Props>(
                                   openImageViewer(i);
                                 }
                               }}
-                              className="flex min-w-0 w-full flex-col items-center cursor-zoom-in focus:outline-none focus:ring-2 focus:ring-[#c09c42] rounded"
+                              className="inline-flex flex-col items-center align-top cursor-zoom-in focus:outline-none focus:ring-2 focus:ring-[#c09c42] rounded"
+                              style={{
+                                marginRight: "4px",
+                                marginBottom: "4px",
+                              }}
                             >
                               {/* eslint-disable-next-line @next/next/no-img-element */}
                               <img
                                 src={img.src}
                                 alt={img.name}
-                                className="aspect-[4/3] w-full object-contain rounded border border-gray-300 bg-gray-50"
+                                className="w-auto object-contain rounded border border-gray-300"
+                                style={{ height: "120px" }}
                               />
                               <span className="mt-1 text-[10px] font-medium text-gray-600 leading-tight">
                                 {img.label}
