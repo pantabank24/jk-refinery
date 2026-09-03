@@ -46,6 +46,7 @@ import { SalesStatusBanner } from "@/components/sales-status-banner";
 import { SignaturePad } from "@/components/signature-pad";
 import { WebcamCaptureModal } from "@/components/webcam-capture-modal";
 import { ConfirmDeleteModal } from "@/components/confirmDeleteModal";
+import { ImageViewer } from "@/components/image-viewer";
 
 const API_BASE =
   process.env.NEXT_PUBLIC_API_URL?.replace("/api/v1", "") ||
@@ -62,12 +63,33 @@ function ImageUploadGroup({
   label,
   files,
   setFiles,
+  onViewerOpenChange,
 }: {
   label: string;
   files: File[];
   setFiles: React.Dispatch<React.SetStateAction<File[]>>;
+  onViewerOpenChange?: (open: boolean) => void;
 }) {
   const [showWebcam, setShowWebcam] = useState(false);
+  const [viewerIndex, setViewerIndex] = useState<number | null>(null);
+  const [previewUrls, setPreviewUrls] = useState<string[]>([]);
+
+  // Create a fresh URL set in the effect itself. This remains correct under
+  // React Strict Mode's setup/cleanup replay and after a modal unmount/remount.
+  useEffect(() => {
+    const urls = files.map((file) => URL.createObjectURL(file));
+    setPreviewUrls(urls);
+    return () => urls.forEach((url) => URL.revokeObjectURL(url));
+  }, [files]);
+
+  const openViewer = (index: number) => {
+    setViewerIndex(index);
+    onViewerOpenChange?.(true);
+  };
+  const closeViewer = () => {
+    setViewerIndex(null);
+    onViewerOpenChange?.(false);
+  };
 
   return (
     <div>
@@ -75,13 +97,22 @@ function ImageUploadGroup({
         {label}
       </label>
       <div className="flex flex-wrap gap-1.5">
-        {files.map((f, i) => (
+        {files.map((_, i) => (
           <div key={i} className="relative w-12 h-12 shrink-0">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
-              src={URL.createObjectURL(f)}
-              className="w-12 h-12 object-cover rounded-lg border border-black/10"
-              alt=""
+              src={previewUrls[i]}
+              className="w-12 h-12 object-cover rounded-lg border border-black/10 cursor-zoom-in"
+              alt={`${label} ${i + 1}`}
+              role="button"
+              tabIndex={0}
+              onClick={() => openViewer(i)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  openViewer(i);
+                }
+              }}
             />
             <button
               type="button"
@@ -125,6 +156,14 @@ function ImageUploadGroup({
         isOpen={showWebcam}
         onClose={() => setShowWebcam(false)}
         onCapture={(file) => setFiles((prev) => [...prev, file])}
+      />
+      <ImageViewer
+        images={previewUrls.map((url, index) => ({
+          url,
+          name: `${label} ${index + 1}`,
+        }))}
+        index={viewerIndex}
+        onClose={closeViewer}
       />
     </div>
   );
@@ -171,6 +210,7 @@ export default function QuotationPage() {
   const [saving, setSaving] = useState(false);
   const [showTerms, setShowTerms] = useState(false); // rules + signature, before preview
   const [showPreview, setShowPreview] = useState(false); // pre-save review step — no print here
+  const [previewImageViewerOpen, setPreviewImageViewerOpen] = useState(false);
   // Post-save: shown after the quotation is actually saved, with the real
   // document number + a print button. The form's state is kept around until
   // this is dismissed, so the print preview still has its data.
@@ -1561,7 +1601,14 @@ export default function QuotationPage() {
       {/* Preview Modal */}
       <Modal
         isOpen={showPreview}
-        onOpenChange={setShowPreview}
+        onOpenChange={(open) => {
+          // ImageViewer is portalled to <body>, outside the modal DOM. Ignore an
+          // outside-press close while that full-screen viewer owns interaction.
+          if (!open && previewImageViewerOpen) return;
+          setShowPreview(open);
+        }}
+        isDismissable={!previewImageViewerOpen}
+        isKeyboardDismissDisabled={previewImageViewerOpen}
         size="3xl"
         scrollBehavior="inside"
         classNames={{ base: "rounded-3xl border-1 border-black/10 shadow-2xl" }}
@@ -1600,11 +1647,13 @@ export default function QuotationPage() {
                     label="รูปก่อนหลอม (ไม่บังคับ)"
                     files={beforeFiles}
                     setFiles={setBeforeFiles}
+                    onViewerOpenChange={setPreviewImageViewerOpen}
                   />
                   <ImageUploadGroup
                     label="รูปบนตราชั่ง / หลังหลอม (ไม่บังคับ)"
                     files={afterFiles}
                     setFiles={setAfterFiles}
+                    onViewerOpenChange={setPreviewImageViewerOpen}
                   />
                 </div>
                 <PreviewQuote
@@ -1626,6 +1675,7 @@ export default function QuotationPage() {
                   afterImages={afterImages}
                   signatureImage={signatureDataUrl}
                   signerName={signerName}
+                  onImageViewerOpenChange={setPreviewImageViewerOpen}
                 />
 
                 {/* Summary: weight and total of this quotation */}

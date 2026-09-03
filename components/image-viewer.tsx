@@ -244,6 +244,10 @@ export function ImageViewer({ images, index, onClose }: Props) {
     // Above the navbar (z-50) — this is the topmost thing on screen while open.
     <div
       className="fixed inset-0 z-[60] bg-black/95 select-none"
+      // Portals keep React event bubbling through the component tree. Stop viewer
+      // interactions here so a parent modal does not treat Close as its own click.
+      onPointerDown={(e) => e.stopPropagation()}
+      onClick={(e) => e.stopPropagation()}
       onMouseMove={(e) => {
         const d = drag.current;
         if (!d) return;

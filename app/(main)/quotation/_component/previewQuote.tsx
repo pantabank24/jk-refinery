@@ -12,6 +12,7 @@ import { Select, SelectItem } from "@heroui/select";
 import { Printer, SlidersHorizontal } from "lucide-react";
 import { api } from "@/lib/api";
 import { bahtText } from "@/lib/thai-baht-text";
+import { ImageViewer } from "@/components/image-viewer";
 
 const ROUNDING_OPTIONS = ["ไม่ปัด", "ปัดลง", "ปัดขึ้น", "ปัดปกติ"];
 
@@ -257,12 +258,11 @@ interface Props {
   customerAddress?: string; // ที่อยู่ลูกค้า (ผู้ขาย)
   customerTaxId?: string; // เลขประจำตัวผู้เสียภาษีของลูกค้า
   date?: string | Date; // วันที่บนเอกสาร (default: วันนี้)
-  // รูปประกอบ — ยังไม่ได้วาดลงเอกสารตอนนี้: ใบที่ 1 ตัดส่วนท้าย (รวมแถบรูป) ออกเหลือ
-  // แค่ช่องเซ็นชื่อ ส่วนใบที่ 2 เป็นแบบทางการที่ไม่เคยมีรูปอยู่แล้ว. คงรับไว้เพราะทุกหน้า
-  // ที่เรียกยังส่งมา และเป็นจุดเดียวที่จะเสียบรูปกลับเข้าเอกสารได้ถ้าต้องการอีก
+  // รูปประกอบของใบที่ 1
   previewImages?: string[];
   beforeImages?: string[]; // รูปก่อนหลอม
   afterImages?: string[]; // รูปบนตราชั่ง (หลังหลอม)
+  onImageViewerOpenChange?: (open: boolean) => void;
   signatureImage?: string | null; // ลายเซ็น (data-URL หรือ URL)
   signerName?: string;
   // บัญชีธนาคารของลูกค้า — เติมลงช่อง "ชำระโดย เช็ค/บัตร/เงินโอน" เมื่อผู้ใช้ติ๊กเลือก
@@ -302,6 +302,7 @@ export const PreviewQuote = React.forwardRef<PreviewQuoteHandle, Props>(
       previewImages,
       beforeImages,
       afterImages,
+      onImageViewerOpenChange,
       signatureImage,
       signerName,
       bankName,
@@ -313,6 +314,35 @@ export const PreviewQuote = React.forwardRef<PreviewQuoteHandle, Props>(
     ref,
   ) => {
     const [scale, setScale] = React.useState(1);
+    const [viewerIndex, setViewerIndex] = React.useState<number | null>(null);
+
+    // Keep every attachment in one ordered set so opening a thumbnail also lets
+    // the user move between the before/after photos in the full-screen viewer.
+    const attachmentImages = [
+      ...(beforeImages ?? []).map((src, i) => ({
+        src,
+        label: "ก่อนหลอม",
+        name: `ก่อนหลอม ${i + 1}`,
+      })),
+      ...(afterImages ?? []).map((src, i) => ({
+        src,
+        label: "รูปบนตราชั่ง / หลังหลอม",
+        name: `รูปบนตราชั่ง / หลังหลอม ${i + 1}`,
+      })),
+      ...(previewImages ?? []).map((src, i) => ({
+        src,
+        label: "รูปประกอบ",
+        name: `รูปประกอบ ${i + 1}`,
+      })),
+    ];
+    const openImageViewer = (index: number) => {
+      setViewerIndex(index);
+      onImageViewerOpenChange?.(true);
+    };
+    const closeImageViewer = () => {
+      setViewerIndex(null);
+      onImageViewerOpenChange?.(false);
+    };
 
     // ชำระโดย — เงินสด หรือ เช็ค/บัตร/เงินโอน (เลือกได้อย่างใดอย่างหนึ่ง).
     // เมื่อเลือกเงินโอน ช่องธนาคาร/เลขที่/ลงวันที่/จำนวนเงิน จะเติมจากบัญชีลูกค้าให้อัตโนมัติ
@@ -1056,8 +1086,7 @@ export const PreviewQuote = React.forwardRef<PreviewQuoteHandle, Props>(
                   </div>
 
                   {/* ใบที่ 1 เป็นใบข้อมูลสินค้า/ประเมินราคา — ไม่มีช่องชำระเงิน
-                      ข้อความรับรอง หรือรูปประกอบ เหลือไว้แค่ช่องเซ็นชื่อ
-                      (ทั้งหมดนั้นยังอยู่ครบบนใบที่ 2 ซึ่งเป็นเอกสารทางการ) */}
+                      และข้อความรับรอง แต่ยังต้องแสดงรูปประกอบกับช่องเซ็นชื่อ */}
                   <div className=" flex flex-col text-[8px] gap-y-2 mt-3">
                     <div className=" flex flex-row justify-end mt-8">
                       <div className=" flex flex-col w-80 gap-y-12">
@@ -1097,6 +1126,48 @@ export const PreviewQuote = React.forwardRef<PreviewQuoteHandle, Props>(
                         </div>
                       </div>
                     </div>
+                    {/* Uploaded images — all types flow together in one row,
+                        captioned below each thumbnail. */}
+                    {attachmentImages.length > 0 && (
+                      <div className="mt-2 pt-2 border-t border-gray-300">
+                        <p className="text-[8px] font-semibold mb-1">
+                          รูปภาพประกอบ
+                        </p>
+                        <div>
+                          {attachmentImages.map((img, i) => (
+                            <div
+                              key={`${img.name}-${i}`}
+                              role="button"
+                              tabIndex={0}
+                              aria-label={`เปิดดู${img.name}`}
+                              onClick={() => openImageViewer(i)}
+                              onKeyDown={(event) => {
+                                if (event.key === "Enter" || event.key === " ") {
+                                  event.preventDefault();
+                                  openImageViewer(i);
+                                }
+                              }}
+                              className="inline-flex flex-col items-center align-top cursor-zoom-in focus:outline-none focus:ring-2 focus:ring-[#c09c42] rounded"
+                              style={{
+                                marginRight: "4px",
+                                marginBottom: "4px",
+                              }}
+                            >
+                              {/* eslint-disable-next-line @next/next/no-img-element */}
+                              <img
+                                src={img.src}
+                                alt={img.name}
+                                className="w-auto object-contain rounded border border-gray-300"
+                                style={{ height: "90px" }}
+                              />
+                              <span className="text-[6px] text-gray-500 leading-tight">
+                                {img.label}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
@@ -1298,6 +1369,14 @@ export const PreviewQuote = React.forwardRef<PreviewQuoteHandle, Props>(
             </div>
           </div>
         </div>
+        <ImageViewer
+          images={attachmentImages.map((image) => ({
+            url: image.src,
+            name: image.name,
+          }))}
+          index={viewerIndex}
+          onClose={closeImageViewer}
+        />
       </div>
     );
   },

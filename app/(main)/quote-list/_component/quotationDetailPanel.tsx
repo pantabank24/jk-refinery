@@ -18,6 +18,7 @@ import { QuotationProps } from "../../quotation/_component/quotation";
 import { consolidateByMetal } from "../../quotation/_component/consolidate";
 import { QuotationData, QuotationItem, MemberOption, quotationDisplayCode } from "./types";
 import { imgUrls, STATUS_LABEL, STATUS_COLOR, REJECT_REASONS } from "./constants";
+import { ImageViewer } from "@/components/image-viewer";
 
 interface Props {
   quotation: QuotationData | null;
@@ -59,6 +60,7 @@ export function QuotationDetailPanel({ quotation, members, goldTypes, canUpdate,
   const [editDate, setEditDate] = useState("");
   const [editItems, setEditItems] = useState<QuotationItem[]>([]);
   const [editSaving, setEditSaving] = useState(false);
+  const [editImageIndex, setEditImageIndex] = useState<number | null>(null);
 
   // Asks whether to also reconcile the creator's credits when a master edit
   // changes the total.
@@ -167,6 +169,7 @@ export function QuotationDetailPanel({ quotation, members, goldTypes, canUpdate,
 
   const openEdit = () => {
     if (!quotation) return;
+    setEditImageIndex(null);
     setEditNote(quotation.note || "");
     setEditMemberId(quotation.member ? String(quotation.member.id) : "");
     setEditDate(quotation.created_at ? quotation.created_at.slice(0, 10) : new Date().toISOString().slice(0, 10));
@@ -329,6 +332,18 @@ export function QuotationDetailPanel({ quotation, members, goldTypes, canUpdate,
     canDelete ||
     (canUpdate && quotation.status !== 2) ||
     (isMaster && quotation.status !== 0);
+  const editAttachmentImages = [
+    ...imgUrls(quotation.images, "before_melt").map((url, index) => ({
+      url,
+      label: "ก่อนหลอม",
+      name: `ก่อนหลอม ${index + 1}`,
+    })),
+    ...imgUrls(quotation.images, "after_melt").map((url, index) => ({
+      url,
+      label: "รูปบนตราชั่ง / หลังหลอม",
+      name: `รูปบนตราชั่ง / หลังหลอม ${index + 1}`,
+    })),
+  ];
 
   return (
     <div className={`flex flex-col gap-y-3 ${fillHeight ? "h-full min-h-0" : ""}`}>
@@ -555,7 +570,14 @@ export function QuotationDetailPanel({ quotation, members, goldTypes, canUpdate,
       {/* ════════════════════════════════
            EDIT MODAL
          ════════════════════════════════ */}
-      <Modal isOpen={editDisc.isOpen} onClose={editDisc.onClose} size="2xl" scrollBehavior="inside">
+      <Modal
+        isOpen={editDisc.isOpen}
+        onClose={editDisc.onClose}
+        size="2xl"
+        scrollBehavior="inside"
+        isDismissable={editImageIndex === null}
+        isKeyboardDismissDisabled={editImageIndex !== null}
+      >
         <ModalContent>
           <ModalHeader>
             <span className="font-bold bg-gradient-to-l from-black/90 to-yellow-600 bg-clip-text text-transparent">
@@ -584,6 +606,37 @@ export function QuotationDetailPanel({ quotation, members, goldTypes, canUpdate,
                 <SelectItem key={String(m.id)}>{m.fname} {m.lname} ({m.code})</SelectItem>
               ))}
             </Select>
+
+            {/* Existing photos are viewable while editing too. Image changes are
+                intentionally outside this form; this block is a read-only viewer. */}
+            {editAttachmentImages.length > 0 && (
+              <div className="flex flex-col gap-y-2">
+                <span className="text-sm font-bold text-black/70">
+                  รูปภาพประกอบ
+                </span>
+                <div className="flex flex-wrap gap-2">
+                  {editAttachmentImages.map((image, index) => (
+                    <button
+                      key={`${image.name}-${index}`}
+                      type="button"
+                      aria-label={`เปิดดู${image.name}`}
+                      onClick={() => setEditImageIndex(index)}
+                      className="group flex flex-col items-center gap-y-1 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#c09c42]"
+                    >
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={image.url}
+                        alt={image.name}
+                        className="h-20 w-20 rounded-xl border border-black/10 object-cover transition-opacity group-hover:opacity-80"
+                      />
+                      <span className="max-w-20 text-center text-[10px] leading-tight text-black/50">
+                        {image.label}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {/* Items */}
             <div className="flex flex-col gap-y-2">
@@ -707,6 +760,12 @@ export function QuotationDetailPanel({ quotation, members, goldTypes, canUpdate,
           }}
         </ModalContent>
       </Modal>
+
+      <ImageViewer
+        images={editAttachmentImages.map(({ url, name }) => ({ url, name }))}
+        index={editImageIndex}
+        onClose={() => setEditImageIndex(null)}
+      />
     </div>
   );
 }
