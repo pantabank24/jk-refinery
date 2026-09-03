@@ -1153,7 +1153,7 @@ export const PreviewQuote = React.forwardRef<PreviewQuoteHandle, Props>(
                               <img
                                 src={img.src}
                                 alt={img.name}
-                                className="aspect-[4/3] w-[70%] object-contain rounded border border-gray-300 bg-gray-50"
+                                className="aspect-[4/3] w-full object-contain rounded border border-gray-300 bg-gray-50"
                               />
                               <span className="mt-1 text-[10px] font-medium text-gray-600 leading-tight">
                                 {img.label}
