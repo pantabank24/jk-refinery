@@ -10,7 +10,7 @@ import { Spinner } from "@heroui/spinner";
 import {
   Table, TableHeader, TableColumn, TableBody, TableRow, TableCell,
   Chip, Modal, ModalContent, ModalHeader, ModalBody, ModalFooter,
-  useDisclosure, Tabs, Tab, Select, SelectItem,
+  useDisclosure, Tabs, Tab,
   DateRangePicker,
 } from "@heroui/react";
 import { CalendarDate, today, getLocalTimeZone } from "@internationalized/date";
@@ -446,13 +446,20 @@ export const MemberDetail = () => {
   const inputStyle =
     "bg-gradient-to-br from-black/10 to-transparent border-1 border-black/10 rounded-2xl";
 
-  // Number of active filters (status/date) — shown on the filter button.
-  const filterCount = (qStatus !== "all" ? 1 : 0) + (qRange ? 1 : 0);
+  // ปุ่ม ตัวกรอง เหลือแค่ช่วงวันที่ — สถานะย้ายไปเป็นแท็บที่มองเห็นตลอด
+  const filterCount = qRange ? 1 : 0;
 
   const todayStr = today(getLocalTimeZone()).toString();
   const isTodayOnly = !!qRange && qRange.start.toString() === todayStr && qRange.end.toString() === todayStr;
   const fmtDateLabel = (d: CalendarDate) =>
     new Date(d.toString()).toLocaleDateString("th-TH", { day: "2-digit", month: "2-digit", year: "numeric" });
+  // ตารางว่างเพราะอะไร — สถานะมาก่อน เพราะเป็นแท็บที่เพิ่งกดเอง
+  const quoteEmptyText = qStatus !== "all"
+    ? `ไม่มีใบเสนอราคาสถานะ ${quotationStatusMap[qStatus]}`
+    : isTodayOnly
+      ? "ไม่มีรายการในวันนี้ กดปุ่ม ตัวกรอง เพื่อดูวันอื่น"
+      : "ไม่พบใบเสนอราคา";
+
   const rangeLabel = qRange
     ? (qRange.start.toString() === qRange.end.toString()
         ? (isTodayOnly ? "วันนี้" : fmtDateLabel(qRange.start))
@@ -587,18 +594,6 @@ export const MemberDetail = () => {
                   </div>
                   {isFilterOpen && (
                     <div className="flex flex-col gap-2 border-1 border-black/10 bg-white/30 backdrop-blur-sm rounded-xl p-3">
-                      <Select
-                        size="sm"
-                        label="สถานะ"
-                        selectedKeys={[qStatus]}
-                        onChange={(e) => setQStatus(e.target.value || "all")}
-                        classNames={{ trigger: inputStyle }}
-                      >
-                        <SelectItem key="all">ทุกสถานะ</SelectItem>
-                        <SelectItem key="0">รอการอนุมัติ</SelectItem>
-                        <SelectItem key="1">อนุมัติแล้ว</SelectItem>
-                        <SelectItem key="2">ยกเลิก</SelectItem>
-                      </Select>
                       <DateRangePicker
                         size="sm"
                         label="ช่วงวันที่"
@@ -612,7 +607,7 @@ export const MemberDetail = () => {
                           <span className="text-[11px] text-black/40">กำลังกรอง: {rangeLabel}</span>
                           <Button
                             size="sm" variant="light" color="danger"
-                            onPress={() => { setQStatus("all"); setQRange(null); }}
+                            onPress={() => setQRange(null)}
                           >
                             ล้างตัวกรอง
                           </Button>
@@ -624,6 +619,25 @@ export const MemberDetail = () => {
 
               {/* Table */}
               <div className="flex flex-col md:flex-1 md:min-h-0 border-1 border-black/10 bg-white/20 backdrop-blur-xl rounded-xl p-2 shadow-xl md:overflow-hidden">
+                {/* ตัวกรองสถานะ — แท็บเห็นทุกสถานะพร้อมกัน อ่านง่ายกว่า dropdown ที่ซ่อนอยู่ในตัวกรอง */}
+                <div className="shrink-0 px-1 mb-2 border-b border-black/5">
+                  <Tabs
+                    aria-label="quotation status filter"
+                    selectedKey={qStatus}
+                    onSelectionChange={(key) => setQStatus(String(key))}
+                    color="warning"
+                    variant="underlined"
+                    classNames={{
+                      base: "w-full",
+                      tabList: "gap-4 w-full overflow-x-auto flex-nowrap scrollbar-hide",
+                    }}
+                  >
+                    <Tab key="all" title="ทั้งหมด" />
+                    <Tab key="0" title="รอการอนุมัติ" />
+                    <Tab key="1" title="อนุมัติแล้ว" />
+                    <Tab key="2" title="ยกเลิก" />
+                  </Tabs>
+                </div>
                 <Table
                   isHeaderSticky
                   radius="sm"
@@ -637,7 +651,7 @@ export const MemberDetail = () => {
                     <TableColumn>สถานะ</TableColumn>
                     <TableColumn>วันที่/เวลา</TableColumn>
                   </TableHeader>
-                  <TableBody emptyContent={isTodayOnly ? "ไม่มีรายการในวันนี้ กดปุ่ม ตัวกรอง เพื่อดูวันอื่น" : "ไม่พบใบเสนอราคา"}>
+                  <TableBody emptyContent={quoteEmptyText}>
                     {pagedQuotations.map((q) => (
                       <TableRow key={q.id} className="hover:bg-white/50 cursor-pointer" onClick={() => handleQuoteRowClick(q)}>
                         <TableCell>{quotationDisplayCode(q)}</TableCell>
@@ -683,7 +697,7 @@ export const MemberDetail = () => {
                 <div className="flex md:hidden flex-col gap-y-2">
                   {pagedQuotations.length === 0 ? (
                     <div className="flex items-center justify-center py-10 px-4 text-center text-sm text-black/40">
-                      {isTodayOnly ? "ไม่มีรายการในวันนี้ กดปุ่ม ตัวกรอง เพื่อดูวันอื่น" : "ไม่พบใบเสนอราคา"}
+                      {quoteEmptyText}
                     </div>
                   ) : (
                     pagedQuotations.map((q) => (

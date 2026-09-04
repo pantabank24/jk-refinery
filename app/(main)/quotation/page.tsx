@@ -25,6 +25,7 @@ import {
   PenLine,
   Store,
   ShoppingBag,
+  ClipboardCheck,
 } from "lucide-react";
 import {
   Modal,
@@ -47,6 +48,10 @@ import { SignaturePad } from "@/components/signature-pad";
 import { WebcamCaptureModal } from "@/components/webcam-capture-modal";
 import { ConfirmDeleteModal } from "@/components/confirmDeleteModal";
 import { ImageViewer } from "@/components/image-viewer";
+import {
+  intakeImageEntries,
+  type QuotationIntake,
+} from "../quotation-intake/_component/types";
 
 const API_BASE =
   process.env.NEXT_PUBLIC_API_URL?.replace("/api/v1", "") ||
@@ -59,15 +64,24 @@ type ReferenceItem = QuotationProps & { billId: number; itemId: number };
 // Reusable typed image-upload block — a single compact row of thumbnails
 // with an inline "+" tile to add more, instead of a separate dropzone box.
 // The "+" tile offers a choice between picking a file or capturing from the webcam.
+//
+// `existing` are photos that are already on the server (carried in from an
+// ใบเปิดงาน). They sit in the same row as the ones being added here, and delete
+// through `onRemoveExisting` rather than through local state — so the row reads
+// as one set of photos for this document, whichever step took them.
 function ImageUploadGroup({
   label,
   files,
   setFiles,
+  existing = [],
+  onRemoveExisting,
   onViewerOpenChange,
 }: {
   label: string;
   files: File[];
   setFiles: React.Dispatch<React.SetStateAction<File[]>>;
+  existing?: { id: number; url: string }[];
+  onRemoveExisting?: (id: number) => void;
   onViewerOpenChange?: (open: boolean) => void;
 }) {
   const [showWebcam, setShowWebcam] = useState(false);
@@ -91,17 +105,31 @@ function ImageUploadGroup({
     onViewerOpenChange?.(false);
   };
 
+  // Server-side photos first — they were taken before the ones added here.
+  const thumbs = [
+    ...existing.map((image) => ({
+      key: `existing-${image.id}`,
+      url: image.url,
+      remove: () => onRemoveExisting?.(image.id),
+    })),
+    ...files.map((_, i) => ({
+      key: `file-${i}`,
+      url: previewUrls[i],
+      remove: () => setFiles((prev) => prev.filter((_, idx) => idx !== i)),
+    })),
+  ];
+
   return (
     <div>
       <label className="block text-xs font-bold text-black/60 mb-1.5">
         {label}
       </label>
       <div className="flex flex-wrap gap-1.5">
-        {files.map((_, i) => (
-          <div key={i} className="relative w-12 h-12 shrink-0">
+        {thumbs.map((thumb, i) => (
+          <div key={thumb.key} className="relative w-12 h-12 shrink-0">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
-              src={previewUrls[i]}
+              src={thumb.url}
               className="w-12 h-12 object-cover rounded-lg border border-black/10 cursor-zoom-in"
               alt={`${label} ${i + 1}`}
               role="button"
@@ -116,9 +144,8 @@ function ImageUploadGroup({
             />
             <button
               type="button"
-              onClick={() =>
-                setFiles((prev) => prev.filter((_, idx) => idx !== i))
-              }
+              aria-label="ลบรูปนี้"
+              onClick={thumb.remove}
               className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white rounded-full text-[10px] flex items-center justify-center"
             >
               ×
@@ -158,8 +185,8 @@ function ImageUploadGroup({
         onCapture={(file) => setFiles((prev) => [...prev, file])}
       />
       <ImageViewer
-        images={previewUrls.map((url, index) => ({
-          url,
+        images={thumbs.map((thumb, index) => ({
+          url: thumb.url,
           name: `${label} ${index + 1}`,
         }))}
         index={viewerIndex}
@@ -228,14 +255,58 @@ export default function QuotationPage() {
   // Images are categorised by type; signature is drawn on a pad.
   const [beforeFiles, setBeforeFiles] = useState<File[]>([]);
   const [afterFiles, setAfterFiles] = useState<File[]>([]);
+  // รูปบัตรประชาชน — kept with the document, never printed on it. Usually taken
+  // at the ใบเปิดงาน step; this is for adding or replacing it at issue time.
+  const [idCardFiles, setIdCardFiles] = useState<File[]>([]);
   const [signatureDataUrl, setSignatureDataUrl] = useState<string | null>(null);
   const [signerName, setSignerName] = useState("");
   const [signerPhone, setSignerPhone] = useState("");
   const [quotationDate, setQuotationDate] = useState(
     () => new Date().toISOString().split("T")[0],
   );
-  const beforeImages = beforeFiles.map((f) => URL.createObjectURL(f));
+  // ใบเปิดงาน (?intakeId=): photos already taken at the counter before the metal
+  // was melted. They live on the server already, so they are URLs here rather
+  // than Files, and the server copies them onto the quotation on save.
+  const [intake, setIntake] = useState<QuotationIntake | null>(null);
+  const [intakeViewerIndex, setIntakeViewerIndex] = useState<number | null>(null);
+  const intakeBefore = intakeImageEntries(intake, "before_melt");
+  const intakeIdCard = intakeImageEntries(intake, "id_card");
+  const intakeBeforeUrls = intakeBefore.map((image) => image.url);
+  const intakeIdCardUrls = intakeIdCard.map((image) => image.url);
+  const intakeAllImages = [
+    ...intakeIdCardUrls.map((url, i) => ({ url, name: `บัตรประชาชน ${i + 1}` })),
+    ...intakeBeforeUrls.map((url, i) => ({ url, name: `ก่อนหลอม ${i + 1}` })),
+  ];
+
+  // Dropping a photo carried in from the ใบเปิดงาน deletes it at the source: the
+  // intake is still open at this point, and leaving a rejected photo there would
+  // only have it copied onto the document at save time anyway.
+  const removeIntakeImage = async (imageId: number) => {
+    if (!intakeId) return;
+    try {
+      await api.delete(`/quotation-intakes/${intakeId}/images/${imageId}`);
+      setIntake((prev) =>
+        prev
+          ? { ...prev, images: (prev.images ?? []).filter((img) => img.id !== imageId) }
+          : prev,
+      );
+    } catch (err: unknown) {
+      setSaveError(err instanceof Error ? err.message : "ลบรูปไม่สำเร็จ");
+    }
+  };
+  // Intake photos come first: they are the shot of the goods as received, which
+  // belongs before anything added later on this screen.
+  const beforeImages = [
+    ...intakeBeforeUrls,
+    ...beforeFiles.map((f) => URL.createObjectURL(f)),
+  ];
   const afterImages = afterFiles.map((f) => URL.createObjectURL(f));
+  // Shown in the document's รูปภาพประกอบ block so it is clear the ID card is on
+  // file; PreviewQuote keeps it off the printed sheet.
+  const idCardImages = [
+    ...intakeIdCardUrls,
+    ...idCardFiles.map((f) => URL.createObjectURL(f)),
+  ];
   const [listOpen, setListOpen] = useState(false);
   // Which half of the mobile drawer is showing: what the customer submitted, or
   // what has been keyed into this quotation. Desktop stacks both, a phone can't.
@@ -248,6 +319,9 @@ export default function QuotationPage() {
   // editIssued=1: reopened from "แก้ไขบิล" to fix an already-issued quote. The bill
   // stays "รอตรวจบิล"; the old issuance is reversed at save time (see doSave), not now.
   const editIssued = searchParams.get("editIssued") === "1";
+  // Opened from รายการใบเปิดงาน: the customer and the before-melt photos are
+  // already on file, so this screen only has to price the job.
+  const intakeId = searchParams.get("intakeId");
   const [billCustomer, setBillCustomer] = useState("");
   // Who the bill belongs to — the master sells on their behalf straight from this
   // screen when the melted result comes out over (or under) what they submitted.
@@ -311,6 +385,30 @@ export default function QuotationPage() {
       .then((r) => setGoldTypes((r.data as unknown as GoldType[]) || []))
       .catch(() => { });
   }, [billId]);
+
+  // Load the ใบเปิดงาน this quotation is being issued from and adopt what the
+  // counter already recorded. The signer fields are only seeded (not locked):
+  // whoever actually signs may be someone else in the same party, and that is a
+  // decision for the signature step, not for this fetch.
+  useEffect(() => {
+    if (!intakeId) return;
+    let cancelled = false;
+    api
+      .get<QuotationIntake>(`/quotation-intakes/${intakeId}`)
+      .then((r) => {
+        if (cancelled) return;
+        const data = r.data as unknown as QuotationIntake;
+        setIntake(data);
+        setSignerName((prev) => prev || data.customer_name || "");
+        setSignerPhone((prev) => prev || data.customer_phone || "");
+      })
+      .catch(() => {
+        if (!cancelled) setIntake(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [intakeId]);
 
   type BillItemLite = {
     id: number;
@@ -806,7 +904,10 @@ export default function QuotationPage() {
   // Image types that haven't been provided yet (used to warn before saving).
   const missingImages = () => {
     const m: string[] = [];
-    if (beforeFiles.length === 0) m.push("รูปก่อนหลอม");
+    // A photo carried in from the ใบเปิดงาน already satisfies "ก่อนหลอม" — that
+    // is exactly the shot the intake exists to take.
+    if (beforeFiles.length === 0 && intakeBeforeUrls.length === 0)
+      m.push("รูปก่อนหลอม");
     if (afterFiles.length === 0) m.push("รูปบนตราชั่ง (หลังหลอม)");
     return m;
   };
@@ -881,6 +982,9 @@ export default function QuotationPage() {
         .map((r) => r.billId)
         .filter((v, i, a) => a.indexOf(v) === i);
       const res = await api.post<{ id: number; code: string; display_code?: string }>("/quotations", {
+        // Closes the ใบเปิดงาน server-side and copies its photos onto this
+        // document. Absent for a walk-in issued straight from this screen.
+        intake_id: intakeId ? Number(intakeId) : undefined,
         signer_name: signerName,
         signer_phone: signerPhone,
         // ชำระโดย ที่ติ๊กไว้ในพรีวิว — เก็บไว้กับใบ ไม่งั้นเปิดดูภายหลังจะว่างเปล่า
@@ -960,6 +1064,9 @@ export default function QuotationPage() {
       };
       await uploadGroup(beforeFiles, "before_melt");
       await uploadGroup(afterFiles, "after_melt");
+      // Kept with the document for the record; every printed view filters on
+      // before_melt / after_melt, so it never reaches the paper.
+      await uploadGroup(idCardFiles, "id_card");
       // Signature: convert the data-URL to a file and upload as type=signature
       if (signatureDataUrl) {
         const blob = await (await fetch(signatureDataUrl)).blob();
@@ -1007,6 +1114,7 @@ export default function QuotationPage() {
     setQuotation([]);
     setBeforeFiles([]);
     setAfterFiles([]);
+    setIdCardFiles([]);
     setSignatureDataUrl(null);
     setSignerName("");
     setSignerPhone("");
@@ -1014,6 +1122,13 @@ export default function QuotationPage() {
     setConsent(false);
     setShowPostSavePreview(false);
     setSavedQuotation(null);
+    setIntake(null);
+    // Issued from an ใบเปิดงาน: the next thing the counter does is the next open
+    // job, so land back on that queue rather than on the document list.
+    if (intakeId) {
+      router.push("/quotation-intake");
+      return;
+    }
     router.push(billId ? billsListHref : "/quote-list");
   };
 
@@ -1194,6 +1309,60 @@ export default function QuotationPage() {
               </Button>
             )}
           </div>
+        </div>
+      )}
+
+      {/* Issued from an ใบเปิดงาน: show what the counter already put on file, so
+          it is obvious the before-melt shot has been taken and does not need
+          taking again on this screen. */}
+      {intake && (
+        <div className="flex flex-col gap-y-2 bg-[#c09c42]/5 border-1 border-[#c09c42]/30 rounded-2xl p-3">
+          <div className="flex items-center gap-x-2">
+            <ClipboardCheck size={16} className="text-[#c09c42] shrink-0" />
+            <span className="text-sm font-bold text-[#c09c42] flex-1 min-w-0 truncate">
+              จากใบเปิดงาน #{intake.id}
+              {intake.customer_name ? ` — ${intake.customer_name}` : ""}
+              {intake.customer_phone ? ` (${intake.customer_phone})` : ""}
+            </span>
+            <span className="shrink-0 text-[10px] font-bold text-black/40">
+              บัตรประชาชน {intakeIdCardUrls.length} · ก่อนหลอม{" "}
+              {intakeBeforeUrls.length}
+            </span>
+          </div>
+          {intake.note && (
+            <span className="text-xs text-black/50">หมายเหตุ: {intake.note}</span>
+          )}
+          {intakeAllImages.length > 0 && (
+            <div className="flex flex-wrap gap-1.5">
+              {intakeAllImages.map((img, i) => (
+                /* eslint-disable-next-line @next/next/no-img-element */
+                <img
+                  key={img.url}
+                  src={img.url}
+                  alt={img.name}
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => setIntakeViewerIndex(i)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      setIntakeViewerIndex(i);
+                    }
+                  }}
+                  className="w-12 h-12 object-cover rounded-lg border-1 border-[#c09c42]/30 cursor-zoom-in"
+                />
+              ))}
+            </div>
+          )}
+          <span className="text-[10px] text-black/35">
+            รูปเหล่านี้จะถูกแนบไปกับใบเสนอราคาให้อัตโนมัติเมื่อบันทึก
+            (รูปบัตรประชาชนไม่ถูกพิมพ์ลงเอกสาร)
+          </span>
+          <ImageViewer
+            images={intakeAllImages}
+            index={intakeViewerIndex}
+            onClose={() => setIntakeViewerIndex(null)}
+          />
         </div>
       )}
 
@@ -1642,11 +1811,35 @@ export default function QuotationPage() {
                   </div>
                 )}
                 {/* Typed image uploads — before/after side by side */}
+                {intake && (
+                  <div className="flex items-center gap-x-2 mb-3 text-[11px] font-bold text-[#c09c42] bg-[#c09c42]/5 border-1 border-[#c09c42]/30 rounded-2xl px-3 py-2">
+                    <ClipboardCheck size={14} className="shrink-0" />
+                    <span>
+                      รูปจากใบเปิดงาน #{intake.id} แสดงรวมอยู่ด้านล่างแล้ว —
+                      กด × เพื่อลบออกจากใบเปิดงานได้เลย
+                    </span>
+                  </div>
+                )}
+                {/* Typed image uploads — before/after side by side, ID card below.
+                    Photos carried in from the ใบเปิดงาน sit in the same rows, so
+                    what is shown here is exactly what the saved document will hold. */}
+                <div className="mb-3">
+                  <ImageUploadGroup
+                    label="รูปบัตรประชาชน"
+                    files={idCardFiles}
+                    setFiles={setIdCardFiles}
+                    existing={intakeIdCard}
+                    onRemoveExisting={(id) => void removeIntakeImage(id)}
+                    onViewerOpenChange={setPreviewImageViewerOpen}
+                  />
+                </div>
                 <div className="grid grid-cols-2 gap-3 mb-3">
                   <ImageUploadGroup
                     label="รูปก่อนหลอม (ไม่บังคับ)"
                     files={beforeFiles}
                     setFiles={setBeforeFiles}
+                    existing={intakeBefore}
+                    onRemoveExisting={(id) => void removeIntakeImage(id)}
                     onViewerOpenChange={setPreviewImageViewerOpen}
                   />
                   <ImageUploadGroup
@@ -1673,6 +1866,7 @@ export default function QuotationPage() {
                   date={quotationDate}
                   beforeImages={beforeImages}
                   afterImages={afterImages}
+                  idCardImages={idCardImages}
                   signatureImage={signatureDataUrl}
                   signerName={signerName}
                   onImageViewerOpenChange={setPreviewImageViewerOpen}
@@ -1782,6 +1976,7 @@ export default function QuotationPage() {
                   date={quotationDate}
                   beforeImages={beforeImages}
                   afterImages={afterImages}
+                  idCardImages={idCardImages}
                   signatureImage={signatureDataUrl}
                   signerName={signerName}
                 />

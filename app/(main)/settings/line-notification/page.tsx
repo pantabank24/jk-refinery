@@ -37,7 +37,8 @@ interface BacklogRow {
 // 1000 กรัม of silver, each traded as 1 กิโลกรัม) sitting at รอออกบิล right now?
 // Every bill still waiting to be issued counts towards the same pile, whoever
 // sold it in — weight/bill_count/lots are that live pile, and alerted_lots is
-// how much of it has already gone out.
+// how much of it has already gone out. Each kilo is announced by its own
+// message reading "จำนวน 1 กิโลกรัม"; the counts here never appear inside one.
 interface PendingSellRow {
   metal: Metal;
   enabled: boolean;
@@ -646,7 +647,7 @@ export default function LineNotificationPage() {
                     </div>
                     {live.alerted_lots > 0 && (
                       <span className="text-[10px] text-amber-600 flex items-center gap-x-1">
-                        <AlertTriangle size={11} /> แจ้งไปแล้ว {num(live.alerted_lots)} กิโลกรัม — ครบอีกกิโลถึงจะแจ้งใหม่
+                        <AlertTriangle size={11} /> แจ้งไปแล้ว {num(live.alerted_lots)} ข้อความ (กิโลละ 1 ข้อความ) — ครบอีกกิโลถึงจะแจ้งใหม่
                       </span>
                     )}
                     {unsaved && (
@@ -665,7 +666,8 @@ export default function LineNotificationPage() {
                     {sender} วันที่ 31/07/2568 เวลา 14:35 น. แจ้งขาย{METAL_NOUN[key]} {purity}% จำนวน 1 กิโลกรัม
                   </span>
                   <span className="text-[10px] text-black/35">
-                    ค้างถึง 2 เท่าของเกณฑ์จะเขียนว่า &quot;จำนวน 2 กิโลกรัม&quot; · พอออกบิลแล้ว ยอดค้างหมดไป รอบถัดไปเริ่มนับใหม่
+                    ทุกข้อความเขียน &quot;จำนวน 1 กิโลกรัม&quot; เสมอ — ครบ 2 กิโลพร้อมกันจะส่ง 2 ข้อความ ·
+                    พอออกบิลแล้ว ยอดค้างหมดไป รอบถัดไปเริ่มนับใหม่
                   </span>
                 </div>
 

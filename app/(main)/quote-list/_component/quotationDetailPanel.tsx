@@ -409,6 +409,9 @@ export function QuotationDetailPanel({ quotation, members, goldTypes, canUpdate,
         date={quotation.created_at}
         beforeImages={imgUrls(quotation.images, "before_melt")}
         afterImages={imgUrls(quotation.images, "after_melt")}
+        // บัตรประชาชนที่แนบมาตอนเปิดใบเสนอราคา — เปิดดูย้อนหลังได้จากตรงนี้
+        // แต่ยังไม่ติดไปกับกระดาษที่สั่งพิมพ์
+        idCardImages={imgUrls(quotation.images, "id_card")}
         previewImages={imgUrls(quotation.images, "")}
         signatureImage={imgUrls(quotation.images, "signature")[0] ?? null}
         signerName={quotation.signer_name}

@@ -54,6 +54,8 @@ interface Bill {
   issued_quotation?: { id: number; total_amount: number; created_at?: string } | null;
   gold_round?: string;
   created_at: string;
+  // เวลาที่ status ถูกเปลี่ยนครั้งล่าสุด — คนละอย่างกับ updated_at ที่ขยับทุกครั้งที่เขียนอะไรก็ตาม
+  status_changed_at?: string | null;
   items?: BillItem[];
 }
 
@@ -107,6 +109,31 @@ interface BillDetail {
 }
 
 const STATUS_LABEL: Record<number, string> = { 10: "รอออกบิล", 11: "รอตรวจบิล", 12: "สำเร็จ", 13: "ยกเลิก", 14: "เคลียร์แล้ว" };
+
+// สถานะที่ "ออกบิลไปแล้ว" — วันที่ออกใบเสนอราคาคือวันที่ทั้งสามสถานะนี้พูดถึงจริง ๆ
+// บิลจึงอยู่ตำแหน่งเดิมตอนเดินจาก รอตรวจบิล ไป สำเร็จ ไป เคลียร์แล้ว
+const ISSUED_SORT_STATUSES = [11, 12, 14];
+
+const newestItemDate = (b: Bill) =>
+  (b.items ?? []).reduce<string | undefined>(
+    (max, it) => (it.created_at && (!max || it.created_at > max) ? it.created_at : max),
+    undefined,
+  );
+
+// billSortDate สะท้อน listOrder ของ API (bill_repository.go) ให้ตรงกัน — id เป็นแค่ลำดับ
+// ที่บิลถูก "เปิด" ครั้งแรก ซึ่งเป็นคำตอบที่ผิดสำหรับทุกแท็บ: บิล รอออกบิล ถูกใช้ซ้ำโดย id
+// ไม่ขยับขณะที่ลูกค้าขายเข้ามาเรื่อย ๆ และบิลที่เปิดตั้งแต่เดือนก่อนแต่เพิ่งเคลียร์วันนี้
+// ต้องไม่จมอยู่ก้นแท็บ เคลียร์แล้ว ทุกสถานะจึงเรียงตามเหตุการณ์ที่คนอ่านรออยู่
+//   รอออกบิล                → รายการล่าสุดที่ลูกค้าส่งเข้ามา
+//   รอตรวจบิล/สำเร็จ/เคลียร์แล้ว → วันที่ออกใบเสนอราคา
+//   ยกเลิก                  → วันที่ถูกยกเลิก เพราะไม่มีใบเสนอราคาให้ยึด
+// แต่ละอันตกกลับไปหาคอลัมน์ที่มีค่าเสมอ บิลที่ไม่มี stamp จะได้ไม่ร่วงไปอยู่ใต้ทุกแถว
+const billSortDate = (b: Bill) => {
+  if (b.status === 10) return newestItemDate(b) ?? b.created_at;
+  if (ISSUED_SORT_STATUSES.includes(b.status))
+    return b.issued_quotation?.created_at ?? b.status_changed_at ?? b.created_at;
+  return b.status_changed_at ?? b.created_at;
+};
 const STATUS_COLOR: Record<number, string> = {
   10: "bg-yellow-500/20 text-yellow-700 border-yellow-500/30",
   11: "bg-blue-500/20 text-blue-700 border-blue-500/30",
@@ -466,22 +493,31 @@ export const CustomerDetail = ({ selfMode = false }: { selfMode?: boolean } = {}
   if (loading) {
     return <div className="flex items-center justify-center h-full"><Spinner size="lg" color="warning" /></div>;
   }
+  // แท็บ บิลที่ออก ไม่ได้ส่ง status ไปให้ API เลยได้ id DESC กลับมา ซึ่งเป็นลำดับที่บิลถูก
+  // เปิดครั้งแรก ไม่ใช่ลำดับที่มีอะไรเกิดขึ้นล่าสุด เรียงใหม่ฝั่ง client ด้วยกฎเดียวกับ API
+  const sortedBills = [...bills].sort((a, b) => {
+    const byEvent = billSortDate(b).localeCompare(billSortDate(a));
+    return byEvent || b.id - a.id;
+  });
+
   // ประวัติ: ทุกรายการทองที่ลูกค้าส่งเข้ามา รวมจากบิลทุกใบ (ใหม่สุดก่อน)
   //
   // Each row is dated by its OWN line, not by the bill: a bill sits open at
   // รอออกบิล and every later sell is appended to it, so a bill opened on the 29th
   // can hold lines sold on the 31st. Dating them all by the bill is what made the
-  // history read as the wrong day. Sorting follows the same date, so the rows are
-  // genuinely newest-first across bills instead of only bill-by-bill.
+  // history read as the wrong day. (ลำดับการเรียงดู historyRowDate ข้างล่าง)
   const historyRows = bills
     .flatMap((b) => (b.items ?? []).map((it) => ({ bill: b, it, at: it.created_at || b.created_at })));
   const selectedHistoryStatus = HISTORY_STATUS_FILTER[historyStatus];
-  // รอตรวจบิลเรียงตามวันที่ Admin บันทึกใบที่ออก ส่วนสถานะอื่นเรียงตามวันที่
-  // บันทึกรายการขายแต่ละรายการเหมือนเดิม
+  // ใช้คีย์เดียวกับ billSortDate แต่คิดตามสถานะของบิลแต่ละใบ ไม่ใช่แท็บที่เลือกอยู่ แท็บ
+  // ทั้งหมด จึงเรียงเหมือนกับที่แต่ละแท็บเรียง เหมือน CASE ฝั่ง API
+  //
+  // ยกเว้น รอออกบิล ที่ใช้วันที่ของ "แถวนั้น" แทนรายการล่าสุดของบิล เพราะตารางประวัติ
+  // แตกเป็นรายบรรทัดและโชว์คอลัมน์วันที่อยู่ ถ้าดันทุกบรรทัดของบิลเดียวกันไปกองที่วันที่
+  // ล่าสุด คอลัมน์วันที่ที่คนอ่านเห็นจะเรียงมั่ว — ฝั่ง API ใช้ MAX ก็เพราะเรียงทีละบิล
+  // ซึ่งได้ผลเท่ากับบรรทัดบนสุดของบิลนั้นพอดี
   const historyRowDate = (row: (typeof historyRows)[number]) =>
-    historyStatus === "pending_review"
-      ? row.bill.issued_quotation?.created_at ?? row.at
-      : row.at;
+    row.bill.status === 10 ? row.at : billSortDate(row.bill);
   const filteredHistoryRows = (selectedHistoryStatus === undefined
     ? [...historyRows]
     : historyRows.filter(({ bill }) => bill.status === selectedHistoryStatus)
@@ -690,7 +726,7 @@ export const CustomerDetail = ({ selfMode = false }: { selfMode?: boolean } = {}
                         </tr>
                       </thead>
                       <tbody>
-                        {bills.map((b) => (
+                        {sortedBills.map((b) => (
                           <tr
                             key={b.id}
                             onClick={() => openBill(b)}
@@ -717,7 +753,7 @@ export const CustomerDetail = ({ selfMode = false }: { selfMode?: boolean } = {}
                       read one bill. A card puts the same four facts in a block
                       that fits the screen. */}
                   <div className="flex md:hidden flex-col gap-y-2 p-3 overflow-auto scrollbar-hide">
-                    {bills.map((b) => (
+                    {sortedBills.map((b) => (
                       <div
                         key={b.id}
                         onClick={() => openBill(b)}
@@ -753,30 +789,31 @@ export const CustomerDetail = ({ selfMode = false }: { selfMode?: boolean } = {}
             </div>
           ) : tab === "history" ? (
             <div className="flex flex-col md:flex-1 md:min-h-0 border-1 border-black/10 bg-white/20 backdrop-blur-xl rounded-xl shadow-xl overflow-hidden">
-              {selfMode && (
-                <div className="shrink-0 px-3 border-b border-black/5">
-                  <Tabs
-                    aria-label="history status filter"
-                    selectedKey={historyStatus}
-                    onSelectionChange={(key) => setHistoryStatus(String(key))}
-                    color="warning"
-                    variant="underlined"
-                    classNames={{
-                      base: "w-full",
-                      tabList: "gap-4 w-full overflow-x-auto flex-nowrap scrollbar-hide",
-                    }}
-                  >
-                    <Tab key="all" title="ทั้งหมด" />
-                    <Tab key="pending_issue" title="รอออกบิล" />
-                    <Tab key="pending_review" title="รอตรวจบิล" />
-                    <Tab key="completed" title="สำเร็จ" />
-                    <Tab key="cleared" title="เคลียร์แล้ว" />
-                    <Tab key="cancelled" title="ยกเลิก" />
-                  </Tabs>
-                </div>
-              )}
+              {/* ตัวกรองสถานะ — เปิดให้ทั้งพนักงานและลูกค้า ประวัติยาวเท่ากันทั้งสองฝั่ง */}
+              <div className="shrink-0 px-3 border-b border-black/5">
+                <Tabs
+                  aria-label="history status filter"
+                  selectedKey={historyStatus}
+                  onSelectionChange={(key) => setHistoryStatus(String(key))}
+                  color="warning"
+                  variant="underlined"
+                  classNames={{
+                    base: "w-full",
+                    tabList: "gap-4 w-full overflow-x-auto flex-nowrap scrollbar-hide",
+                  }}
+                >
+                  <Tab key="all" title="ทั้งหมด" />
+                  <Tab key="pending_issue" title="รอออกบิล" />
+                  <Tab key="pending_review" title="รอตรวจบิล" />
+                  <Tab key="completed" title="สำเร็จ" />
+                  <Tab key="cleared" title="เคลียร์แล้ว" />
+                  <Tab key="cancelled" title="ยกเลิก" />
+                </Tabs>
+              </div>
               {filteredHistoryRows.length === 0 ? (
-                <div className="flex items-center justify-center py-10 text-black/40 text-sm">ยังไม่มีรายการ</div>
+                <div className="flex items-center justify-center py-10 px-4 text-center text-black/40 text-sm">
+                  {historyStatus === "all" ? "ยังไม่มีรายการ" : "ไม่มีรายการในสถานะนี้"}
+                </div>
               ) : (
                 <>
                   {/* Desktop: table */}

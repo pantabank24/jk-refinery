@@ -20,6 +20,10 @@ export function StoreBranchSelector() {
       {canSelectStore && stores.length > 0 && (
         <Select
           size="sm"
+          // The placeholder is not a label — react-aria needs a real name for a
+          // control that never shows one, or it warns and the picker reads as
+          // unnamed to a screen reader.
+          aria-label="เลือกร้าน"
           placeholder="เลือกร้าน"
           className="w-40"
           classNames={{
@@ -42,6 +46,7 @@ export function StoreBranchSelector() {
       {canSelectBranch && branches.length > 0 && (
         <Select
           size="sm"
+          aria-label="เลือกสาขา"
           placeholder="เลือกสาขา"
           className="w-40"
           classNames={{

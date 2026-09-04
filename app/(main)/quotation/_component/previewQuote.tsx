@@ -262,6 +262,10 @@ interface Props {
   previewImages?: string[];
   beforeImages?: string[]; // รูปก่อนหลอม
   afterImages?: string[]; // รูปบนตราชั่ง (หลังหลอม)
+  // รูปบัตรประชาชน — แสดงในพรีวิวเพื่อยืนยันว่าแนบไว้กับใบแล้ว แต่ไม่ติดไปกับกระดาษ
+  // ที่สั่งพิมพ์ (print:hidden ด้านล่าง) เพราะเป็นเอกสารยืนยันตัวตนของลูกค้า ไม่ใช่
+  // หลักฐานของรายการซื้อขายอย่างรูปก่อน/หลังหลอม
+  idCardImages?: string[];
   onImageViewerOpenChange?: (open: boolean) => void;
   signatureImage?: string | null; // ลายเซ็น (data-URL หรือ URL)
   signerName?: string;
@@ -302,6 +306,7 @@ export const PreviewQuote = React.forwardRef<PreviewQuoteHandle, Props>(
       previewImages,
       beforeImages,
       afterImages,
+      idCardImages,
       onImageViewerOpenChange,
       signatureImage,
       signerName,
@@ -319,6 +324,13 @@ export const PreviewQuote = React.forwardRef<PreviewQuoteHandle, Props>(
     // Keep every attachment in one ordered set so opening a thumbnail also lets
     // the user move between the before/after photos in the full-screen viewer.
     const attachmentImages = [
+      // บัตรประชาชนมาก่อน: ที่หน้าร้านยืนยันตัวตนลูกค้าก่อนแล้วค่อยถ่ายของ
+      ...(idCardImages ?? []).map((src, i) => ({
+        src,
+        label: "บัตรประชาชน",
+        name: `บัตรประชาชน ${i + 1}`,
+        printHidden: true,
+      })),
       ...(beforeImages ?? []).map((src, i) => ({
         src,
         label: "ก่อนหลอม",
@@ -1129,7 +1141,15 @@ export const PreviewQuote = React.forwardRef<PreviewQuoteHandle, Props>(
                     {/* Uploaded images — all types flow together in one row,
                         captioned below each thumbnail. */}
                     {attachmentImages.length > 0 && (
-                      <div className="mt-2 pt-2 border-t border-gray-300">
+                      <div
+                        className={`mt-2 pt-2 border-t border-gray-300${
+                          // Every attachment hidden from print (e.g. an ID card is
+                          // the only one) would otherwise print a bare heading.
+                          attachmentImages.every((img) => "printHidden" in img && img.printHidden)
+                            ? " print:hidden"
+                            : ""
+                        }`}
+                      >
                         <p className="text-[8px] font-semibold mb-1">
                           รูปภาพประกอบ
                         </p>
@@ -1147,7 +1167,7 @@ export const PreviewQuote = React.forwardRef<PreviewQuoteHandle, Props>(
                                   openImageViewer(i);
                                 }
                               }}
-                              className="inline-flex flex-col items-center align-top cursor-zoom-in focus:outline-none focus:ring-2 focus:ring-[#c09c42] rounded"
+                              className={`inline-flex flex-col items-center align-top cursor-zoom-in focus:outline-none focus:ring-2 focus:ring-[#c09c42] rounded${"printHidden" in img && img.printHidden ? " print:hidden" : ""}`}
                               style={{
                                 marginRight: "4px",
                                 marginBottom: "4px",
