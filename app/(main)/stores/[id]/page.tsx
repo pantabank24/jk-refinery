@@ -1,5 +1,6 @@
 "use client";
 
+import { SkeletonList } from "@/components/skeleton";
 import { useEffect, useState } from "react";
 import { Button } from "@heroui/button";
 import { ArrowLeft, Plus, Edit, MapPin, Phone, Trash2 } from "lucide-react";
@@ -7,7 +8,6 @@ import { useRouter, useParams } from "next/navigation";
 import { api } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
 import { Chip } from "@heroui/chip";
-import { Spinner } from "@heroui/spinner";
 import { useDisclosure } from "@heroui/modal";
 import { ConfirmDeleteModal } from "@/components/confirmDeleteModal";
 
@@ -67,9 +67,7 @@ export default function StoreDetailPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-full">
-        <Spinner size="lg" color="warning" />
-      </div>
+      <SkeletonList rows={6} />
     );
   }
 

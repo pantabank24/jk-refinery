@@ -1,12 +1,12 @@
 "use client";
 
+import { SkeletonList } from "@/components/skeleton";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { api } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
 import { Button } from "@heroui/button";
 import { Input } from "@heroui/input";
-import { Spinner } from "@heroui/spinner";
 import {
   Table, TableHeader, TableColumn, TableBody, TableRow, TableCell,
   Chip, Modal, ModalContent, ModalHeader, ModalBody, ModalFooter,
@@ -431,9 +431,7 @@ export const MemberDetail = () => {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-full">
-        <Spinner size="lg" color="warning" />
-      </div>
+      <SkeletonList rows={6} />
     );
   }
 
@@ -980,9 +978,7 @@ export const MemberDetail = () => {
               </ModalHeader>
               <ModalBody>
                 {resetPreviewLoading ? (
-                  <div className="flex items-center justify-center py-8">
-                    <Spinner size="md" color="warning" />
-                  </div>
+                  <SkeletonList rows={6} />
                 ) : resetPreview && resetPreview.count > 0 ? (
                   <div className="flex flex-col gap-y-3">
                     <p className="text-sm text-black/60">
@@ -1064,9 +1060,7 @@ export const MemberDetail = () => {
               </ModalHeader>
               <ModalBody className="pb-6">
                 {quoteLoadingFull ? (
-                  <div className="flex items-center justify-center py-12">
-                    <Spinner size="lg" color="warning" />
-                  </div>
+                  <SkeletonList rows={6} />
                 ) : (
                   <QuotationDetailPanel
                     quotation={selectedQuotation}

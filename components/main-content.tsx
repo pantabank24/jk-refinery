@@ -31,7 +31,7 @@ export function MainContent({ children }: { children: React.ReactNode }) {
       >
         <Navbar onMenuClick={() => setSidebarOpen(true)} />
         <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
-        <main className="flex flex-col w-full min-w-0 md:h-full md:overflow-auto px-5 lg:pl-80 pt-20 pb-[calc(1.25rem+var(--bottom-nav-h,0px))]">
+        <main className="flex flex-col w-full min-w-0 md:h-full md:overflow-auto px-5 lg:pl-80 pt-[var(--navbar-h)] pb-[calc(1.25rem+var(--bottom-nav-h,0px))]">
           {children}
         </main>
         {showBottomNav && <BottomNav items={bottomNavItems} />}

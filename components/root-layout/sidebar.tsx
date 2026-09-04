@@ -283,9 +283,34 @@ export const Sidebar = ({ isOpen = false, onClose }: SidebarProps) => {
   return (
     <>
       {/* ── Desktop sidebar ── */}
-      <div className="fixed w-80 h-screen px-4 pt-20 pb-5 max-lg:hidden ">
-        <div className="flex flex-col h-full border-1 border-black/10 bg-black/5 shadow-xl backdrop-blur-xl rounded-4xl p-4 gap-y-1 overflow-y-scroll scrollbar-hide">
-          <MenuItems />
+      {/* Full height: the top bar no longer reaches over this column, so the panel
+          starts level with it rather than below it. pt-2 lines its top edge up
+          with the bar's own py-2 inset. */}
+      <div className="fixed w-80 h-screen px-4 pt-2 pb-5 max-lg:hidden">
+        <div className="flex flex-col h-full border-1 border-black/10 bg-black/5 shadow-xl backdrop-blur-xl rounded-4xl p-4 gap-y-2">
+          {/* The brand sits OUTSIDE the scroller: it is the panel's masthead, not
+              its first menu entry, so it must not slide away under a long menu. */}
+          <Link
+            href="/"
+            className="flex flex-row items-center gap-x-2 shrink-0 px-1 pb-2 border-b-1 border-black/10"
+          >
+            <img
+              src="/images/jk-logo.png"
+              alt="JK Gold & Diamond"
+              className="h-11 object-contain"
+            />
+            <div className="flex flex-col min-w-0">
+              <span className="font-bold text-lg bg-[#c09c42] bg-clip-text text-transparent truncate">
+                JK Gold &amp; Diamond
+              </span>
+              <span className="font-bold text-xs bg-[#c09c42] bg-clip-text text-transparent -mt-1.5 truncate">
+                กรุงเทพหลอมทอง
+              </span>
+            </div>
+          </Link>
+          <div className="flex flex-col flex-1 min-h-0 gap-y-1 overflow-y-scroll scrollbar-hide">
+            <MenuItems />
+          </div>
         </div>
       </div>
 
@@ -302,7 +327,7 @@ export const Sidebar = ({ isOpen = false, onClose }: SidebarProps) => {
       >
         {/* Header — same height as the navbar it replaces, so the ✕ lands where
             the ☰ was and the menu does not appear to jump. */}
-        <div className="flex items-center justify-between h-20 shrink-0 px-6">
+        <div className="flex items-center justify-between h-[var(--navbar-h)] shrink-0 px-6">
           <span className="font-bold text-lg bg-[#c09c42] bg-clip-text text-transparent">
             เมนู
           </span>

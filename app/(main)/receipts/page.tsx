@@ -1,10 +1,10 @@
 "use client";
 
+import { SkeletonList } from "@/components/skeleton";
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@heroui/button";
 import { Input } from "@heroui/input";
-import { Spinner } from "@heroui/spinner";
 import { useDisclosure } from "@heroui/modal";
 import { Table, TableHeader, TableColumn, TableBody, TableRow, TableCell } from "@heroui/table";
 import {
@@ -147,9 +147,7 @@ export default function ReceiptsPage() {
 
       <div className="flex flex-col md:flex-1 md:min-h-0 md:overflow-y-auto md:scrollbar-hide">
         {loading ? (
-          <div className="flex items-center justify-center py-10">
-            <Spinner size="lg" color="warning" />
-          </div>
+          <SkeletonList rows={6} />
         ) : receipts.length === 0 ? (
           <div className="flex items-center justify-center py-10 text-black/40 text-sm">
             ยังไม่มีใบเสร็จที่บันทึกไว้

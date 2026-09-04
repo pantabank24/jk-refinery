@@ -1,5 +1,5 @@
+import { SkeletonList } from "@/components/skeleton";
 import { Suspense } from "react";
-import { Spinner } from "@heroui/spinner";
 import { CustomerAction } from "./_subpage/action";
 import { CustomerDetail } from "./_subpage/read";
 
@@ -8,9 +8,7 @@ type Props = {
 };
 
 const Loading = () => (
-  <div className="flex items-center justify-center h-full">
-    <Spinner size="lg" color="warning" />
-  </div>
+  <SkeletonList rows={6} />
 );
 
 export default async function CustomerModePage({ params }: Props) {

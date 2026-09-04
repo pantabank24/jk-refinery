@@ -1,7 +1,7 @@
 "use client";
 
+import { SkeletonBlock } from "@/components/skeleton";
 import { useEffect, useRef, useState } from "react";
-import { Spinner } from "@heroui/spinner";
 import { Chip } from "@heroui/chip";
 import { ArrowUp, ArrowDown, Minus, Radio, Wifi, WifiOff } from "lucide-react";
 import { api } from "@/lib/api";
@@ -133,9 +133,24 @@ export default function RealtimeGoldPage() {
       </div>
 
       {!state ? (
-        <div className="flex flex-col items-center justify-center py-24 gap-3">
-          <Spinner color="warning" />
-          <span className="text-sm font-bold text-black/40">กำลังเชื่อมต่อราคา…</span>
+        <div className="flex flex-col gap-3">
+          {/* The price cards' own shape, so the page does not jump when the feed
+              connects. The line stays: this wait is a live connection, not a
+              fetch, and saying so is worth more than a bare placeholder. */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {[0, 1, 2].map((i) => (
+              <div
+                key={i}
+                className="flex flex-col gap-y-2 p-5 rounded-3xl border-1 border-black/10 bg-black/5"
+              >
+                <SkeletonBlock className="h-3 w-20" />
+                <SkeletonBlock className="h-8 w-32" />
+              </div>
+            ))}
+          </div>
+          <span className="text-sm font-bold text-black/40 text-center">
+            กำลังเชื่อมต่อราคา…
+          </span>
         </div>
       ) : (
         <>

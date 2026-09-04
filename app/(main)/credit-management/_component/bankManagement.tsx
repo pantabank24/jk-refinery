@@ -1,11 +1,11 @@
 "use client";
 
+import { SkeletonList } from "@/components/skeleton";
 import { useEffect, useState } from "react";
 import { Button } from "@heroui/button";
 import { Input } from "@heroui/input";
 import { Switch } from "@heroui/switch";
 import { Chip } from "@heroui/chip";
-import { Spinner } from "@heroui/spinner";
 import {
   Table,
   TableHeader,
@@ -219,9 +219,7 @@ export function BankManagement() {
       </div>
 
       {loading ? (
-        <div className="flex items-center justify-center py-10">
-          <Spinner size="lg" color="warning" />
-        </div>
+        <SkeletonList rows={6} />
       ) : (
         <div className="flex flex-col md:flex-1 md:min-h-0 md:overflow-y-auto md:scrollbar-hide">
           {/* Desktop: table */}

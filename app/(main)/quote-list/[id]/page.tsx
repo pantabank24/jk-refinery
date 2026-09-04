@@ -1,5 +1,6 @@
 "use client";
 
+import { SkeletonList } from "@/components/skeleton";
 import { useEffect, useMemo, useState, useCallback } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { ArrowLeft, Pencil, Calendar } from "lucide-react";
@@ -8,7 +9,6 @@ import { CmpInput } from "@/components/cmpInput";
 import { api } from "@/lib/api";
 import { useStore } from "@/contexts/store-context";
 import { useAuth } from "@/contexts/auth-context";
-import { Spinner } from "@heroui/spinner";
 import { Button } from "@heroui/button";
 import { Input } from "@heroui/input";
 import { Modal, ModalContent, ModalBody } from "@heroui/modal";
@@ -318,9 +318,7 @@ export default function EmployeeQuoteListPage() {
       <div className="hidden md:block shrink-0">{tabsEl}</div>
 
       {loading ? (
-        <div className="flex items-center justify-center py-10">
-          <Spinner size="lg" color="warning" />
-        </div>
+        <SkeletonList rows={6} />
       ) : (
         <div className="md:flex-1 md:min-h-0 flex flex-col md:flex-row gap-3">
           {/* Preview — inline split pane on desktop; mobile uses the modal below */}

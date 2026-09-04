@@ -1,5 +1,6 @@
 "use client";
 
+import { SkeletonList } from "@/components/skeleton";
 import { useEffect, useState, useCallback } from "react";
 import { Button } from "@heroui/button";
 import { Input } from "@heroui/input";
@@ -9,7 +10,6 @@ import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
 import { Chip } from "@heroui/chip";
-import { Spinner } from "@heroui/spinner";
 import {
   Table, TableHeader, TableColumn, TableBody, TableRow, TableCell, User as UserAvatar,
 } from "@heroui/react";
@@ -209,9 +209,7 @@ export default function UsersPage() {
       </div>
 
       {loading ? (
-        <div className="flex items-center justify-center h-full">
-          <Spinner size="lg" color="warning" />
-        </div>
+        <SkeletonList rows={6} />
       ) : users.length === 0 ? (
         <div className="flex flex-col items-center justify-center h-full gap-y-4">
           <UserCog size={64} className="text-[#c09c42]/30" />

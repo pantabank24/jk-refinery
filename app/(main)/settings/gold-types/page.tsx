@@ -1,9 +1,9 @@
 "use client";
 
+import { SkeletonList } from "@/components/skeleton";
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
-import { Spinner } from "@heroui/spinner";
 import { Button } from "@heroui/button";
 import { Input } from "@heroui/input";
 import { Select, SelectItem } from "@heroui/select";
@@ -231,7 +231,7 @@ export default function GoldTypesPage() {
       </div>
 
       {loading ? (
-        <div className="flex items-center justify-center h-full"><Spinner size="lg" color="warning" /></div>
+        <SkeletonList rows={6} />
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 md:overflow-y-auto pb-4">
           {types.map((gt) => {

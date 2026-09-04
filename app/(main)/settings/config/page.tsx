@@ -1,9 +1,9 @@
 "use client";
 
+import { SkeletonList } from "@/components/skeleton";
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
-import { Spinner } from "@heroui/spinner";
 import { Button } from "@heroui/button";
 import { Input } from "@heroui/input";
 import { Switch } from "@heroui/switch";
@@ -75,9 +75,7 @@ export default function ConfigPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-full">
-        <Spinner size="lg" color="warning" />
-      </div>
+      <SkeletonList rows={6} />
     );
   }
 

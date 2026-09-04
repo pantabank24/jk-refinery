@@ -1,5 +1,6 @@
 "use client";
 
+import { SkeletonList } from "@/components/skeleton";
 import { useEffect, useState, useCallback } from "react";
 import {
   Table,
@@ -19,7 +20,6 @@ import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
 import { useStore } from "@/contexts/store-context";
-import { Spinner } from "@heroui/spinner";
 
 const API_BASE =
   process.env.NEXT_PUBLIC_API_URL?.replace("/api/v1", "") ||
@@ -294,9 +294,7 @@ export default function Members() {
       </div>
 
       {loading ? (
-        <div className="flex items-center justify-center flex-1">
-          <Spinner size="lg" color="warning" />
-        </div>
+        <SkeletonList rows={6} />
       ) : (
         <>
           <Table

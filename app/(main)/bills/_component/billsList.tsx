@@ -1,5 +1,6 @@
 "use client";
 
+import { SkeletonList } from "@/components/skeleton";
 import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import { Avatar } from "@heroui/avatar";
 import { CheckCircle, XCircle, FileUp, AlertCircle, Trash2, Store, Pencil, ChevronLeft, ChevronRight, ChevronDown, Zap } from "lucide-react";
@@ -205,12 +206,14 @@ const STATUS_COLOR: Record<number, string> = {
   14: "bg-purple-500/20 text-purple-700 border-purple-500/30",
 };
 
-// Marks a bill the auto-sell engine created on its own. Worth calling out on
-// every surface: nobody pressed a button for it, so staff reading the list need
-// to know why it appeared.
+// Marks a bill holding at least one line the auto-sell engine sold on its own. A
+// fill accumulates into the customer's open bill like any manual sell, so the rest
+// of the bill may well be lines they entered by hand. Worth calling out on every
+// surface: nobody pressed a button for those, so staff reading the list need to
+// know why they appeared.
 const AutoSellChip = () => (
   <span
-    title="ระบบขายให้อัตโนมัติเมื่อราคาถึงเป้าที่ลูกค้าตั้งไว้"
+    title="บิลนี้มีรายการที่ระบบขายให้อัตโนมัติเมื่อราคาถึงเป้าที่ลูกค้าตั้งไว้"
     className="shrink-0 inline-flex items-center gap-x-0.5 text-[10px] font-bold px-1.5 py-0.5 rounded-full border-1 bg-sky-500/15 text-sky-700 border-sky-500/30"
   >
     <Zap size={9} /> ขายอัตโนมัติ
@@ -800,7 +803,7 @@ export function BillsList({ metal }: { metal: BillMetal }) {
       {/* List — desktop: scroll ในตัวเอง (Overview ตรึง) / มือถือ: natural, เลื่อนไปกับ wrapper */}
       <div className="flex flex-col md:flex-1 md:min-h-0 md:overflow-y-auto md:scrollbar-hide">
         {loading ? (
-          <div className="flex items-center justify-center py-10"><Spinner size="lg" color="warning" /></div>
+          <SkeletonList rows={6} />
         ) : billGroups.length === 0 ? (
           <div className="flex items-center justify-center py-10 text-black/40 text-sm">ยังไม่มีรายการขาย{metalLabel}</div>
         ) : (

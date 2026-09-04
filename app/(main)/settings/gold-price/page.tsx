@@ -1,9 +1,9 @@
 "use client";
 
+import { SkeletonList } from "@/components/skeleton";
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
-import { Spinner } from "@heroui/spinner";
 import { Button } from "@heroui/button";
 import { Input } from "@heroui/input";
 import { Modal, ModalContent, ModalHeader, ModalBody, ModalFooter, useDisclosure } from "@heroui/modal";
@@ -160,7 +160,7 @@ export default function GoldPricePage() {
       </div>
 
       {loading ? (
-        <div className="flex items-center justify-center flex-1"><Spinner size="lg" color="warning" /></div>
+        <SkeletonList rows={6} />
       ) : latest ? (
         <>
           {/* Current price cards */}

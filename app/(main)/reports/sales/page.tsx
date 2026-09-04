@@ -1,12 +1,12 @@
 "use client";
 
+import { SkeletonBlock, SkeletonLines, SkeletonList, SkeletonPage, SkeletonStats } from "@/components/skeleton";
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import moment from "moment";
 import { Button } from "@heroui/button";
 import { Input } from "@heroui/input";
 import { Select, SelectItem } from "@heroui/select";
-import { Spinner } from "@heroui/spinner";
 import { Tabs, Tab } from "@heroui/tabs";
 import {
   Table,
@@ -491,8 +491,16 @@ function SalesReportPage() {
       </div>
 
       {loading && !everLoaded ? (
-        <div className="flex items-center justify-center py-10">
-          <Spinner size="lg" color="warning" />
+        <div className="flex flex-col gap-y-3">
+          <SkeletonStats />
+          <div className="grid grid-cols-1 gap-2 xl:grid-cols-2">
+            <SkeletonBlock className="h-[236px] rounded-2xl" />
+            <SkeletonBlock className="h-[236px] rounded-2xl" />
+          </div>
+          <div className="grid grid-cols-1 gap-2 xl:grid-cols-2">
+            <SkeletonBlock className="h-24 rounded-2xl" />
+            <SkeletonBlock className="h-24 rounded-2xl" />
+          </div>
         </div>
       ) : (
         <div
@@ -574,9 +582,7 @@ function SalesReportPage() {
         </span>
 
         {rowsLoading && !everLoaded ? (
-          <div className="flex items-center justify-center py-8">
-            <Spinner size="sm" color="warning" />
-          </div>
+          <SkeletonLines count={3} className="py-2" />
         ) : rows.length === 0 ? (
           <div className="py-8 text-center text-sm text-black/40">
             ไม่มีเอกสารในช่วงที่เลือก
@@ -766,13 +772,7 @@ function SourceChip({ source }: { source: string }) {
 // useSearchParams needs a Suspense boundary for the static shell.
 export default function Page() {
   return (
-    <Suspense
-      fallback={
-        <div className="flex items-center justify-center py-10">
-          <Spinner size="lg" color="warning" />
-        </div>
-      }
-    >
+    <Suspense fallback={<SkeletonPage />}>
       <SalesReportPage />
     </Suspense>
   );

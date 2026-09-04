@@ -1,9 +1,9 @@
 "use client";
 
+import { SkeletonList } from "@/components/skeleton";
 import { Modal, ModalContent, ModalHeader, ModalBody, ModalFooter } from "@heroui/modal";
 import { Button } from "@heroui/button";
 import { Checkbox } from "@heroui/checkbox";
-import { Spinner } from "@heroui/spinner";
 
 // A customer bill item the master can pick for the current issuance round.
 export interface PickableItem {
@@ -63,7 +63,7 @@ export function BillItemPicker({
         </ModalHeader>
         <ModalBody>
           {loading ? (
-            <div className="flex items-center justify-center py-10"><Spinner size="lg" color="warning" /></div>
+            <SkeletonList rows={6} />
           ) : items.length === 0 ? (
             <div className="flex items-center justify-center py-10 text-black/40 text-sm">ไม่มีรายการให้เลือก</div>
           ) : (

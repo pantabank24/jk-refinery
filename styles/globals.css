@@ -19,6 +19,15 @@
   }
 }
 
+/* The floating top bar's height, published once so the places that have to agree
+   about it cannot drift apart: the bar itself, <main>'s top padding, and the
+   mobile menu's own header (which is sized to it so the ✕ lands exactly where the
+   ☰ was). The desktop sidebar deliberately does NOT offset by it — from lg up the
+   bar starts to the RIGHT of the sidebar, so the sidebar runs the full height. */
+:root {
+  --navbar-h: 5rem;
+}
+
 /* The customer's bottom pill nav (components/root-layout/bottom-nav.tsx) floats
    over the page, so anything anchored to the bottom edge offsets by its height
    instead of disappearing underneath it. The variable is published by the layout
@@ -32,5 +41,57 @@
 @media (min-width: 1024px) {
   [data-bottom-nav="1"] {
     --bottom-nav-h: 0px;
+  }
+}
+
+/* Skeleton shimmer — the shared placeholder look (components/skeleton.tsx). A
+   sweep rather than a pulse: it reads as "content is on its way" instead of the
+   blink that a fading block gives. Held still for anyone who asked the OS for
+   less motion. */
+@keyframes skShimmer {
+  from { background-position: 200% 0; }
+  to   { background-position: -200% 0; }
+}
+
+.sk-shimmer {
+  background-image: linear-gradient(
+    90deg,
+    rgba(0, 0, 0, 0.06) 25%,
+    rgba(192, 156, 66, 0.16) 37%,
+    rgba(0, 0, 0, 0.06) 63%
+  );
+  background-size: 200% 100%;
+  animation: skShimmer 1.5s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sk-shimmer {
+    animation: none;
+  }
+}
+
+/* Anti-flash. A skeleton that appears for 80ms on a fast connection is worse than
+   no skeleton at all — it reads as the screen glitching. So every placeholder is
+   held at zero opacity for the first quarter-second of its own life: if the data
+   lands before that, the skeleton is unmounted having never been painted, and the
+   content simply appears. A genuinely slow load never notices the delay, because
+   the reader is waiting anyway.
+   
+   Done in CSS rather than with a timer in each component: it costs no re-render,
+   and no call site has to know about it. */
+@keyframes skReveal {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+.sk-reveal {
+  animation: skReveal 180ms ease-out 260ms both;
+}
+
+/* Reduced motion keeps the DELAY — that is anti-flash, not decoration — and drops
+   only the fade. */
+@media (prefers-reduced-motion: reduce) {
+  .sk-reveal {
+    animation: skReveal 1ms linear 260ms both;
   }
 }

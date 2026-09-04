@@ -1,5 +1,6 @@
 "use client";
 
+import { SkeletonList } from "@/components/skeleton";
 import { BillCalculate } from "../_component/billCalculate";
 import { useState, useEffect } from "react";
 import { QuotationProps } from "../../quotation/_component/quotation";
@@ -7,7 +8,6 @@ import { api } from "@/lib/api";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/auth-context";
 import { Clock, ShieldOff, Store } from "lucide-react";
-import { Spinner } from "@heroui/spinner";
 import {
   Modal,
   ModalContent,
@@ -89,9 +89,7 @@ export default function CreateBillPage() {
 
   if (billsOpen === null || silverOpen === null || salesLoading) {
     return (
-      <div className="flex items-center justify-center h-full">
-        <Spinner size="lg" color="warning" />
-      </div>
+      <SkeletonList rows={6} />
     );
   }
 

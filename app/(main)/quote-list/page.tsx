@@ -1,5 +1,6 @@
 'use client'
 
+import { SkeletonList } from "@/components/skeleton";
 import { useEffect, useMemo, useState, useCallback } from "react";
 import { Avatar } from "@heroui/avatar";
 import { Download, Users, List as ListIcon, Pencil, Calendar } from "lucide-react";
@@ -9,7 +10,6 @@ import { api } from "@/lib/api";
 import { useRouter } from "next/navigation";
 import { useStore } from "@/contexts/store-context";
 import { useAuth } from "@/contexts/auth-context";
-import { Spinner } from "@heroui/spinner";
 import { Button } from "@heroui/button";
 import { Modal, ModalContent, ModalBody } from "@heroui/modal";
 import { Input } from "@heroui/input";
@@ -275,7 +275,7 @@ export default function QuoteList() {
       {/* Content — desktop: scroll ในตัวเอง (Overview ตรึง) / มือถือ: natural, เลื่อนไปกับ wrapper */}
       <div className="flex flex-col md:flex-1 md:min-h-0 md:overflow-y-auto md:scrollbar-hide">
         {loading ? (
-          <div className="flex items-center justify-center py-10"><Spinner size="lg" color="warning" /></div>
+          <SkeletonList rows={6} />
         ) : filtered.length === 0 ? (
           <div className="flex items-center justify-center py-10 text-black/40 text-sm">ยังไม่มีใบเสนอราคา</div>
         ) : view === "employee" ? (

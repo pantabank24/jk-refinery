@@ -1,9 +1,9 @@
 "use client";
 
+import { SkeletonList } from "@/components/skeleton";
 import { useEffect, useMemo, useState } from "react";
 import { Button } from "@heroui/button";
 import { Chip } from "@heroui/chip";
-import { Spinner } from "@heroui/spinner";
 import { Switch } from "@heroui/switch";
 import {
   ChevronDown,
@@ -593,9 +593,7 @@ export function CustomerActivityLogs({ customerId }: { customerId: string }) {
       </div>
 
       {loading ? (
-        <div className="flex items-center justify-center py-10">
-          <Spinner size="lg" color="warning" />
-        </div>
+        <SkeletonList rows={6} />
       ) : error ? (
         <div className="flex items-center justify-center py-10 text-red-500 text-sm">{error}</div>
       ) : shown.length === 0 ? (

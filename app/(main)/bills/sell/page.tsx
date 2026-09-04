@@ -1,5 +1,6 @@
 "use client";
 
+import { SkeletonList } from "@/components/skeleton";
 import { BillCalculate } from "../_component/billCalculate";
 import { useState, useEffect, useCallback } from "react";
 import { QuotationProps } from "../../quotation/_component/quotation";
@@ -7,7 +8,6 @@ import { api } from "@/lib/api";
 import { VerifyBadge } from "@/components/verifyBadge";
 import { useAuth } from "@/contexts/auth-context";
 import { ShieldOff, UserCircle, Search, Check } from "lucide-react";
-import { Spinner } from "@heroui/spinner";
 import { Avatar } from "@heroui/avatar";
 import {
   Modal,
@@ -294,9 +294,7 @@ function CustomerPicker({
               }}
             />
             {loading ? (
-              <div className="flex items-center justify-center py-10">
-                <Spinner color="warning" />
-              </div>
+              <SkeletonList rows={6} />
             ) : customers.length === 0 ? (
               <div className="flex items-center justify-center py-10 text-black/40 text-sm">
                 ไม่พบลูกค้า

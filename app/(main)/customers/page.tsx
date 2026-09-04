@@ -1,5 +1,6 @@
 "use client";
 
+import { SkeletonList } from "@/components/skeleton";
 import { useEffect, useState, useCallback } from "react";
 import { Avatar } from "@heroui/avatar";
 import { Pencil, Trash2, ShieldOff, Plus, Eye } from "lucide-react";
@@ -7,7 +8,6 @@ import { CmpInput } from "@/components/cmpInput";
 import { api } from "@/lib/api";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/auth-context";
-import { Spinner } from "@heroui/spinner";
 import { Button } from "@heroui/button";
 import { Modal, ModalContent, ModalHeader, ModalBody, ModalFooter, useDisclosure } from "@heroui/modal";
 import { Tabs, Tab } from "@heroui/tabs";
@@ -146,7 +146,7 @@ export default function CustomersPage() {
 
       <div className="md:flex-1 md:min-h-0 md:overflow-y-auto md:scrollbar-hide">
         {loading ? (
-          <div className="flex items-center justify-center py-10"><Spinner size="lg" color="warning" /></div>
+          <SkeletonList rows={6} />
         ) : customers.length === 0 ? (
           <div className="flex items-center justify-center py-10 text-black/40 text-sm">ยังไม่มีลูกค้า</div>
         ) : (

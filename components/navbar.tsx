@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/auth-context";
+import { Breadcrumbs } from "@/components/root-layout/breadcrumbs";
 import { Avatar } from "@heroui/avatar";
 import {
   Dropdown,
@@ -121,31 +122,46 @@ export const Navbar = ({ onMenuClick }: NavbarProps) => {
   };
 
   return (
-    <div className=" fixed z-50 flex w-screen h-20 py-2 pl-3 pr-3 lg:pr-7">
+    // From lg up the bar starts where the sidebar ends (left-80 = the sidebar's
+    // w-80), instead of spanning the screen underneath it. That hands the whole
+    // left column back to the sidebar, which then runs from the top of the
+    // viewport. Below lg the sidebar is a drawer, so the bar spans as before.
+    <div className="fixed inset-x-0 lg:left-80 z-50 flex h-[var(--navbar-h)] py-2 pl-3 pr-3 lg:pl-0 lg:pr-7">
       <div className=" flex w-full h-full justify-between bg-black/5 border-1 border-black/10 backdrop-blur shadow-sm rounded-2xl items-center py-1 px-5">
-        <div className=" flex flex-row h-full items-center gap-x-2">
+        <div className="flex flex-row h-full min-w-0 items-center gap-x-2">
           <button
             onClick={onMenuClick}
             className="lg:hidden mr-1 p-2 rounded-xl hover:bg-black/10 transition-colors text-[#c09c42]"
           >
             <Menu size={20} />
           </button>
-          <img
-            src="/images/jk-logo.png"
-            alt="Logo"
-            className=" flex h-full object-contain"
-          />
-          <div className=" flex flex-col max-sm:hidden">
-            <span className=" font-bold text-xl bg-[#c09c42] bg-clip-text text-transparent">
-              JK Gold & Diamond
-            </span>
-            <span className=" font-bold text-sm bg-[#c09c42] bg-clip-text text-transparent -mt-2">
-              กรุงเทพหลอมทอง
-            </span>
+          {/* From lg up the brand lives at the head of the sidebar, which now runs
+              the full height of the screen — repeating it here would be the same
+              mark twice on one row. Below lg the sidebar is a drawer that is shut
+              most of the time, so the bar keeps carrying it. */}
+          <div className="flex flex-row h-full items-center gap-x-2 lg:hidden">
+            <img
+              src="/images/jk-logo.png"
+              alt="Logo"
+              className="flex h-full object-contain"
+            />
+            <div className="flex flex-col max-sm:hidden">
+              <span className="font-bold text-xl bg-[#c09c42] bg-clip-text text-transparent">
+                JK Gold &amp; Diamond
+              </span>
+              <span className="font-bold text-sm bg-[#c09c42] bg-clip-text text-transparent -mt-2">
+                กรุงเทพหลอมทอง
+              </span>
+            </div>
           </div>
+
+          {/* The left half of the bar was freed when the logo moved to the head of
+              the sidebar; the trail says where you are without repeating what the
+              sidebar already highlights. */}
+          <Breadcrumbs />
         </div>
 
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-4 shrink-0">
           {/* Notification Bell */}
           <Popover
             isOpen={notifOpen}

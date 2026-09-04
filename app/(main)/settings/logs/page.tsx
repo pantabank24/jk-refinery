@@ -1,8 +1,8 @@
 "use client";
 
+import { SkeletonList } from "@/components/skeleton";
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
-import { Spinner } from "@heroui/spinner";
 import { Chip } from "@heroui/chip";
 import { Button } from "@heroui/button";
 import { Monitor, LogIn, ChevronLeft, ChevronRight, ShieldOff } from "lucide-react";
@@ -185,9 +185,7 @@ export default function LogsPage() {
           </div>
 
           {loadingLogin ? (
-            <div className="flex items-center justify-center flex-1">
-              <Spinner size="lg" color="warning" />
-            </div>
+            <SkeletonList rows={6} />
           ) : loginLogs.length === 0 ? (
             <div className="flex items-center justify-center flex-1 text-black/40">
               ยังไม่มี Login logs
@@ -268,9 +266,7 @@ export default function LogsPage() {
           </div>
 
           {loadingActivity ? (
-            <div className="flex items-center justify-center flex-1">
-              <Spinner size="lg" color="warning" />
-            </div>
+            <SkeletonList rows={6} />
           ) : activityLogs.length === 0 ? (
             <div className="flex items-center justify-center flex-1 text-black/40">
               ยังไม่มี Activity logs

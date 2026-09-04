@@ -1,12 +1,12 @@
 "use client";
 
+import { SkeletonList } from "@/components/skeleton";
 import { useEffect, useState } from "react";
 import { Button } from "@heroui/button";
 import { ArrowLeft, Save, ShieldOff } from "lucide-react";
 import { useRouter, useParams } from "next/navigation";
 import { api } from "@/lib/api";
 import { Checkbox } from "@heroui/checkbox";
-import { Spinner } from "@heroui/spinner";
 import { useAuth } from "@/contexts/auth-context";
 
 interface PermissionData {
@@ -118,7 +118,7 @@ export default function RoleDetailPage() {
   };
 
   if (loading) {
-    return <div className="flex items-center justify-center h-full"><Spinner size="lg" color="warning" /></div>;
+    return <SkeletonList rows={6} />;
   }
 
   return (

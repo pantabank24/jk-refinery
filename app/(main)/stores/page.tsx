@@ -1,5 +1,6 @@
 "use client";
 
+import { SkeletonList } from "@/components/skeleton";
 import { useEffect, useState } from "react";
 import { Button } from "@heroui/button";
 import { Plus, Store as StoreIcon, MapPin, Phone } from "lucide-react";
@@ -7,7 +8,6 @@ import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
 import { Chip } from "@heroui/chip";
-import { Spinner } from "@heroui/spinner";
 
 const API_BASE = (process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080/api/v1").replace(/\/api\/v1$/, "");
 
@@ -64,9 +64,7 @@ export default function StoresPage() {
       </div>
 
       {loading ? (
-        <div className="flex items-center justify-center h-full">
-          <Spinner size="lg" color="warning" />
-        </div>
+        <SkeletonList rows={6} />
       ) : stores.length === 0 ? (
         <div className="flex flex-col items-center justify-center h-full gap-y-4">
           <StoreIcon size={64} className="text-[#c09c42]/30" />

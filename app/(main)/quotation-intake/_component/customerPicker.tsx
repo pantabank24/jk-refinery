@@ -1,9 +1,9 @@
 "use client";
 
+import { SkeletonLines } from "@/components/skeleton";
 import { useCallback, useEffect, useState } from "react";
 import { Modal, ModalContent, ModalHeader, ModalBody } from "@heroui/modal";
 import { Input } from "@heroui/input";
-import { Spinner } from "@heroui/spinner";
 import { Search, UserCheck, X } from "lucide-react";
 import { api } from "@/lib/api";
 
@@ -101,9 +101,7 @@ export function CustomerPicker({ value, onChange }: Props) {
               onValueChange={setSearch}
             />
             {loading ? (
-              <div className="flex justify-center py-6">
-                <Spinner size="sm" color="warning" />
-              </div>
+              <SkeletonLines count={3} className="py-2" />
             ) : results.length === 0 ? (
               <div className="py-6 text-center text-xs text-black/40">ไม่พบลูกค้า</div>
             ) : (

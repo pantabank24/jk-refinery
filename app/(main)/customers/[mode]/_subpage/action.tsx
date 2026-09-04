@@ -1,5 +1,6 @@
 "use client";
 
+import { SkeletonList } from "@/components/skeleton";
 import { useEffect, useRef, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import Image from "next/image";
@@ -7,7 +8,6 @@ import { Input, Textarea } from "@heroui/input";
 import { Button } from "@heroui/button";
 import { Switch } from "@heroui/switch";
 import { Select, SelectItem } from "@heroui/select";
-import { Spinner } from "@heroui/spinner";
 import { ArrowLeft, Camera, Eye, EyeOff, Save, Upload, X } from "lucide-react";
 import { api } from "@/lib/api";
 import type { BankDto } from "@/dtos/bank-dto";
@@ -294,7 +294,7 @@ export const CustomerAction = () => {
       </div>
 
       {initLoading ? (
-        <div className="flex items-center justify-center flex-1"><Spinner size="lg" color="warning" /></div>
+        <SkeletonList rows={6} />
       ) : (
         <div className="w-full max-w-xl border-1 border-black/10 bg-black/5 backdrop-blur-xl rounded-3xl p-6 md:overflow-y-auto">
           <form onSubmit={handleSubmit} className="flex flex-col gap-y-5">

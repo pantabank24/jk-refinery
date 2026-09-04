@@ -1,11 +1,11 @@
 "use client";
 
+import { SkeletonList } from "@/components/skeleton";
 import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import moment from "moment";
 import { api } from "@/lib/api";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/auth-context";
-import { Spinner } from "@heroui/spinner";
 import { Modal, ModalContent, ModalHeader, ModalBody, ModalFooter, useDisclosure } from "@heroui/modal";
 import { Button } from "@heroui/button";
 import { Checkbox } from "@heroui/checkbox";
@@ -279,7 +279,7 @@ export default function IssuedBillsPage() {
 
       <div className="md:flex-1 md:overflow-y-auto md:scrollbar-hide">
         {loading ? (
-          <div className="flex items-center justify-center py-10"><Spinner size="lg" color="warning" /></div>
+          <SkeletonList rows={6} />
         ) : groups.length === 0 ? (
           <div className="flex items-center justify-center py-10 text-black/40 text-sm">
             {!showAll && range

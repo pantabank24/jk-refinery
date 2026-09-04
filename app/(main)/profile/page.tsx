@@ -1,12 +1,12 @@
 "use client";
 
+import { SkeletonList } from "@/components/skeleton";
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { Input, Textarea } from "@heroui/input";
 import { Select, SelectItem } from "@heroui/select";
 import { Button } from "@heroui/button";
-import { Spinner } from "@heroui/spinner";
 import { ArrowLeft, Camera, Eye, EyeOff, KeyRound, Save } from "lucide-react";
 import { api } from "@/lib/api";
 import type { BankDto } from "@/dtos/bank-dto";
@@ -192,9 +192,7 @@ export default function ProfilePage() {
       </div>
 
       {authLoading && !user ? (
-        <div className="flex items-center justify-center flex-1">
-          <Spinner size="lg" color="warning" />
-        </div>
+        <SkeletonList rows={6} />
       ) : (
         <div className="flex flex-col gap-6 md:overflow-y-auto pb-6">
           {/* ข้อมูลโปรไฟล์ */}

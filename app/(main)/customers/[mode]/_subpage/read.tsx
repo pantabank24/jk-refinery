@@ -1,11 +1,11 @@
 "use client";
 
+import { SkeletonList } from "@/components/skeleton";
 import { useEffect, useState, useCallback, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@heroui/button";
 import { Checkbox } from "@heroui/checkbox";
 import { Input } from "@heroui/input";
-import { Spinner } from "@heroui/spinner";
 import { Tabs, Tab } from "@heroui/tabs";
 import { Modal, ModalContent, ModalHeader, ModalBody, ModalFooter, useDisclosure } from "@heroui/modal";
 import { Select, SelectItem } from "@heroui/select";
@@ -491,7 +491,7 @@ export const CustomerDetail = ({ selfMode = false }: { selfMode?: boolean } = {}
     );
   }
   if (loading) {
-    return <div className="flex items-center justify-center h-full"><Spinner size="lg" color="warning" /></div>;
+    return <SkeletonList rows={6} />;
   }
   // แท็บ บิลที่ออก ไม่ได้ส่ง status ไปให้ API เลยได้ id DESC กลับมา ซึ่งเป็นลำดับที่บิลถูก
   // เปิดครั้งแรก ไม่ใช่ลำดับที่มีอะไรเกิดขึ้นล่าสุด เรียงใหม่ฝั่ง client ด้วยกฎเดียวกับ API
@@ -953,7 +953,7 @@ export const CustomerDetail = ({ selfMode = false }: { selfMode?: boolean } = {}
           </ModalHeader>
           <ModalBody className="px-2">
             {!detailB ? (
-              <div className="flex items-center justify-center py-10"><Spinner size="lg" color="warning" /></div>
+              <SkeletonList rows={6} />
             ) : (() => {
               const src = detailB.issued_quotation ?? detailB;
               const base = (process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080/api/v1").replace(/\/api\/v1$/, "");

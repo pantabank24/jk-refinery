@@ -1,10 +1,10 @@
 "use client";
 
+import { SkeletonLines, SkeletonList } from "@/components/skeleton";
 import { useEffect, useState, useCallback } from "react";
 import { api } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
 import { useRouter } from "next/navigation";
-import { Spinner } from "@heroui/spinner";
 import { Button } from "@heroui/button";
 import { Input } from "@heroui/input";
 import { Switch } from "@heroui/switch";
@@ -285,7 +285,7 @@ export default function LineNotificationPage() {
       </div>
 
       {loading ? (
-        <div className="flex items-center justify-center py-10"><Spinner size="lg" color="warning" /></div>
+        <SkeletonList rows={6} />
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start max-w-5xl">
 
@@ -402,7 +402,7 @@ export default function LineNotificationPage() {
             {/* Fills the card so a stretched row leaves no ragged gap */}
             <div className="flex flex-1 flex-col justify-center gap-y-3">
               {quotaLoading && !quota ? (
-                <div className="flex items-center justify-center py-4"><Spinner size="sm" color="warning" /></div>
+                <SkeletonLines count={3} className="py-2" />
               ) : quotaError ? (
                 <span className="text-xs text-red-500">{quotaError}</span>
               ) : !quota?.configured ? (

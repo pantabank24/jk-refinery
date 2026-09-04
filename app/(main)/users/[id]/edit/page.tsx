@@ -1,5 +1,6 @@
 "use client";
 
+import { SkeletonList } from "@/components/skeleton";
 import { useEffect, useRef, useState } from "react";
 import { Input } from "@heroui/input";
 import { Button } from "@heroui/button";
@@ -9,7 +10,6 @@ import { ArrowLeft, Camera, Save, Trash } from "lucide-react";
 import { useRouter, useParams } from "next/navigation";
 import { api } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
-import { Spinner } from "@heroui/spinner";
 import Image from "next/image";
 
 interface RoleOption { id: number; name: string; display_name: string }
@@ -132,7 +132,7 @@ export default function EditUserPage() {
     }
   };
 
-  if (loading) return <div className="flex items-center justify-center h-full"><Spinner size="lg" color="warning" /></div>;
+  if (loading) return <SkeletonList rows={6} />;
 
   const inputStyle = "bg-gradient-to-br from-black/10 to-transparent border-1 border-black/10 rounded-2xl";
 

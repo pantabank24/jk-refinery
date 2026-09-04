@@ -1,11 +1,11 @@
 "use client";
 
+import { SkeletonList } from "@/components/skeleton";
 import { useEffect, useState, useCallback } from "react";
 import { api } from "@/lib/api";
 import { useStore } from "@/contexts/store-context";
 import { useAuth } from "@/contexts/auth-context";
 import { CmpInput } from "@/components/cmpInput";
-import { Spinner } from "@heroui/spinner";
 import { Button } from "@heroui/button";
 import { Tabs, Tab } from "@heroui/tabs";
 import { Select, SelectItem } from "@heroui/select";
@@ -223,9 +223,7 @@ export default function CreditManagementPage() {
           {/* Transaction list */}
           <div className="md:flex-1 md:min-h-0 md:overflow-y-auto md:scrollbar-hide">
             {loading ? (
-              <div className="flex items-center justify-center py-10">
-                <Spinner size="lg" color="warning" />
-              </div>
+              <SkeletonList rows={6} />
             ) : transactions.length === 0 ? (
               <div className="flex items-center justify-center py-10 text-black/40 text-sm">
                 ยังไม่มีรายการเครดิต

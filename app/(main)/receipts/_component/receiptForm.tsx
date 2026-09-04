@@ -1,11 +1,11 @@
 "use client";
 
+import { SkeletonList } from "@/components/skeleton";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@heroui/button";
 import { Input, Textarea } from "@heroui/input";
 import { Checkbox } from "@heroui/checkbox";
-import { Spinner } from "@heroui/spinner";
 import { Plus, Save, Trash2, ArrowLeft } from "lucide-react";
 import { api } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
@@ -163,9 +163,7 @@ export function ReceiptForm({ receiptId }: Props) {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-full">
-        <Spinner size="lg" color="warning" />
-      </div>
+      <SkeletonList rows={6} />
     );
   }
 

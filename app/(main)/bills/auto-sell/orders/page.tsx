@@ -1,12 +1,12 @@
 "use client";
 
+import { SkeletonList } from "@/components/skeleton";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { api } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
 import { useRealtimeGold } from "@/hooks/use-realtime-gold";
 import { useAutoSellStatus } from "@/hooks/use-auto-sell-status";
-import { Spinner } from "@heroui/spinner";
 import { Button } from "@heroui/button";
 import {
   Modal,
@@ -109,9 +109,7 @@ export default function AutoSellOrdersPage() {
 
   if (orders === null) {
     return (
-      <div className="flex items-center justify-center h-full">
-        <Spinner size="lg" color="warning" />
-      </div>
+      <SkeletonList rows={6} />
     );
   }
 

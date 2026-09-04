@@ -1,7 +1,7 @@
+import { SkeletonList } from "@/components/skeleton";
 import { Suspense } from "react";
 import { Action } from "./_subpage/action";
 import { MemberDetail } from "./_subpage/read";
-import { Spinner } from "@heroui/spinner";
 
 type Props = {
   params: Promise<{
@@ -10,9 +10,7 @@ type Props = {
 };
 
 const Loading = () => (
-  <div className="flex items-center justify-center h-full">
-    <Spinner size="lg" color="warning" />
-  </div>
+  <SkeletonList rows={6} />
 );
 
 export default async function Member({ params }: Props) {
