@@ -48,6 +48,7 @@ import { SignaturePad } from "@/components/signature-pad";
 import { WebcamCaptureModal } from "@/components/webcam-capture-modal";
 import { ConfirmDeleteModal } from "@/components/confirmDeleteModal";
 import { ImageViewer } from "@/components/image-viewer";
+import { AutoSellChip } from "@/components/autoSellChip";
 import {
   intakeImageEntries,
   type QuotationIntake,
@@ -59,7 +60,10 @@ const API_BASE =
 
 // A customer's submitted line shown in the reference card, tagged with the source
 // bill + item id so the master can delete it from the customer's actual bill.
-type ReferenceItem = QuotationProps & { billId: number; itemId: number };
+// autoSell marks a line the auto-sell engine sold rather than one the customer
+// entered by hand. Both kinds accumulate into the same "รอออกบิล" bill, so the
+// master ticking items for this round can only tell them apart per line.
+type ReferenceItem = QuotationProps & { billId: number; itemId: number; autoSell?: boolean };
 
 // Reusable typed image-upload block — a single compact row of thumbnails
 // with an inline "+" tile to add more, instead of a separate dropzone box.
@@ -421,6 +425,7 @@ export default function QuotationPage() {
     weight: number;
     per_gram: number;
     total: number;
+    sell_order_id?: number | null;
   };
   type BillLite = {
     id: number;
@@ -479,6 +484,7 @@ export default function QuotationPage() {
           total: i.total,
           billId: b.id,
           itemId: i.id,
+          autoSell: !!i.sell_order_id,
         });
       }
     }
@@ -575,6 +581,7 @@ export default function QuotationPage() {
                 total: i.total,
                 billId: b.id,
                 itemId: i.id,
+                autoSell: !!i.sell_order_id,
               });
             }
           }
@@ -1236,13 +1243,16 @@ export default function QuotationPage() {
                     aria-label={`เลือก ${it.typeName}`}
                   />
                   <div className="flex flex-col min-w-0">
-                    <span className="text-black/70 font-bold truncate">
-                      {i + 1}. {it.typeName}
-                      {!ticked && (
-                        <span className="ml-1 text-[9px] font-normal text-black/40">
-                          (รอรอบหน้า)
-                        </span>
-                      )}
+                    <span className="flex items-center gap-x-1 min-w-0">
+                      <span className="text-black/70 font-bold truncate">
+                        {i + 1}. {it.typeName}
+                        {!ticked && (
+                          <span className="ml-1 text-[9px] font-normal text-black/40">
+                            (รอรอบหน้า)
+                          </span>
+                        )}
+                      </span>
+                      {it.autoSell && <AutoSellChip compact />}
                     </span>
                     <span className="text-black/50 text-[10px] whitespace-nowrap">
                       ราคา {it.price.toLocaleString()} · น้ำหนัก {it.weight} ·

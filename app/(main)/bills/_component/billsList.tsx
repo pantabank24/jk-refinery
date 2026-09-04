@@ -3,12 +3,13 @@
 import { SkeletonList } from "@/components/skeleton";
 import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import { Avatar } from "@heroui/avatar";
-import { CheckCircle, XCircle, FileUp, AlertCircle, Trash2, Store, Pencil, ChevronLeft, ChevronRight, ChevronDown, Zap } from "lucide-react";
+import { CheckCircle, XCircle, FileUp, AlertCircle, Trash2, Store, Pencil, ChevronLeft, ChevronRight, ChevronDown } from "lucide-react";
 import { ConfirmDeleteModal } from "@/components/confirmDeleteModal";
 import moment from "moment";
 import { CmpInput } from "@/components/cmpInput";
 import { api } from "@/lib/api";
 import { VerifyBadge } from "@/components/verifyBadge";
+import { AutoSellChip } from "@/components/autoSellChip";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/auth-context";
 import { Spinner } from "@heroui/spinner";
@@ -48,6 +49,11 @@ interface BillItem {
   // When this line item's price was locked (each item is priced/locked
   // individually, so one bill can carry several different locked prices).
   created_at?: string;
+  // Set when the auto-sell engine sold this line, naming the order it filled. A
+  // fill lands in the customer's open bill like a manual sell, so this is what
+  // says which lines nobody pressed a button for — the bill's own auto_sell flag
+  // only says that at least one of them exists.
+  sell_order_id?: number | null;
 }
 
 interface BillData {
@@ -106,9 +112,13 @@ interface BillGroup {
   goldAmount: number;
   silverAmount: number;
   count: number;
-  // True when ANY bill in the group came from auto-sell: after issuance several
+  // True when ANY bill in the group holds an auto-sell line: after issuance several
   // bills share a row, and the representative may not be the automatic one.
   autoSell: boolean;
+  // Whether the rows this group expands to can show the mark themselves. Submitted
+  // items carry their order; the consolidated lines of an issued quotation do not,
+  // and the bill row shows the chip on their behalf.
+  itemsMarked: boolean;
   // Newest item date across the group. A "รอออกบิล" bill accumulates every later
   // sell, so its created_at is only the FIRST one — this is what actually moved.
   lastAt: string;
@@ -190,6 +200,10 @@ const groupBills = (list: BillData[]): BillGroup[] => {
       silverAmount: split.silverAmount,
       count: group.length,
       autoSell: group.some((x) => !!x.auto_sell),
+      // Once issued, `items` above are the quotation's consolidated one-line-per-metal
+      // rows, which carry no order — so the bill row has to keep showing the chip
+      // itself or the fill would vanish from the list entirely.
+      itemsMarked: items.some((it) => !!it.sell_order_id),
       // Always from the submitted items — those are the lines that accumulate.
       lastAt: latestActivity(group, submitted),
     };
@@ -205,20 +219,6 @@ const STATUS_COLOR: Record<number, string> = {
   13: "bg-red-500/20 text-red-700 border-red-500/30",
   14: "bg-purple-500/20 text-purple-700 border-purple-500/30",
 };
-
-// Marks a bill holding at least one line the auto-sell engine sold on its own. A
-// fill accumulates into the customer's open bill like any manual sell, so the rest
-// of the bill may well be lines they entered by hand. Worth calling out on every
-// surface: nobody pressed a button for those, so staff reading the list need to
-// know why they appeared.
-const AutoSellChip = () => (
-  <span
-    title="บิลนี้มีรายการที่ระบบขายให้อัตโนมัติเมื่อราคาถึงเป้าที่ลูกค้าตั้งไว้"
-    className="shrink-0 inline-flex items-center gap-x-0.5 text-[10px] font-bold px-1.5 py-0.5 rounded-full border-1 bg-sky-500/15 text-sky-700 border-sky-500/30"
-  >
-    <Zap size={9} /> ขายอัตโนมัติ
-  </span>
-);
 
 // Rows per page. The whole-set totals come from /bills/summary, so this only
 // governs how much of the list is on screen.
@@ -364,6 +364,7 @@ export function BillsList({ metal }: { metal: BillMetal }) {
           silverAmount: split.silverAmount,
           count: 1,
           autoSell: !!b.auto_sell,
+          itemsMarked: items.some((it) => !!it.sell_order_id),
           lastAt: latestActivity([b], b.items),
         };
       });
@@ -834,6 +835,7 @@ export function BillsList({ metal }: { metal: BillMetal }) {
                         <div className="flex items-center gap-x-1.5 pl-5 min-w-0">
                           <span className="text-black/25 shrink-0">↳</span>
                           <span className="text-xs font-bold text-black/60 truncate">{row.it.type_name}</span>
+                          {row.it.sell_order_id && <AutoSellChip compact />}
                         </div>
                       </TableCell>
                       <TableCell>
@@ -886,7 +888,7 @@ export function BillsList({ metal }: { metal: BillMetal }) {
                             {row.g.rep.code}
                             {row.g.count > 1 && <span className="ml-1 text-[10px] font-bold text-blue-600">รวม {row.g.count} บิล</span>}
                           </span>
-                          {row.g.autoSell && <AutoSellChip />}
+                          {row.g.autoSell && !row.g.itemsMarked && <AutoSellChip />}
                         </div>
                       </TableCell>
                       <TableCell>
@@ -935,7 +937,7 @@ export function BillsList({ metal }: { metal: BillMetal }) {
                           <span className="ml-1 text-[10px] font-bold text-blue-600">รวม {g.count} บิล</span>
                         )}
                       </span>
-                      {g.autoSell && <AutoSellChip />}
+                      {g.autoSell && !g.itemsMarked && <AutoSellChip />}
                     </div>
                     <span className={`shrink-0 text-xs font-bold px-2 py-0.5 rounded-full border-1 ${STATUS_COLOR[g.status]}`}>
                       {STATUS_LABEL[g.status]}
@@ -982,7 +984,10 @@ export function BillsList({ metal }: { metal: BillMetal }) {
                           {g.items.map((it, i) => (
                             <div key={it.id || i} className="flex flex-row items-start justify-between gap-x-2">
                               <div className="flex flex-col min-w-0">
-                                <span className="text-xs font-bold text-black/70 truncate">{it.type_name}</span>
+                                <span className="flex items-center gap-x-1 min-w-0">
+                                  <span className="text-xs font-bold text-black/70 truncate">{it.type_name}</span>
+                                  {it.sell_order_id && <AutoSellChip compact />}
+                                </span>
                                 <span className="text-[10px] text-black/40">
                                   {(it.weight || 0).toLocaleString(undefined, { maximumFractionDigits: 2 })} {itemWeightUnit(it.metal)}
                                   {` · ราคา ${(it.price || 0).toLocaleString()}`}
@@ -1031,7 +1036,7 @@ export function BillsList({ metal }: { metal: BillMetal }) {
             <div className="flex items-center justify-between gap-x-2">
               <span className="font-bold bg-gradient-to-l from-black/90 to-yellow-600 bg-clip-text text-transparent flex items-center gap-x-1.5">
                 {detailB?.code}
-                {detailB?.auto_sell && <AutoSellChip />}
+                {detailB?.auto_sell && !(detailB.items ?? []).some((it) => it.sell_order_id) && <AutoSellChip />}
               </span>
               <span className={`shrink-0 text-xs font-bold px-2 py-0.5 rounded-full border-1 ${STATUS_COLOR[detailB?.status ?? 10]}`}>
                 {STATUS_LABEL[detailB?.status ?? 10]}
@@ -1111,7 +1116,10 @@ export function BillsList({ metal }: { metal: BillMetal }) {
                 <div className="border-1 border-black/10 rounded-2xl overflow-hidden">
                   {(detailB.items ?? []).map((it, i) => (
                     <div key={it.id} className="flex flex-col px-3 py-2 border-b last:border-b-0 border-black/5 gap-y-0.5">
-                      <span className="text-sm font-bold text-black/70">{i + 1}. {it.type_name}</span>
+                      <span className="flex items-center gap-x-1.5">
+                        <span className="text-sm font-bold text-black/70">{i + 1}. {it.type_name}</span>
+                        {it.sell_order_id && <AutoSellChip />}
+                      </span>
                       <div className="flex items-center gap-x-3 text-xs text-black/50">
                         <span>น้ำหนัก {it.weight} {itemWeightUnit(it.metal)}</span>
                         <span>ราคา {it.price.toLocaleString()}</span>
@@ -1204,7 +1212,10 @@ export function BillsList({ metal }: { metal: BillMetal }) {
                     <div className="border-1 border-black/10 bg-white/60 rounded-xl overflow-hidden">
                       {(detailB.items ?? []).map((it, i) => (
                         <div key={it.id} className="flex flex-col px-3 py-2 border-b last:border-b-0 border-black/5 gap-y-0.5">
-                          <span className="text-sm font-bold text-black/70">{i + 1}. {it.type_name}</span>
+                          <span className="flex items-center gap-x-1.5">
+                            <span className="text-sm font-bold text-black/70">{i + 1}. {it.type_name}</span>
+                            {it.sell_order_id && <AutoSellChip />}
+                          </span>
                           <div className="flex items-center gap-x-3 text-xs text-black/50">
                             <span>น้ำหนัก {it.weight} {itemWeightUnit(it.metal)}</span>
                             <span>ราคา {it.price.toLocaleString()}</span>
