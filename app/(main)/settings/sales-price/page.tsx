@@ -7,7 +7,7 @@ import { useAuth } from "@/contexts/auth-context";
 import { Button } from "@heroui/button";
 import { Input } from "@heroui/input";
 import { Switch } from "@heroui/switch";
-import { Save, Radio, Building2, Plus, Trash2, CalendarDays, ChevronLeft, ChevronRight } from "lucide-react";
+import { Save, Radio, Building2, Plus, Trash2, CalendarDays, ChevronLeft, ChevronRight, ShieldCheck } from "lucide-react";
 import { ConfirmDeleteModal } from "@/components/confirmDeleteModal";
 
 interface SystemConfig { key: string; value: string; description: string; }
@@ -26,6 +26,14 @@ interface Schedule {
   realtime_only: boolean; // realtime price 24h, association window ignored
   note: string;
 }
+
+// Price bands for customer sells, with the API's defaults. The page saves every
+// key at once, so a key that was never stored needs its default filled in —
+// an empty value would be refused and take the whole save down with it.
+const SELL_TOLERANCE_DEFAULTS: Record<string, string> = {
+  sell_price_tolerance_realtime_thb: "30",
+  sell_price_tolerance_association_thb: "0",
+};
 
 const WEEKDAYS = ["อา.", "จ.", "อ.", "พ.", "พฤ.", "ศ.", "ส."];
 const MONTHS = ["มกราคม", "กุมภาพันธ์", "มีนาคม", "เมษายน", "พฤษภาคม", "มิถุนายน", "กรกฎาคม", "สิงหาคม", "กันยายน", "ตุลาคม", "พฤศจิกายน", "ธันวาคม"];
@@ -100,7 +108,7 @@ export default function SalesPricePage() {
         api.get<SystemConfig[]>("/configs"),
         api.get<Schedule[]>("/sales-schedules"),
       ]);
-      const map: Record<string, string> = {};
+      const map: Record<string, string> = { ...SELL_TOLERANCE_DEFAULTS };
       ((cRes.data as unknown as SystemConfig[]) || []).forEach((c) => { map[c.key] = c.value; });
       setCfg(map);
       setRules((sRes.data as unknown as Schedule[]) || []);
@@ -121,15 +129,15 @@ export default function SalesPricePage() {
     try {
       await Promise.all(
         ["sales_enabled", "sales_open_time", "sales_close_time", "sales_realtime_after_hours", "sales_realtime_until", "sales_realtime_only",
-          "realtime_premium_thb", "realtime_spread_thb"]
+          "realtime_premium_thb", "realtime_spread_thb", ...Object.keys(SELL_TOLERANCE_DEFAULTS)]
           .map((k) => api.put("/configs", { key: k, value: cfg[k] ?? "" }))
       );
       setSaved(true); setTimeout(() => setSaved(false), 2000);
     } catch (e) {
       // Surface the API's reason (out-of-range price, etc.) instead of leaving
-      // the button looking like nothing happened.
-      const msg = (e as { response?: { data?: { message?: string } } })?.response?.data?.message;
-      setSaveError(msg || "บันทึกไม่สำเร็จ กรุณาลองใหม่");
+      // the button looking like nothing happened. lib/api throws the API's
+      // message as a plain Error.
+      setSaveError(e instanceof Error && e.message ? e.message : "บันทึกไม่สำเร็จ กรุณาลองใหม่");
     } finally { setSaving(false); }
   };
 
@@ -316,6 +324,43 @@ export default function SalesPricePage() {
                 หน้าจอที่เปิดค้างไว้จะเปลี่ยนเอง ไม่ต้องรีเฟรชหน้า
                 <br />
                 ใบเสนอราคาและบิลที่ออกไปแล้วจะไม่เปลี่ยนตาม เพราะระบบล็อกราคาไว้ตั้งแต่ตอนออกเอกสาร
+              </div>
+            </div>
+
+            {/* Price band for customer sells. The server compares the price a
+                customer confirmed with its own price at that moment. */}
+            <div className="flex flex-col border-1 border-black/10 bg-black/5 backdrop-blur-xl rounded-3xl p-5 gap-y-4">
+              <div className="flex flex-col">
+                <span className="font-bold text-md flex items-center gap-x-2">
+                  <ShieldCheck size={16} className="text-[#c09c42]" /> ราคาคลาดเคลื่อนที่ยอมรับ (ลูกค้ากดขายทอง)
+                </span>
+                <span className="text-xs text-black/50">
+                  ตอนลูกค้ากดขาย ระบบจะเทียบราคาที่ลูกค้าเห็นกับราคาของระบบ ณ วินาทีนั้น
+                  ถ้าต่างกันไม่เกินค่านี้ ลูกค้าได้ราคาที่เห็น ถ้าเกิน ระบบจะไม่รับรายการและให้ลูกค้ากดใหม่
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <Input
+                  type="number" min={0} max={1000} label="ช่วงราคาเรียลไทม์ (บาท)"
+                  value={cfg["sell_price_tolerance_realtime_thb"] ?? ""}
+                  isDisabled={!canEdit} onValueChange={(v) => setC("sell_price_tolerance_realtime_thb", v)}
+                  description="ราคาขยับได้ระหว่างที่ลูกค้ากดยืนยัน แนะนำ 30"
+                  classNames={{ inputWrapper: "bg-gradient-to-br from-black/10 to-transparent border-1 border-black/10 rounded-2xl" }}
+                />
+                <Input
+                  type="number" min={0} max={1000} label="ช่วงราคาสมาคม (บาท)"
+                  value={cfg["sell_price_tolerance_association_thb"] ?? ""}
+                  isDisabled={!canEdit} onValueChange={(v) => setC("sell_price_tolerance_association_thb", v)}
+                  description="ราคาสมาคมไม่ขยับระหว่างรอบ แนะนำ 0"
+                  classNames={{ inputWrapper: "bg-gradient-to-br from-black/10 to-transparent border-1 border-black/10 rounded-2xl" }}
+                />
+              </div>
+
+              <div className="text-xs text-black/60 bg-black/5 rounded-2xl px-4 py-3 leading-relaxed">
+                <span className="font-bold">0 = ต้องตรงกันพอดี</span> (ไม่ได้แปลว่าไม่จำกัด)
+                · ยิ่งตั้งสูง ลูกค้าโดนปฏิเสธน้อยลง แต่ถ้ามีคนแก้ราคาเอง ร้านจะเสียได้สูงสุดเท่าค่านี้ต่อน้ำหนัก 1 บาททอง
+                · ใช้กับลูกค้ากดขายเองเท่านั้น พนักงานที่ขายแทนลูกค้ายังใส่ราคาเองได้
               </div>
             </div>
 

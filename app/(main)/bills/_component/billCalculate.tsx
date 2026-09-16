@@ -52,7 +52,16 @@ interface Props {
   // fits whatever it is placed in (the sell dialog on the issue screen) instead
   // of overflowing it. Full-page callers leave it off.
   fluid?: boolean;
+  // Bump to reload the association and silver prices now — the parent does so
+  // when the server refuses a sell because the price moved.
+  priceRefreshKey?: number;
 }
+
+// The association and silver prices do not stream like the realtime feed. The
+// server checks every customer sell against its own price, so a page left open
+// across a price round must pick the new one up rather than keep offering a
+// price that will be refused.
+const PRICE_REFRESH_MS = 60_000;
 
 // Metal tabs offered on the customer sell screen. Gold keeps its baht-weight
 // stepper flow; silver is priced per gram with a customer-entered purity %.
@@ -109,6 +118,7 @@ export const BillCalculate = ({
   allowGold = true,
   allowSilver = true,
   fluid = false,
+  priceRefreshKey = 0,
 }: Props) => {
   // Tabs limited to the metals allowed right now (gold first).
   const metals = ALL_METALS.filter((m) =>
@@ -190,36 +200,44 @@ export const BillCalculate = ({
         setSilverType(types.find(isSilverType) ?? null);
       })
       .catch(() => { });
-
-    api
-      .get<GoldPrice>("/gold-prices/latest")
-      .then((res) => setGoldPrice((res.data as unknown as GoldPrice) || null))
-      .catch(() => { });
-
-    api
-      .get<SilverPrice>("/metal-prices/latest?symbol=XAG")
-      .then((res) =>
-        setSilverPrice((res.data as unknown as SilverPrice) || null),
-      )
-      .catch(() => { });
-
-    api
-      .get("/configs/silver-sell-status")
-      .then((res) => {
-        const d =
-          (res.data as unknown as {
-            price_mode?: string;
-            manual_price?: number;
-            tiers?: SilverTier[];
-          }) || {};
-        setSilverCfg({
-          mode: d.price_mode === "manual" ? "manual" : "feed",
-          manualPrice: d.manual_price ?? 0,
-          tiers: d.tiers ?? [],
-        });
-      })
-      .catch(() => { });
   }, []);
+
+  useEffect(() => {
+    const loadPrices = () => {
+      api
+        .get<GoldPrice>("/gold-prices/latest")
+        .then((res) => setGoldPrice((res.data as unknown as GoldPrice) || null))
+        .catch(() => { });
+
+      api
+        .get<SilverPrice>("/metal-prices/latest?symbol=XAG")
+        .then((res) =>
+          setSilverPrice((res.data as unknown as SilverPrice) || null),
+        )
+        .catch(() => { });
+
+      api
+        .get("/configs/silver-sell-status")
+        .then((res) => {
+          const d =
+            (res.data as unknown as {
+              price_mode?: string;
+              manual_price?: number;
+              tiers?: SilverTier[];
+            }) || {};
+          setSilverCfg({
+            mode: d.price_mode === "manual" ? "manual" : "feed",
+            manualPrice: d.manual_price ?? 0,
+            tiers: d.tiers ?? [],
+          });
+        })
+        .catch(() => { });
+    };
+
+    loadPrices();
+    const id = setInterval(loadPrices, PRICE_REFRESH_MS);
+    return () => clearInterval(id);
+  }, [priceRefreshKey]);
 
   // Auto-fill price from the active type's price source whenever the feed changes
   // (association load, or each real-time tick via effGold).
@@ -334,8 +352,16 @@ export const BillCalculate = ({
     setWeight((w) => Math.min(WEIGHT_MAX, Math.max(0, w + delta)));
   };
 
+  // Only claim "เรียลไทม์" once a live price has actually arrived — until then
+  // effGold is still the association price.
+  const realtimeLive = realtimeActive && !!rt && rt.bar_buy != null;
+  // Hold the button until the live price lands: before that the calculator shows
+  // the association price, which the server would refuse as a realtime sell. A
+  // staff member who typed their own price is not waiting on the feed.
+  const waitingRealtime = realtimeActive && !realtimeLive && !priceTouched;
+
   const canSubmit =
-    !!activeType && weight > 0 && !silverBlocked && !silverBelowMin;
+    !!activeType && weight > 0 && !silverBlocked && !silverBelowMin && !waitingRealtime;
   const handleAdd = () => {
     if (!canSubmit) return;
     onAdd({
@@ -367,9 +393,6 @@ export const BillCalculate = ({
   const headerSell = isSilver ? silverPrice?.sell : effGold?.bar_sell;
   const headerChange =
     (isSilver ? silverPrice?.change_today : effGold?.change_today) ?? 0;
-  // Only claim "เรียลไทม์" once a live price has actually arrived — until then
-  // effGold is still the association price.
-  const realtimeLive = realtimeActive && !!rt && rt.bar_buy != null;
   const headerDate = realtimeLive
     ? `เรียลไทม์ ${salesStatus?.now ?? ""}`.trim()
     : isSilver
@@ -745,6 +768,12 @@ export const BillCalculate = ({
           }
           value={total.toLocaleString()}
         />
+
+        {waitingRealtime && (
+          <span className="text-[11px] font-bold text-amber-600 text-center">
+            กำลังรอราคาเรียลไทม์ · กดส่งขายได้เมื่อราคาขึ้น
+          </span>
+        )}
 
         <div className=" w-full flex flex-row justify-end">
           <div

@@ -58,6 +58,9 @@ export default function CreateBillPage() {
   const [countdownActive, setCountdownActive] = useState(false);
   const router = useRouter();
   const [saveError, setSaveError] = useState("");
+  // Bumped when a sell is refused, so the calculator reloads the price the
+  // server checked against before the customer presses ส่งขาย again.
+  const [priceRefreshKey, setPriceRefreshKey] = useState(0);
 
   useEffect(() => {
     if (!showConfirm || !countdownActive) return;
@@ -162,6 +165,7 @@ export default function CreateBillPage() {
       const msg =
         err instanceof Error ? err.message : "บันทึกไม่สำเร็จ กรุณาลองใหม่";
       setSaveError(msg);
+      setPriceRefreshKey((k) => k + 1);
     } finally {
       setSaving(false);
     }
@@ -177,6 +181,7 @@ export default function CreateBillPage() {
           onAdd={handleAdd}
           allowGold={goldOpen}
           allowSilver={silverAllowed}
+          priceRefreshKey={priceRefreshKey}
         />
       </div>
 

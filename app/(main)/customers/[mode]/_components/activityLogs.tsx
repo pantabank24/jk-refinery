@@ -14,6 +14,7 @@ import {
   Pencil,
   PackageCheck,
   Plus,
+  ShieldAlert,
   ShoppingCart,
   Target,
   Trash2,
@@ -52,6 +53,13 @@ interface LogLine {
   weight: number;
   per_gram: number;
   total: number;
+  // Set on customer sells: the server's own price at that moment, how far the
+  // customer's price sat from it, and the band it was checked against.
+  server_price?: number;
+  price_diff?: number;
+  tolerance?: number;
+  // Only present when the submitted amounts disagreed with the server's.
+  client_total?: number;
 }
 
 // activity_logs.detail — the structured snapshot the controller attached. Every
@@ -86,6 +94,8 @@ interface LogDetail {
   premium?: number;
   spread?: number;
   estimated?: number;
+  // sell_rejected
+  reason?: string;
 }
 
 interface ActivityLogRow {
@@ -120,6 +130,21 @@ const money = (n?: number) =>
   (n ?? 0).toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const plain = (n?: number) => (n ?? 0).toLocaleString("th-TH", { maximumFractionDigits: 4 });
 
+const signedMoney = (n: number) => `${n > 0 ? "+" : ""}${money(n)}`;
+
+// "ระบบ 68,321.00 (+1,679.00)" — the server's price beside the one pressed. Red
+// once the gap is past the band the line was checked against.
+function ServerPriceNote({ line }: { line: LogLine }) {
+  if (line.server_price == null) return null;
+  const diff = line.price_diff ?? line.price - line.server_price;
+  const over = line.tolerance != null && Math.abs(diff) > line.tolerance + 0.005;
+  return (
+    <span className={`block text-[9px] font-normal ${over ? "text-red-600" : "text-black/40"}`}>
+      ระบบ {money(line.server_price)} ({signedMoney(diff)})
+    </span>
+  );
+}
+
 const PRICE_MODE_LABEL: Record<string, string> = {
   realtime: "ราคาเรียลไทม์",
   association: "ราคาสมาคม",
@@ -138,7 +163,7 @@ interface TimelineItem {
   activity?: ActivityLogRow;
 }
 
-const SELL_KINDS = new Set(["sell", "sell_order"]);
+const SELL_KINDS = new Set(["sell", "sell_order", "sell_rejected"]);
 
 const categoryOf = (row: ActivityLogRow): Category =>
   SELL_KINDS.has(row.detail?.kind ?? "") ? "sell" : "document";
@@ -158,6 +183,8 @@ function actionIcon(row: ActivityLogRow) {
       return <ShoppingCart size={14} />;
     case "sell_order":
       return <Target size={14} />;
+    case "sell_rejected":
+      return <ShieldAlert size={14} />;
     case "issue_quotation":
       return <FileText size={14} />;
     case "edit_bill":
@@ -213,6 +240,7 @@ function LineTable({ title, lines }: { title?: string; lines?: LogLine[] }) {
                 <td className="px-2 py-1 text-right tabular-nums font-bold text-black/80">
                   {money(line.price)}
                   <span className="text-[9px] text-black/35 ml-1">{priceUnit(line.metal)}</span>
+                  <ServerPriceNote line={line} />
                 </td>
                 <td className="px-2 py-1 text-right tabular-nums text-black/50">{plain(line.percent)}</td>
                 <td className="px-2 py-1 text-right tabular-nums text-black/50">{plain(line.plus)}</td>
@@ -220,7 +248,12 @@ function LineTable({ title, lines }: { title?: string; lines?: LogLine[] }) {
                   {plain(line.weight)}
                   <span className="text-[9px] text-black/35 ml-1">{weightUnit(line.metal)}</span>
                 </td>
-                <td className="px-2 py-1 text-right tabular-nums font-bold text-black/80">{money(line.total)}</td>
+                <td className="px-2 py-1 text-right tabular-nums font-bold text-black/80">
+                  {money(line.total)}
+                  {line.client_total != null && (
+                    <span className="block text-[9px] font-normal text-red-600">ส่งมา {money(line.client_total)}</span>
+                  )}
+                </td>
               </tr>
             ))}
           </tbody>
@@ -245,6 +278,15 @@ function LineTable({ title, lines }: { title?: string; lines?: LogLine[] }) {
             <Facts
               items={[
                 ["ราคาที่กด", `${money(line.price)} ${priceUnit(line.metal)}`],
+                ...(line.server_price != null
+                  ? ([
+                      ["ราคาระบบ", money(line.server_price)],
+                      ["ส่วนต่าง", signedMoney(line.price_diff ?? line.price - line.server_price)],
+                    ] as [string, string][])
+                  : []),
+                ...(line.client_total != null
+                  ? ([["ยอดที่ส่งมา", `${money(line.client_total)} บาท`]] as [string, string][])
+                  : []),
                 ["%", plain(line.percent)],
                 ["บวก", plain(line.plus)],
                 ["น้ำหนัก", `${plain(line.weight)} ${weightUnit(line.metal)}`],
@@ -288,6 +330,21 @@ function DetailBody({ detail }: { detail: LogDetail }) {
             ]}
           />
           <LineTable lines={detail.items} />
+        </div>
+      );
+
+    // A refused sell is evidence too: the lines as submitted, and why.
+    case "sell_rejected":
+      return (
+        <div className="flex flex-col gap-2">
+          <Facts
+            items={[
+              ["เหตุผล", detail.reason || "—"],
+              ["โหมดราคา", PRICE_MODE_LABEL[detail.price_mode ?? ""] ?? detail.price_mode ?? "—"],
+              ["ผู้กด", detail.on_behalf ? "พนักงานกดแทน" : "ลูกค้ากดเอง"],
+            ]}
+          />
+          <LineTable title="รายการที่ส่งมา (ไม่ได้บันทึกเข้าบิล)" lines={detail.items} />
         </div>
       );
 
