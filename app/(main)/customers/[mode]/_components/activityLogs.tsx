@@ -11,6 +11,7 @@ import {
   Eye,
   FileText,
   LogIn,
+  Lock,
   Pencil,
   PackageCheck,
   Plus,
@@ -53,13 +54,6 @@ interface LogLine {
   weight: number;
   per_gram: number;
   total: number;
-  // Set on customer sells: the server's own price at that moment, how far the
-  // customer's price sat from it, and the band it was checked against.
-  server_price?: number;
-  price_diff?: number;
-  tolerance?: number;
-  // Only present when the submitted amounts disagreed with the server's.
-  client_total?: number;
 }
 
 // activity_logs.detail — the structured snapshot the controller attached. Every
@@ -94,8 +88,13 @@ interface LogDetail {
   premium?: number;
   spread?: number;
   estimated?: number;
-  // sell_rejected
+  // sell_rejected / lock_rejected
   reason?: string;
+  // price_lock / sell: which locked price the sale was made at, when the shop
+  // committed to it, and how long the customer took to confirm.
+  lock_id?: string;
+  locked_at?: string;
+  confirm_after_sec?: number;
 }
 
 interface ActivityLogRow {
@@ -130,21 +129,6 @@ const money = (n?: number) =>
   (n ?? 0).toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const plain = (n?: number) => (n ?? 0).toLocaleString("th-TH", { maximumFractionDigits: 4 });
 
-const signedMoney = (n: number) => `${n > 0 ? "+" : ""}${money(n)}`;
-
-// "ระบบ 68,321.00 (+1,679.00)" — the server's price beside the one pressed. Red
-// once the gap is past the band the line was checked against.
-function ServerPriceNote({ line }: { line: LogLine }) {
-  if (line.server_price == null) return null;
-  const diff = line.price_diff ?? line.price - line.server_price;
-  const over = line.tolerance != null && Math.abs(diff) > line.tolerance + 0.005;
-  return (
-    <span className={`block text-[9px] font-normal ${over ? "text-red-600" : "text-black/40"}`}>
-      ระบบ {money(line.server_price)} ({signedMoney(diff)})
-    </span>
-  );
-}
-
 const PRICE_MODE_LABEL: Record<string, string> = {
   realtime: "ราคาเรียลไทม์",
   association: "ราคาสมาคม",
@@ -163,7 +147,7 @@ interface TimelineItem {
   activity?: ActivityLogRow;
 }
 
-const SELL_KINDS = new Set(["sell", "sell_order", "sell_rejected"]);
+const SELL_KINDS = new Set(["sell", "sell_order", "sell_rejected", "price_lock", "lock_rejected"]);
 
 const categoryOf = (row: ActivityLogRow): Category =>
   SELL_KINDS.has(row.detail?.kind ?? "") ? "sell" : "document";
@@ -184,7 +168,10 @@ function actionIcon(row: ActivityLogRow) {
     case "sell_order":
       return <Target size={14} />;
     case "sell_rejected":
+    case "lock_rejected":
       return <ShieldAlert size={14} />;
+    case "price_lock":
+      return <Lock size={14} />;
     case "issue_quotation":
       return <FileText size={14} />;
     case "edit_bill":
@@ -240,7 +227,6 @@ function LineTable({ title, lines }: { title?: string; lines?: LogLine[] }) {
                 <td className="px-2 py-1 text-right tabular-nums font-bold text-black/80">
                   {money(line.price)}
                   <span className="text-[9px] text-black/35 ml-1">{priceUnit(line.metal)}</span>
-                  <ServerPriceNote line={line} />
                 </td>
                 <td className="px-2 py-1 text-right tabular-nums text-black/50">{plain(line.percent)}</td>
                 <td className="px-2 py-1 text-right tabular-nums text-black/50">{plain(line.plus)}</td>
@@ -248,12 +234,7 @@ function LineTable({ title, lines }: { title?: string; lines?: LogLine[] }) {
                   {plain(line.weight)}
                   <span className="text-[9px] text-black/35 ml-1">{weightUnit(line.metal)}</span>
                 </td>
-                <td className="px-2 py-1 text-right tabular-nums font-bold text-black/80">
-                  {money(line.total)}
-                  {line.client_total != null && (
-                    <span className="block text-[9px] font-normal text-red-600">ส่งมา {money(line.client_total)}</span>
-                  )}
-                </td>
+                <td className="px-2 py-1 text-right tabular-nums font-bold text-black/80">{money(line.total)}</td>
               </tr>
             ))}
           </tbody>
@@ -278,15 +259,6 @@ function LineTable({ title, lines }: { title?: string; lines?: LogLine[] }) {
             <Facts
               items={[
                 ["ราคาที่กด", `${money(line.price)} ${priceUnit(line.metal)}`],
-                ...(line.server_price != null
-                  ? ([
-                      ["ราคาระบบ", money(line.server_price)],
-                      ["ส่วนต่าง", signedMoney(line.price_diff ?? line.price - line.server_price)],
-                    ] as [string, string][])
-                  : []),
-                ...(line.client_total != null
-                  ? ([["ยอดที่ส่งมา", `${money(line.client_total)} บาท`]] as [string, string][])
-                  : []),
                 ["%", plain(line.percent)],
                 ["บวก", plain(line.plus)],
                 ["น้ำหนัก", `${plain(line.weight)} ${weightUnit(line.metal)}`],
@@ -327,6 +299,29 @@ function DetailBody({ detail }: { detail: LogDetail }) {
               ["ผู้กด", detail.on_behalf ? "พนักงานกดแทน" : "ลูกค้ากดเอง"],
               ["น้ำหนักรวม", `${plain(detail.total_weight)} ${weightUnit(detail.metal)}`],
               ["ยอดรวม", `${money(detail.total_amount)} บาท`],
+              ...(detail.locked_at
+                ? ([
+                    ["ราคาล็อกเมื่อ", moment(detail.locked_at).format("HH:mm:ss")],
+                    ["ยืนยันหลังล็อก", `${(detail.confirm_after_sec ?? 0).toFixed(1)} วินาที`],
+                  ] as [string, string][])
+                : []),
+            ]}
+          />
+          <LineTable lines={detail.items} />
+        </div>
+      );
+
+    // The shop quoting a price: the sale itself only happens if the customer
+    // confirms this lock before it lapses.
+    case "price_lock":
+      return (
+        <div className="flex flex-col gap-2">
+          <Facts
+            items={[
+              ["โหมดราคา", PRICE_MODE_LABEL[detail.price_mode ?? ""] ?? detail.price_mode ?? "—"],
+              ["ล็อกเมื่อ", detail.locked_at ? moment(detail.locked_at).format("HH:mm:ss") : "—"],
+              ["น้ำหนัก", `${plain(detail.total_weight)} ${weightUnit(detail.metal)}`],
+              ["ยอดที่ล็อก", `${money(detail.total_amount)} บาท`],
             ]}
           />
           <LineTable lines={detail.items} />
@@ -334,6 +329,7 @@ function DetailBody({ detail }: { detail: LogDetail }) {
       );
 
     // A refused sell is evidence too: the lines as submitted, and why.
+    case "lock_rejected":
     case "sell_rejected":
       return (
         <div className="flex flex-col gap-2">

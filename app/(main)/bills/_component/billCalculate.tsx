@@ -55,6 +55,9 @@ interface Props {
   // Bump to reload the association and silver prices now — the parent does so
   // when the server refuses a sell because the price moved.
   priceRefreshKey?: number;
+  // The parent is waiting on the server (asking it to lock a price), so the
+  // button must not fire twice.
+  busy?: boolean;
 }
 
 // The association and silver prices do not stream like the realtime feed. The
@@ -119,6 +122,7 @@ export const BillCalculate = ({
   allowSilver = true,
   fluid = false,
   priceRefreshKey = 0,
+  busy = false,
 }: Props) => {
   // Tabs limited to the metals allowed right now (gold first).
   const metals = ALL_METALS.filter((m) =>
@@ -361,7 +365,7 @@ export const BillCalculate = ({
   const waitingRealtime = realtimeActive && !realtimeLive && !priceTouched;
 
   const canSubmit =
-    !!activeType && weight > 0 && !silverBlocked && !silverBelowMin && !waitingRealtime;
+    !!activeType && weight > 0 && !silverBlocked && !silverBelowMin && !waitingRealtime && !busy;
   const handleAdd = () => {
     if (!canSubmit) return;
     onAdd({
@@ -782,7 +786,7 @@ export const BillCalculate = ({
             className={` max-xl:hidden bg-gradient-to-br from-blue-600/50 to-transparent border-1 border-black/10 rounded-full text-blue-950 font-bold gap-x-2 px-4 h-14 flex items-center justify-center transition-all backdrop-blur-lg ${canSubmit ? "cursor-pointer hover:from-blue-600/70" : "opacity-40 cursor-not-allowed"}`}
           >
             <Send size={20} />
-            ส่งขาย
+            {busy ? "กำลังขอราคา..." : "ส่งขาย"}
           </div>
         </div>
       </div>
@@ -793,7 +797,7 @@ export const BillCalculate = ({
         className={` xl:hidden fixed bottom-[calc(0.1rem+var(--bottom-nav-h,0px))] right-5 bg-gradient-to-br from-blue-600/50 to-transparent border-1 border-black/10 rounded-full text-blue-950 font-bold gap-x-2 px-4 h-14 flex items-center justify-center transition-all backdrop-blur-lg ${canSubmit ? "cursor-pointer hover:from-blue-600/70" : "opacity-40 cursor-not-allowed"}`}
       >
         <Send size={20} />
-        ส่งขาย
+        {busy ? "กำลังขอราคา..." : "ส่งขาย"}
       </div>
 
       <style jsx>{`

@@ -15,7 +15,7 @@ import {
   ModalFooter,
   useDisclosure,
 } from "@heroui/modal";
-import { Coins, Clock, Store, DoorClosed, DoorOpen, Radio, Tag, Plus, Trash2, Scale, Pencil, ShieldCheck } from "lucide-react";
+import { Coins, Clock, Store, DoorClosed, DoorOpen, Radio, Tag, Plus, Trash2, Scale, Pencil } from "lucide-react";
 import { ConfirmDeleteModal } from "@/components/confirmDeleteModal";
 
 interface SystemConfig { key: string; value: string; description: string; }
@@ -42,10 +42,6 @@ const tierMode = (t: Tier): TierMode => (t.blocked ? "blocked" : t.add_per_kg > 
 const TIER_LABEL: Record<TierMode, string> = { normal: "ราคาปกติ", add: "บวกราคา", blocked: "ขายไม่ได้" };
 
 // Sort tiers ascending by upper bound; the catch-all (null) goes last.
-// Price band for customer silver sells, and the API's default when never saved.
-const SILVER_TOLERANCE_KEY = "sell_price_tolerance_silver_thb_per_kg";
-const SILVER_TOLERANCE_DEFAULT = "0";
-
 const sortTiers = (list: Tier[]) =>
   [...list].sort((a, b) => {
     if (a.up_to_kg == null) return 1;
@@ -68,11 +64,6 @@ export default function SilverSellSettingsPage() {
   // Tier add/edit form.
   const [tierForm, setTierForm] = useState<{ index: number; tier: Tier } | null>(null);
   const [delTierIdx, setDelTierIdx] = useState<number | null>(null);
-  // The price band is typed, so it saves on blur rather than per keystroke — a
-  // half-typed or empty value would be refused — and a refusal is shown.
-  const [toleranceDraft, setToleranceDraft] = useState(SILVER_TOLERANCE_DEFAULT);
-  const [toleranceError, setToleranceError] = useState("");
-  const [toleranceSaved, setToleranceSaved] = useState(false);
 
   const fetchAll = async () => {
     try {
@@ -83,7 +74,6 @@ export default function SilverSellSettingsPage() {
       const map: Record<string, string> = {};
       ((cRes.data as unknown as SystemConfig[]) || []).forEach((c) => { map[c.key] = c.value; });
       setCfg(map);
-      setToleranceDraft(map[SILVER_TOLERANCE_KEY] ?? SILVER_TOLERANCE_DEFAULT);
       const st = (sRes.data as unknown as SilverSellStatus) || null;
       setStatus(st);
       setTiers(sortTiers(st?.tiers ?? []));
@@ -120,21 +110,6 @@ export default function SilverSellSettingsPage() {
     await saveKey("silver_sell_close_time", modalTime);
     await saveKey("silver_sell_enabled", "true");
     enableDisc.onClose();
-  };
-
-  const saveTolerance = async () => {
-    const value = toleranceDraft.trim();
-    if (value === (cfg[SILVER_TOLERANCE_KEY] ?? SILVER_TOLERANCE_DEFAULT)) return;
-    setToleranceError("");
-    setToleranceSaved(false);
-    try {
-      await api.put("/configs", { key: SILVER_TOLERANCE_KEY, value });
-      setCfg((p) => ({ ...p, [SILVER_TOLERANCE_KEY]: value }));
-      setToleranceSaved(true);
-      setTimeout(() => setToleranceSaved(false), 2000);
-    } catch (e) {
-      setToleranceError(e instanceof Error && e.message ? e.message : "บันทึกไม่สำเร็จ กรุณาลองใหม่");
-    }
   };
 
   const toggleShop = (open: boolean) => saveKey("silver_shop_open", open ? "true" : "false");
@@ -263,34 +238,6 @@ export default function SilverSellSettingsPage() {
                   classNames={{ inputWrapper: "bg-gradient-to-br from-black/10 to-transparent border-1 border-black/10 rounded-2xl" }}
                 />
               )}
-            </div>
-
-            {/* Price band for customer sells: the server compares the base price
-                a customer confirmed with its own base price at that moment. */}
-            <div className="flex flex-col border-1 border-black/10 bg-black/5 backdrop-blur-xl rounded-3xl p-5 gap-y-3">
-              <div className="flex flex-col">
-                <span className="font-bold text-md flex items-center gap-x-2">
-                  <ShieldCheck size={16} className="text-[#c09c42]" /> ราคาคลาดเคลื่อนที่ยอมรับ (ลูกค้ากดขายเงิน)
-                </span>
-                <span className="text-xs text-black/50">
-                  ถ้าราคาที่ลูกค้าเห็นต่างจากราคารับซื้อของระบบไม่เกินค่านี้ ลูกค้าได้ราคาที่เห็น ถ้าเกิน ระบบจะไม่รับรายการและให้กดใหม่
-                </span>
-              </div>
-              <Input
-                type="number"
-                min={0}
-                max={10000}
-                label="ต่างได้ไม่เกิน (บาท/กิโลกรัม)"
-                value={toleranceDraft}
-                isDisabled={!canEdit}
-                onValueChange={(v) => { setToleranceDraft(v); setToleranceError(""); }}
-                onBlur={saveTolerance}
-                isInvalid={!!toleranceError}
-                errorMessage={toleranceError}
-                description={toleranceSaved ? "บันทึกแล้ว ✓" : "0 = ต้องตรงกันพอดี (ไม่ได้แปลว่าไม่จำกัด) · ราคาเงินไม่ขยับระหว่างรอบ แนะนำ 0"}
-                endContent={<span className="text-xs font-bold text-black/40">บาท/กก.</span>}
-                classNames={{ inputWrapper: "bg-gradient-to-br from-black/10 to-transparent border-1 border-black/10 rounded-2xl" }}
-              />
             </div>
 
             {/* Weight-based pricing tiers */}
