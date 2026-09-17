@@ -562,13 +562,12 @@ export const PreviewQuote = React.forwardRef<PreviewQuoteHandle, Props>(
     // ถ่วงน้ำหนักให้เป็นตัวแทนใบเดียว. เงิน/โลหะอื่นชั่งคนละหน่วยกับทอง จึงคิดเฉพาะส่วน
     // ทอง เว้นแต่ใบนั้นไม่มีทองเลย (ใบขายเงินล้วน) ค่อยใช้ทั้งใบแทน — หน่วยที่พิมพ์กำกับ
     // ไว้แล้วด้วย lockUnit ข้างบน
-    const lockPrice: number | null = (() => {
-      // ต้องอ่านจาก p1 (บรรทัดที่ยังไม่ยุบรวม = คอลัมน์ "ราคา" บนใบที่ 1) เท่านั้น
-      // เพราะ consolidateByMetal เขียนทับ price ด้วยอัตราต่อกรัม (Σtotal/Σweight)
-      // ใบที่ยุบรวมแล้วจึงไม่เหลือราคาทองอยู่ — อ่านจาก items จะได้ต่อกรัมมาแทน
-      const src = p1.length > 0 ? p1 : items;
-      const gold = src.filter(isGoldLine);
-      const pool = (gold.length > 0 ? gold : src).filter((i) => i.price > 0);
+    // ต้องอ่านจาก p1 (บรรทัดที่ยังไม่ยุบรวม = คอลัมน์ "ราคา" บนใบที่ 1) เท่านั้น
+    // เพราะ consolidateByMetal เขียนทับ price ด้วยอัตราต่อกรัม (Σtotal/Σweight)
+    // ใบที่ยุบรวมแล้วจึงไม่เหลือราคาล็อกอยู่ — อ่านจาก items จะได้ต่อกรัมมาแทน
+    const lockSrc = p1.length > 0 ? p1 : items;
+    const weightedLockPrice = (lines: QuotationProps[]): number | null => {
+      const pool = lines.filter((i) => i.price > 0);
       if (pool.length === 0) return null;
       const distinct = Array.from(new Set(pool.map((i) => i.price)));
       if (distinct.length === 1) return distinct[0];
@@ -577,6 +576,10 @@ export const PreviewQuote = React.forwardRef<PreviewQuoteHandle, Props>(
         return pool.reduce((s, i) => s + i.price, 0) / pool.length;
       }
       return pool.reduce((s, i) => s + i.price * (i.weight || 0), 0) / w;
+    };
+    const lockPrice: number | null = (() => {
+      const gold = lockSrc.filter(isGoldLine);
+      return weightedLockPrice(gold.length > 0 ? gold : lockSrc);
     })();
 
     const calculateTotalWeight = (arr: QuotationProps[] = items) => {
@@ -590,30 +593,48 @@ export const PreviewQuote = React.forwardRef<PreviewQuoteHandle, Props>(
     //   จำนวน (กรัม) = จำนวนเงิน ÷ ราคา/กรัม
     // ผลคือ จำนวน × ราคา/กรัม = จำนวนเงิน เสมอ ใบจึงอ่านแล้วคิดเลขตามได้ลงตัว
     //
-    // ใช้ได้กับ "ทอง" เท่านั้น — โลหะอื่นชั่งเป็นกรัมมาตั้งแต่ต้น (เงินคีย์ราคาเป็น บาท/กก.
-    // แล้วหาร 1,000 ในสูตรของประเภทสินค้า) เอาสูตรนี้ไปทับจะเพี้ยนทั้งใบ จึงกันไว้ด้วย
-    // docHasGold และแยกทางคิดของแต่ละบรรทัดข้างล่าง
+    // สูตรทองข้างบนใช้กับ "ทอง" เท่านั้น จึงกันไว้ด้วย docHasGold. เงินใช้หลักเดียวกัน
+    // แต่ไม่หัก 2% และราคาเป็น บาท/กก.:
+    //   ราคา/กรัม   = ราคาตัดล็อกของเงิน ÷ 1,000
+    //   จำนวน (กรัม) = จำนวนเงิน ÷ ราคา/กรัม
+    // จำนวนกรัมจึงเป็น "เนื้อเงิน" ไม่ใช่น้ำหนักที่ชั่ง — เงินที่รับซื้อ % ต่างกันมาก (เช่น
+    // 37–53%) ถ้าพิมพ์น้ำหนักชั่ง ราคา/กรัม จะถูก % ดึงลงจนเทียบกับราคาตัดล็อกไม่ได้
     const page2PerGram: number | null =
       docHasGold && lockPrice !== null && lockPrice > 0
         ? Math.round((lockPrice - lockPrice * 0.02) / 15.244)
         : null;
-    // จำนวนกรัมที่พิมพ์ต่อบรรทัด — ทองแปลงจากยอดเงินด้วยราคา/กรัมข้างบน (บรรทัดจึงคูณกัน
-    // ได้จำนวนเงินพอดี) ส่วนโลหะอื่นใช้น้ำหนักกรัมจริงที่ชั่งมา
-    // null = ใบเก่าที่ไม่มีราคาตัดล็อกให้แปลง ตกกลับไปพิมพ์ค่าที่เก็บมาดิบ ๆ
+    // ราคาตัดล็อกของเงินคิดจากบรรทัดเงินเท่านั้น — ใบที่มีทองปน lockPrice เป็นราคาทอง.
+    // ใบเก่าก่อนมี page1_items เหลือแต่บรรทัดที่ยุบรวมแล้ว ช่องราคาเป็นอัตราต่อกรัม
+    // (เช่น 44.65) ราคาเงินต่อกก. ไม่มีทางต่ำกว่า 1,000 จึงถือว่าไม่มีราคาล็อกให้แปลง
+    const silverPerGram: number | null = (() => {
+      const lock = weightedLockPrice(
+        lockSrc.filter((i) => (i.metal || "") === "silver"),
+      );
+      return lock !== null && lock >= 1000 ? lock / 1000 : null;
+    })();
+    const isSilverLine = (it: QuotationProps) => (it.metal || "") === "silver";
+    // จำนวนกรัมที่พิมพ์ต่อบรรทัด — ทองและเงินแปลงจากยอดเงินด้วยราคา/กรัมข้างบน (บรรทัด
+    // จึงคูณกันได้จำนวนเงินพอดี) ส่วนโลหะอื่นใช้น้ำหนักกรัมจริงที่ชั่งมา
+    // ทอง null = ใบเก่าที่ไม่มีราคาตัดล็อกให้แปลง ตกกลับไปพิมพ์ค่าที่เก็บมาดิบ ๆ;
+    // เงินที่ไม่มีราคาล็อกตกกลับไปพิมพ์น้ำหนักชั่งแบบโลหะอื่น
     const lineGrams = (it: QuotationProps): number | null =>
       isGoldLine(it)
         ? page2PerGram && page2PerGram > 0
           ? (it.total || 0) / page2PerGram
           : null
-        : it.weight || 0;
+        : isSilverLine(it) && silverPerGram
+          ? (it.total || 0) / silverPerGram
+          : it.weight || 0;
     // ราคา/กรัม ที่พิมพ์ — โลหะอื่นคิดย้อนจากยอดเงิน (ยอด ÷ น้ำหนักกรัม) ไม่ใช้ perGram ที่
     // เก็บไว้ ซึ่งถูกปัดเป็นจำนวนเต็มตอนออกใบ: บนใบทางการทุกบรรทัดต้องคูณกันแล้วลงตัว
     const linePerGram = (it: QuotationProps): number =>
       isGoldLine(it)
         ? (page2PerGram ?? it.perGram)
-        : (it.weight || 0) > 0
-          ? (it.total || 0) / it.weight
-          : it.perGram;
+        : isSilverLine(it) && silverPerGram
+          ? silverPerGram
+          : (it.weight || 0) > 0
+            ? (it.total || 0) / it.weight
+            : it.perGram;
     const fmtGrams = (g: number) =>
       g.toLocaleString(undefined, {
         minimumFractionDigits: 2,
@@ -623,9 +644,10 @@ export const PreviewQuote = React.forwardRef<PreviewQuoteHandle, Props>(
       isGoldLine(it)
         ? linePerGram(it).toLocaleString()
         : linePerGram(it).toLocaleString(undefined, {
+          minimumFractionDigits: isSilverLine(it) && silverPerGram ? 2 : 0,
           maximumFractionDigits: 2,
         });
-    // รวมกรัมของทั้งใบ = ผลบวกของคอลัมน์ที่พิมพ์จริง (ทองที่แปลงแล้ว + กรัมของโลหะอื่น)
+    // รวมกรัมของทั้งใบ = ผลบวกของคอลัมน์ที่พิมพ์จริง (ทอง/เงินที่แปลงแล้ว + กรัมของโลหะอื่น)
     // ถ้ามีบรรทัดที่แปลงไม่ได้ ให้ทั้งช่องตกกลับไปใช้น้ำหนักรวมที่เก็บไว้แทน
     const page2TotalGrams: number | null = page2Items.reduce<number | null>(
       (sum, it) => {
