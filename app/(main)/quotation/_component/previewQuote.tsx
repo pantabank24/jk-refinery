@@ -1258,7 +1258,10 @@ export const PreviewQuote = React.forwardRef<PreviewQuoteHandle, Props>(
                           {index + 1}
                         </td>
                         <td className="border border-gray-400 px-2 py-1 text-center text-[9px]">
-                          {item.typeName.replace("ทองหลอม", "ทองรูปพรรณเก่า")}
+                          {/* จำนวนกรัมของบรรทัดเงินบนใบนี้เป็นเนื้อเงินแล้ว (ดู lineGrams) จึงเรียกว่า เงิน 100% */}
+                          {item.typeName
+                            .replace("ทองหลอม", "ทองรูปพรรณเก่า")
+                            .replace("เงินแท่ง", "เงิน 100%")}
                         </td>
                         <td className="border border-gray-400 px-2 py-1 text-center text-[9px]">
                           {(() => {
